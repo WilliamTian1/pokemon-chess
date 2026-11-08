@@ -1,0 +1,13 @@
+# Render blueprint: one free web service that serves the built client and the WebSocket rooms.
+# In Render: New → Blueprint → pick this repository. Friends then just open the service's URL.
+services:
+  - type: web
+    name: pokemon-conquest-chess
+    runtime: node
+    plan: free
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
