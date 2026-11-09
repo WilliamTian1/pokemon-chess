@@ -27,8 +27,8 @@ export function setup(teamA: string[], teamD: string[], positions: Record<string
       u.pos = { ...pos };
     }
   }
-  // Start-of-battle effects in quickGame can change stages; tests set their own. Tests also skip
-  // the move-only first round.
+  // Start-of-battle effects in quickGame can change stages; tests set their own. Tests are set in
+  // round 2.
   s.round = 2;
   for (const u of s.units) {
     u.stages = { atk: 0, def: 0, mov: 0 };

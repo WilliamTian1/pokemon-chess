@@ -508,7 +508,7 @@ function TurnBanner({ ctl, remaining }: { ctl: Controller; remaining: number }) 
             {s.phase !== 'over' && <span className="ml-1.5 text-xs font-medium text-slate-400">({side === 'A' ? 'Attacker' : 'Defender'})</span>}
           </div>
           <div className="text-xs text-slate-400">
-            {s.phase === 'over' ? s.winReason : ctl.thinking ? 'Thinking…' : `${remaining} Pokémon left to activate${s.round === 1 ? ' · round 1 is movement only' : ''}`}
+            {s.phase === 'over' ? s.winReason : ctl.thinking ? 'Thinking…' : `${remaining} Pokémon left to activate`}
           </div>
         </div>
       </div>

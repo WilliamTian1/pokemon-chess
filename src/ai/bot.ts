@@ -169,8 +169,6 @@ class Evaluator {
   private readonly offenseCache = new Map<string, number>();
   private readonly walkCache = new Map<string, Int16Array>();
   private readonly width: number;
-  /** The side whose next turn is round 1, which is move-only (it threatens nothing). */
-  private readonly idle: Side | null;
   /** Hard applies the self-play-tuned EVAL multipliers; Medium keeps the hand-set evaluation. */
   private readonly tuned: boolean;
   readonly w: Weights;
@@ -179,7 +177,6 @@ class Evaluator {
     this.w = WEIGHTS[level];
     this.tuned = level === 'hard';
     this.width = mapOf(s0).width;
-    this.idle = s0.round === 1 && s0.side === 'A' ? 'D' : null;
     if (shareWith) {
       // Same position, other point of view: the threat masks don't depend on the side.
       for (const [k, v] of shareWith.threatMasks) this.threatMasks.set(k, v);
@@ -322,7 +319,7 @@ class Evaluator {
   }
 
   private actWeight(u: Unit): number {
-    if (u.side === this.idle || u.flinched || u.nextTurn.noAct) return 0;
+    if (u.flinched || u.nextTurn.noAct) return 0;
     if (u.status === 'slp' || u.status === 'frz') return 1 / 3;
     if (u.status === 'par') return 0.8;
     return 1;
@@ -425,8 +422,8 @@ class Evaluator {
     const def = liveUnits(s, 'D');
     if (!def.length) return 8;
     if (!atk.length) return -8;
-    // Attack turns left: the rest of this one (round 1 is move-only), then one per later round.
-    const unacted = s.side === 'A' && s.phase === 'battle' && s.round > 1 ? atk.filter((u) => !u.activated).length / atk.length : 0;
+    // Attack turns left: the rest of this one, then one per later round.
+    const unacted = s.side === 'A' && s.phase === 'battle' ? atk.filter((u) => !u.activated).length / atk.length : 0;
     const left = s.maxRounds - s.round + unacted;
     let need = 0;
     let travel = 0;

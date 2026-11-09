@@ -174,7 +174,7 @@ export function HowToPlay({ onBack }: { onBack: () => void }) {
         <ol className="list-decimal space-y-1 pl-5">
           <li><b>Draft:</b> each match deals 15 random Pokémon and 4 random legendaries. The Attacker and Defender alternate picking 3 Pokémon each, then each picks one legendary. With <b>No legendaries</b> chosen at setup, the pool is 20 Pokémon and both players pick all 4 from it.</li>
           <li><b>Placement:</b> the Attacker places first, then players alternate placing Pokémon on their spawn tiles. Like a chessboard, the board is turned so your own side is at the bottom.</li>
-          <li><b>Battle:</b> up to 10 rounds. Each round the Attacker takes a full team turn, then the Defender. Round 1 is movement only: nobody can use a move or the trebuchet.</li>
+          <li><b>Battle:</b> up to 10 rounds. Each round the Attacker takes a full team turn, then the Defender. Both sides can move and attack from round 1.</li>
         </ol>
         <p><b className="text-rose-300">Attacker</b> wins by fainting all 4 Defenders before round 10 ends. <b className="text-sky-300">Defender</b> wins by wiping the Attackers or simply surviving round 10.</p>
       </section>

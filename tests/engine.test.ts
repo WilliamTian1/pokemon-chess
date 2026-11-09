@@ -264,18 +264,17 @@ describe('full flow', () => {
     expect(getUnit(s, 'D0').stages.atk).toBe(-1); // Charizard: Fire under Drizzle
   });
 
-  it('round 1 is move-only for both sides', () => {
+  it('both sides can act from round 1', () => {
     let s = quickGame(['charizard', 'furret', 'tauros', 'snorlax'], ['blissey', 'dodrio', 'cinccino', 'staraptor'], { rng: seededRng(4) });
     expect(s.round).toBe(1);
     const a = getUnit(s, 'A0');
-    expect(a.turn.noAct).toBe(true);
+    expect(a.turn.noAct).toBe(false);
     expect(a.turn.noMove).toBe(false);
-    expect(moveOptions(s, a).every((o) => !o.usable)).toBe(true);
+    // Furret's Follow Me targets itself, so it is usable from the spawn.
+    expect(moveOptions(s, getUnit(s, 'A1')).some((o) => o.usable)).toBe(true);
     s = applyAction(s, { type: 'endTurn' }, seededRng(1)).state;
-    expect(getUnit(s, 'D0').turn.noAct).toBe(true);
-    s = applyAction(s, { type: 'endTurn' }, seededRng(1)).state;
-    expect(s.round).toBe(2);
-    expect(getUnit(s, 'A0').turn.noAct).toBe(false);
+    expect(s.round).toBe(1);
+    expect(getUnit(s, 'D0').turn.noAct).toBe(false);
   });
 
   it('the trebuchet is a flat 40 before type effectiveness', () => {

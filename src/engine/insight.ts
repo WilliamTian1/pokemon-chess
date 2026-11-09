@@ -86,9 +86,8 @@ function nextActivation(s: GameState, e: Unit): number | null {
     return canActNow(e) ? movementAllowance(s, e) : null;
   }
   if (e.flinched || e.nextTurn.noAct) return null;
-  // Its next turn: D moves after A in the same round, A in the next one. Round 1 is move-only.
+  // Its next turn: D moves after A in the same round, A in the next one.
   const round = s.phase !== 'battle' ? 1 : e.side === 'D' ? s.round : s.round + 1;
-  if (round === 1) return null;
   if (e.nextTurn.noMove || (abilityOf(e) === 'truant' && round % 2 === 0)) return 0;
   return effectiveMov(s, e);
 }

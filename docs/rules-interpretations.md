@@ -43,7 +43,7 @@ Players choose a map before each match (online, the host chooses). Both maps are
 
 ## Turn restrictions
 
-- **Round 1** is movement only for both sides: no moves and no trebuchet.
+- **Round 1** is a normal round: both sides can move, use moves and fire the trebuchet. (Earlier versions made it movement only.)
 - The game lasts 10 rounds. The Defender wins when round 10 ends.
 - **Flinch:** the target loses its next activation (no move, no action).
 - **Confusion** (Hurricane): lasts through the Pokémon's next activation. When it uses a move or the trebuchet, there is a ⅓ chance the action fails and it takes 30 damage instead.
@@ -106,7 +106,6 @@ Only the immunities printed in the rules or on cards apply:
 
 - Clicking an opposing Pokémon (on the board or its card) shows every tile it could hit with each of its moves, from its current tile or any tile it can walk to. Its first move's range is filled red; its second move's is outlined in yellow. Moves that only help their own side are left out. Click it again, or press Esc, to hide it.
 - There is no all-opponents view any more; it was replaced by this per-Pokémon view.
-- Nothing is shown for a Pokémon whose next turn is in round 1, since round 1 is move-only.
 - During the opponent's own turn, only Pokémon that still have an action left count. Before their turn, Pokémon that are flinched or can't act next turn are left out. Pokémon that can attack but not move next turn (Hyper Beam, or Truant on an even round) count from their current tile only.
 - The trebuchet is not painted (it would cover the whole board). The key says "+ trebuchet" when the Pokémon can reach it.
 

@@ -317,10 +317,6 @@ function startTurn(ctx: Ctx, side: Side): void {
       flags.reasons.push('Fully paralyzed');
       log(ctx, `${nameOf(u)} is fully paralyzed and can't act this turn!`, 'bad', side);
     }
-    if (s.round === 1) {
-      flags.noAct = true;
-      flags.reasons.push('Round 1: move only');
-    }
     if (abilityOf(u) === 'truant' && s.round % 2 === 0) {
       flags.noMove = true;
       flags.reasons.push('Truant (even round)');
