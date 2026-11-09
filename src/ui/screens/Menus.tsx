@@ -29,7 +29,7 @@ export function Home({ onBot, onLocal, onOnline, onCards, onLab, onRules }: {
         <h1 className="text-4xl font-black tracking-tight sm:text-5xl">
           Pokémon Conquest <span className="bg-gradient-to-r from-amber-300 to-rose-400 bg-clip-text text-transparent">Chess</span>
         </h1>
-        <p className="mt-2 text-slate-400">v1.0 — draft four, outmanoeuvre, survive ten rounds.</p>
+        <p className="mt-2 text-slate-400">v1.1 — draft four, outmanoeuvre, survive ten rounds.</p>
       </div>
       <div className="grid w-full gap-3 sm:grid-cols-3">
         <MenuButton title="Play vs Bot" sub="Easy · Medium · Hard" onClick={onBot} primary />

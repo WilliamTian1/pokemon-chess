@@ -1,6 +1,6 @@
 import type { AbilityId, CardDef, MoveDef, MoveFx, PType, TargetSpec } from '../types';
 
-// Transcribed from `Conquest Cards.pdf` (2026-11-09 edition): pages 1–9 are the v1.0 roster, 10–12
+// Transcribed from `Conquest Cards.pdf` (2026-11-09 edition): pages 1–9 are the v1.1 roster, 10–12
 // the expansion, and Wigglytuff is on page 13 (otherwise a work-in-progress page). Moves are listed in
 // the order they appear on the card (top first) — Foul Play reads the target's *first* attack.
 
