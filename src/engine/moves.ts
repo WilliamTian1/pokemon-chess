@@ -1,5 +1,5 @@
 import {
-  basePower, computeDamage, grazeApplies, isImmune, makeAttackCtx, neverMisses, secondaryMult, typeEffectLabel,
+  basePower, computeDamage, grazeApplies, isImmune, makeAttackCtx, neverMisses, secondaryMult, trebuchetCtx, typeEffectLabel,
 } from './damage';
 import {
   abilityOf, adjacentToType, alliesOf, canPlaceOn, canStand, gridTile, hasType, inBounds,
@@ -512,13 +512,13 @@ function queueLiquidVoice(ctx: Ctx, u: Unit, move: MoveDef, moveIndex: 0 | 1): v
 }
 
 /**
- * Trebuchet: a flat 40 at any single Pokémon anywhere, carrying all of the user's types at once
- * (effectiveness multiplies across them), ignoring stat stages.
+ * Trebuchet: a flat 40 at any single Pokémon anywhere, fired as whichever of the user's types does
+ * the most damage to it, ignoring stat stages.
  */
 export function trebuchetAttack(ctx: Ctx, u: Unit, t: Unit): ExecResult {
   const s = ctx.s;
-  const ac = makeAttackCtx(u, null);
-  log(ctx, `${nameOf(u)} fired the trebuchet at ${nameOf(t)}! (${ac.types.join('/')})`, 'info', u.side);
+  const ac = trebuchetCtx(s, u, t);
+  log(ctx, `${nameOf(u)} fired the trebuchet at ${nameOf(t)}! (${ac.moveType})`, 'info', u.side);
   emit(ctx, { t: 'attack', unitId: u.id, name: 'Trebuchet', tiles: [t.pos!] });
   const imm = isImmune(ac, t);
   if (imm.absorbed) {
@@ -535,7 +535,7 @@ export function trebuchetAttack(ctx: Ctx, u: Unit, t: Unit): ExecResult {
   const dmg = computeDamage(s, ac, t, 40, null);
   const dealt = dealDamage(ctx, t, dmg.damage, { source: u, attack: true, ignoreAbilities: ac.ignoreAbilities, label: typeEffectLabel(dmg.mult) ?? undefined });
   triggerLeech(ctx, u, posBefore, t.id, dealt);
-  if (!ac.ignoreAbilities) reactiveAbilities(ctx, u, t, u.pos!, posBefore, ac.types.includes('Dark') ? 'Dark' : ac.moveType);
+  if (!ac.ignoreAbilities) reactiveAbilities(ctx, u, t, u.pos!, posBefore, ac.moveType);
   if (!t.fainted && abilityOf(t) === 'emergencyExit' && hpBefore >= 100 && t.hp < 100) queueEmergencyExit(ctx, t);
   return { hits: 1, kos: t.fainted ? 1 : 0 };
 }

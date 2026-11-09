@@ -288,12 +288,25 @@ describe('full flow', () => {
     expect(ghost.kind).toBe('immune');
   });
 
-  it('the trebuchet carries all of the user\'s types at once', () => {
+  it('the trebuchet fires as whichever of the user\'s types does the most damage', () => {
     const s = setup(['charizard'], ['lurantis', 'blastoise'], { A0: { x: 10, y: 4 }, D0: { x: 3, y: 3 }, D1: { x: 6, y: 2 } });
-    // Fire ×2 and Flying ×2 against Grass: 40 × 4.
-    expect(previewAction(s, 'A0', 'treb', { targetId: 'D0' })[0].max).toBe(160);
-    // Fire ×½ and Flying ×1 against Water: 40 × ½.
-    expect(previewAction(s, 'A0', 'treb', { targetId: 'D1' })[0].max).toBe(20);
+    // Fire and Flying are both 2× against Grass: one type, 40 × 2.
+    expect(previewAction(s, 'A0', 'treb', { targetId: 'D0' })[0].max).toBe(80);
+    // Against Water, Flying (1×) beats Fire (½×).
+    expect(previewAction(s, 'A0', 'treb', { targetId: 'D1' })[0].max).toBe(40);
+    // Volcarona (Fire/Bug) at Scizor (Steel/Bug): Fire is 4×, Bug only ½×.
+    const v = setup(['volcarona'], ['scizor'], { A0: { x: 10, y: 4 }, D0: { x: 3, y: 3 } });
+    park(v, ['A0', 'D0']);
+    const [hit] = previewAction(v, 'A0', 'treb', { targetId: 'D0' });
+    expect(hit.max).toBe(160);
+    expect(hit.notes).toContain('as Fire');
+    const after = applyAction(v, { type: 'trebuchet', unitId: 'A0', targetId: 'D0' }, noLuck()).state;
+    expect(unit(after, 'D0').fainted).toBe(true);
+    expect(after.log.some((l) => l.text.includes('fired the trebuchet') && l.text.includes('(Fire)'))).toBe(true);
+    // A type the target is immune to isn't used when the other can hit: Gengar's Poison hits Snorlax.
+    const g = setup(['gengar'], ['snorlax'], { A0: { x: 10, y: 4 }, D0: { x: 3, y: 3 } });
+    park(g, ['A0', 'D0']);
+    expect(previewAction(g, 'A0', 'treb', { targetId: 'D0' })[0]).toMatchObject({ kind: 'damage', max: 40 });
   });
 
   it('noLuck helper never procs', () => {

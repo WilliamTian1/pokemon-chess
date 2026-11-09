@@ -11,9 +11,8 @@ export interface AttackCtx {
   /** Where the attacker stands when the hit lands (after any dash). */
   attackerPos: Pos;
   move: MoveDef | null;
+  /** The hit's type: the move's, or for the trebuchet whichever of the user's types it fires as. */
   moveType: PType;
-  /** Every type the hit carries: the move's type, or all of the user's types for the trebuchet. */
-  types: PType[];
   moveName: string;
   isTrebuchet: boolean;
   /** Moongeist Beam, Teravolt, Turboblaze. */
@@ -34,7 +33,6 @@ export function makeAttackCtx(attacker: Unit, move: MoveDef | null, opts: {
     attackerPos: opts.attackerPos ?? attacker.pos!,
     move,
     moveType,
-    types: move ? [moveType] : cardOf(attacker).types,
     moveName: move?.name ?? 'Trebuchet',
     isTrebuchet: move === null,
     ignoreAbilities: !!move?.fx.ignoreAbilities || ab === 'teravolt' || ab === 'turboblaze',
@@ -110,17 +108,32 @@ export interface DamageResult {
   absorbed: boolean;
 }
 
-/** Type effectiveness of the hit: the product over every type it carries. */
-export function hitTypeMultiplier(ac: AttackCtx, target: Unit): number {
-  return ac.types.reduce((m, t) => m * typeMultiplier(t, cardOf(target).types), 1);
-}
-
 export function isImmune(ac: AttackCtx, target: Unit): { immune: boolean; absorbed: boolean } {
   const dAb = ac.ignoreAbilities ? null : abilityOf(target);
-  if (dAb === 'stormDrain' && ac.types.includes('Water')) return { immune: true, absorbed: true };
-  if (dAb === 'levitate' && ac.types.includes('Ground')) return { immune: true, absorbed: false };
-  if (hitTypeMultiplier(ac, target) === 0) return { immune: true, absorbed: false };
+  if (dAb === 'stormDrain' && ac.moveType === 'Water') return { immune: true, absorbed: true };
+  if (dAb === 'levitate' && ac.moveType === 'Ground') return { immune: true, absorbed: false };
+  if (typeMultiplier(ac.moveType, cardOf(target).types) === 0) return { immune: true, absorbed: false };
   return { immune: false, absorbed: false };
+}
+
+/**
+ * The trebuchet fires as whichever of the user's types does the most damage to `target`. On a tie
+ * it avoids setting off the target's Storm Drain or Justified, then keeps the card's type order.
+ */
+export function trebuchetCtx(s: GameState, attacker: Unit, target: Unit): AttackCtx {
+  let best: AttackCtx | null = null;
+  let bestScore = -Infinity;
+  for (const type of cardOf(attacker).types) {
+    const ac = makeAttackCtx(attacker, null, { moveType: type });
+    const r = computeDamage(s, ac, target, 40, null);
+    const helpsTarget = r.absorbed || (type === 'Dark' && !r.immune && !ac.ignoreAbilities && abilityOf(target) === 'justified');
+    const score = r.damage - (helpsTarget ? 0.5 : 0);
+    if (score > bestScore) {
+      best = ac;
+      bestScore = score;
+    }
+  }
+  return best!;
 }
 
 function flowerGiftAdjacent(s: GameState, u: Unit): boolean {
@@ -137,13 +150,13 @@ export function computeDamage(s: GameState, ac: AttackCtx, target: Unit, base: n
   const grazed = grazePower !== null;
   const dist = cheb(ac.attackerPos, target.pos!);
 
-  let mult = hitTypeMultiplier(ac, target);
+  let mult = typeMultiplier(ac.moveType, cardOf(target).types);
   if (aAb === 'tintedLens' && mult < 1) mult = 1;
 
   // The trebuchet is a flat 40 before type effectiveness: no stages, ability, terrain or burn modifiers.
   if (ac.isTrebuchet) {
     let raw = 40 * mult;
-    if (dAb === 'thickFat' && (ac.types.includes('Fire') || ac.types.includes('Ice'))) raw *= 0.5;
+    if (dAb === 'thickFat' && (ac.moveType === 'Fire' || ac.moveType === 'Ice')) raw *= 0.5;
     return { damage: roundUp5(raw), mult, immune: false, absorbed: false };
   }
 

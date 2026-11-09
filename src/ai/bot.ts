@@ -2,7 +2,7 @@ import {
   type Action, CARD_LIST, type CardDef, type Dir, type GameState, type Pos, type Rng, type Side, type Unit,
   basePower, cardOf, cheb, computeDamage, decider, effectiveMov, expectedRng, getCard, getMap, getUnit, grazeApplies,
   canPass, draftOptions, isImmune, isSupportOnly, isTrebuchet, liveUnits, makeAttackCtx, mapOf, moveOf, moveOptions, moveTargets, onBoard,
-  otherSide, parseGrid, posKey, reachable, seededRng, simulate, steps, terrainAt, terrainBonus, trebuchetOption, waitBlock, zoneTiles,
+  otherSide, parseGrid, posKey, reachable, seededRng, simulate, steps, terrainAt, terrainBonus, trebuchetCtx, trebuchetOption, waitBlock, zoneTiles,
 } from '../engine';
 import { bestDraftPick, hasDraftModel } from './draft';
 import { matchup, rateCard } from './rating';
@@ -290,7 +290,7 @@ class Evaluator {
     if (hit !== undefined) return hit;
     let dmg = 0;
     if (idx === 2) {
-      const ac = makeAttackCtx(a, null);
+      const ac = trebuchetCtx(s, a, t);
       if (!isImmune(ac, t).immune) dmg = computeDamage(s, ac, t, 40, null).damage;
     } else {
       const mv = moveOf(a, idx);

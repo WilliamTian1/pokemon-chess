@@ -8,7 +8,7 @@ export {
   draftOptions, followMeBlockers, followMeTiles, isLegendPick, movementAllowance, newGame, quickGame, randomLegendPool,
   randomPool, RuleError, simulate,
 } from './engine';
-export { basePower, computeDamage, grazeApplies, isImmune, makeAttackCtx, typeEffectLabel } from './damage';
+export { basePower, computeDamage, grazeApplies, isImmune, makeAttackCtx, trebuchetCtx, typeEffectLabel } from './damage';
 export { LIQUID_VOICE_RE, followMeUsers, isSupportOnly, liquidVoiceCopy, targeting, type Targeting } from './moves';
 export { STATUS_NAME, STAT_NAME } from './mutate';
 export * from './query';

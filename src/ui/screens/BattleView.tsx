@@ -653,10 +653,10 @@ function ActionBar(props: {
         </div>
         {isTreb && treb && (
           <div className="flex items-center gap-1.5 text-xs text-slate-300">
-            Fires as {treb.types.map((t) => <TypeBadge key={t} type={t} small />)}{treb.types.length > 1 ? ' at once' : ''}
+            Fires as {treb.types.map((t) => <TypeBadge key={t} type={t} small />)}{treb.types.length > 1 ? ' — whichever hits the target hardest' : ''}
           </div>
         )}
-        <p className="text-xs text-slate-400">{move?.text || (isTreb ? 'A flat 40 carrying all of the user’s types at once: type effectiveness multiplies across them. Stat stages, abilities, terrain and burns don’t change it.' : '')}</p>
+        <p className="text-xs text-slate-400">{move?.text || (isTreb ? 'A flat 40 of whichever of the user’s types does the most damage to the target. Stat stages, abilities, terrain and burns don’t change it.' : '')}</p>
         <p className={`text-xs ${aimBlocked ? 'text-rose-300' : 'text-amber-200/90'}`}>{aimBlocked ?? hint}</p>
       </div>
     );

@@ -194,6 +194,21 @@ describe('distance, terrain and grids', () => {
     expect(previewAction(onBush, 'A0', 1, { targetId: 'D0' })[0].min).toBe(previewAction(offBush, 'A0', 1, { targetId: 'D0' })[0].min);
   });
 
+  it('flowers don\'t heal Flying or Levitate Pokémon', () => {
+    // Meadow flowers at (4,3) and (3,4); waiting there ends the activation on them.
+    const s = setup(['noivern', 'snorlax', 'weezing'], ['blissey'], { A0: P(4, 3), A1: P(3, 4) });
+    park(s, ['A0', 'A1']);
+    for (const id of ['A0', 'A1']) unit(s, id).hp -= 60;
+    let n = act(s, { type: 'wait', unitId: 'A0' });
+    n = act(n, { type: 'wait', unitId: 'A1' });
+    expect(unit(n, 'A0').hp).toBe(unit(s, 'A0').hp);
+    expect(unit(n, 'A1').hp).toBe(unit(s, 'A1').hp + 30);
+    const w = setup(['weezing'], ['blissey'], { A0: P(4, 3) });
+    park(w, ['A0']);
+    unit(w, 'A0').hp -= 60;
+    expect(unit(act(w, { type: 'wait', unitId: 'A0' }), 'A0').hp).toBe(unit(w, 'A0').hp);
+  });
+
   it('Fire Spin hits the 3×3 ring in front, three tiles deep', () => {
     const s = setup(['volcarona'], ['snorlax', 'tauros', 'blissey'], { A0: P(5, 7), D0: P(5, 4), D1: P(4, 5), D2: P(5, 5) });
     park(s, ['A0', 'D0', 'D1', 'D2']);

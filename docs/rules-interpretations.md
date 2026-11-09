@@ -88,7 +88,7 @@ Only the immunities printed in the rules or on cards apply:
 - **Intimidate:** two adjacent Intimidate Pokémon stack.
 - **"Ignores abilities"** (Moongeist Beam, Teravolt, Turboblaze): ignores the target's abilities, except Shields Down and Emergency Exit.
 - **Air Lock** ignores the opponent's positive stat stages, its ability modifiers and terrain bonuses. **Infiltrator** ignores positive Defense stages and defensive abilities.
-- **Trebuchet:** a flat 40 that carries all of the user's types at once, like a dual-type attack: type effectiveness multiplies across them (Fire/Flying against Grass is 2 × 2 = 4×), and a type immunity on any of them stops the shot. Stat stages, damage-adding or -reducing abilities, berry bushes and burns don't change it; Levitate, Storm Drain, Tinted Lens and Thick Fat still apply.
+- **Trebuchet:** a flat 40 of one of the user's types, always the one that does the most damage to the target (Volcarona, Fire/Bug, fires as Fire at Scizor: 4× = 160; Charizard, Fire/Flying, hits a Grass type for 2× = 80). A type the target is immune to is simply not chosen if the other type can hit. Stat stages, damage-adding or -reducing abilities, berry bushes and burns don't change it; Levitate, Storm Drain, Tinted Lens and Thick Fat still apply, per type. On a tie, the shot avoids setting off Storm Drain or Justified.
 - **Cherrim** turns into its Sunshine form when anyone uses Sunny Day, keeping the damage it has taken.
 - **Minior:** Meteor form becomes Core form (full HP) when it would faint. Core form healed at full HP turns back into Meteor form (full HP).
 - **Sturdy** only protects from full HP. The Pokémon survives at 1 HP and faints the next time it takes damage.

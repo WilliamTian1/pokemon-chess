@@ -1,4 +1,6 @@
-import { basePower, computeDamage, grazeApplies, isImmune, makeAttackCtx, neverMisses, secondaryMult, typeEffectLabel } from './damage';
+import {
+  basePower, computeDamage, grazeApplies, isImmune, makeAttackCtx, neverMisses, secondaryMult, trebuchetCtx, typeEffectLabel,
+} from './damage';
 import { canActNow, cloneState, followMeTiles, movementAllowance } from './engine';
 import { STATUS_NAME, canHaveStatus, pressureMult } from './mutate';
 import { type Targeting, canTargetFrom, followMeUsers, isSupportOnly, liquidVoiceCopy, targeting } from './moves';
@@ -188,12 +190,14 @@ export function previewAction(s0: GameState, unitId: string, which: 0 | 1 | 'tre
   if (which === 'treb') {
     const t = opts.targetId ? getUnit(s, opts.targetId) : null;
     if (!t || !onBoard(t)) return [];
-    const ac = makeAttackCtx(u, null);
+    const ac = trebuchetCtx(s, u, t);
     const imm = isImmune(ac, t);
     if (imm.immune) return [{ unitId: t.id, kind: imm.absorbed ? 'absorb' : 'immune', min: 0, max: 0, expected: 0, koChance: 0, notes: [imm.absorbed ? 'Storm Drain' : 'No effect'] }];
     const r = computeDamage(s, ac, t, 40, null);
     const eff = typeEffectLabel(r.mult);
-    return [{ unitId: t.id, kind: 'damage', min: r.damage, max: r.damage, expected: r.damage, koChance: koChanceOf(t, [{ p: 1, dmg: r.damage }], ac.ignoreAbilities), notes: eff ? [eff] : [] }];
+    // Which of a dual-type user's types the shot fires as against this target.
+    const as = cardOf(u).types.length > 1 ? [`as ${ac.moveType}`] : [];
+    return [{ unitId: t.id, kind: 'damage', min: r.damage, max: r.damage, expected: r.damage, koChance: koChanceOf(t, [{ p: 1, dmg: r.damage }], ac.ignoreAbilities), notes: [...(eff ? [eff] : []), ...as] }];
   }
   const move = opts.copyOf ? liquidVoiceCopy(opts.copyOf) : moveOf(u, which);
   const tg = targeting(s, u, move, { dir: opts.dir, targetId: opts.targetId });

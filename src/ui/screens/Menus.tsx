@@ -205,7 +205,7 @@ export function HowToPlay({ onBack }: { onBack: () => void }) {
           <Legend color="tile-dirt">Dirt paths are cosmetic — they play like grass.</Legend>
           <Legend color="bg-yellow-300">Flowers: +30 HP when a Pokémon ends its activation there (Flying and Levitate Pokémon hover over them: no bonus).</Legend>
           <Legend color="bg-red-500">Berry bushes: Pokémon standing there take 30 less damage (not Flying or Levitate Pokémon).</Legend>
-          <Legend color="bg-stone-600">Trebuchet: stand on it to hit any Pokémon for a flat 40, carrying all of the user's types at once (effectiveness multiplies).</Legend>
+          <Legend color="bg-stone-600">Trebuchet: stand on it to hit any Pokémon for a flat 40, fired as whichever of the user's types does the most damage to it.</Legend>
         </div>
       </section>
       <section className="panel space-y-2 p-4">
