@@ -3,8 +3,8 @@ import {
 } from './damage';
 import { DRAFTABLE, getCard } from './data/cards';
 import {
-  abilityOf, adjacentToType, alliesOf, canPlaceOn, canStand, effectiveMov, gridTile, hasType, inBounds, liveUnits, moveOf,
-  onBoard, parseGrid, reachable, substituteAt, terrainAt, terrainBonus, trainerOf, turnEffect, unitAt, withAbility, zoneTiles,
+  abilityOf, adjacentToType, alliesOf, canPlaceOn, canStand, gridTile, hasType, inBounds, liveUnits, moveOf,
+  onBoard, parseGrid, substituteAt, terrainAt, terrainBonus, trainerOf, turnEffect, unitAt, withAbility, zoneTiles,
 } from './query';
 import {
   type Ctx, RuleError, applySelfStages, applyStage, applyStatus, dealDamage, emit, enterTile, faint, heal, log,
@@ -99,7 +99,11 @@ export function targeting(s: GameState, u: Unit, move: MoveDef, opts: TargetOpts
       const substitute = zone.some((p) => substituteAt(s, p));
       if (move.fx.healSelfAndAllies !== undefined) return { ok: true, zone, dashTo, targets, substitute };
       if (ALLY_ONLY(move)) {
-        if (!targets.some((x) => x.side === u.side)) return fail('No allies in range');
+        if (move.fx.special === 'afterYou') {
+          if (!targets.some((x) => x.side === u.side && !x.gotAfterYou)) return fail('No ally in range can act again');
+        } else if (!targets.some((x) => x.side === u.side)) {
+          return fail('No allies in range');
+        }
         return { ok: true, zone, dashTo, targets, substitute };
       }
       // A move must hit at least one Pokémon (ally or opponent) or the substitute.
@@ -126,9 +130,13 @@ export function followMeUsers(s: GameState, u: Unit): Unit[] {
 export function moveOffline(s: GameState, u: Unit, move: MoveDef): string | null {
   if (move.fx.none) return 'No second move';
   if (move.fx.evenRoundsOnly && s.round % 2 !== 0) return 'Only on even-numbered rounds';
+  if (move.kind === 'attack' && truantRests(s, u)) return 'Truant: attacks only on odd-numbered rounds';
   if (u.locked.includes(move.name)) return 'Cooldown: end a turn 4+ tiles from every opponent';
   return null;
 }
+
+/** Truant: its holder can't attack (moves or the trebuchet) in even-numbered rounds. */
+export const truantRests = (s: GameState, u: Unit, round = s.round): boolean => abilityOf(u) === 'truant' && round % 2 === 0;
 
 /** Whether `u`, standing at `origin`, has a move that would include `target`. */
 export function canTargetFrom(s: GameState, u: Unit, origin: Pos, target: Unit): boolean {
@@ -240,10 +248,6 @@ function selfMove(ctx: Ctx, u: Unit, move: MoveDef): void {
   const fx = move.fx;
   if (fx.selfStages) applySelfStages(ctx, u, fx.selfStages.stages);
   if (fx.selfHeal) heal(ctx, u, fx.selfHeal, move.name);
-  if (fx.selfAndAdjAlliesStages) {
-    const group = [u, ...alliesOf(ctx.s, u).filter((a) => cheb(a.pos!, u.pos!) === 1)];
-    for (const g of group) stageAll(ctx, g, fx.selfAndAdjAlliesStages, u);
-  }
   if (fx.special === 'followMe' || fx.special === 'ragePowder') {
     u.followMe = { kind: fx.special, duringTurnOf: otherSide(u.side) };
     log(ctx, `${nameOf(u)} became the centre of attention!`, 'info', u.side);
@@ -269,14 +273,20 @@ function globalMove(ctx: Ctx, u: Unit, move: MoveDef): void {
   const s = ctx.s;
   const all = liveUnits(s);
   const hurt = all.filter((x) => !weatherProof(s, x));
-  const FIELD = { sunnyDay: 'sun', rainDance: 'rain', sandstorm: 'sand', hail: 'hail', lightScreen: 'screen', taunt: 'taunt', flowerShield: 'flowers' } as const;
+  const FIELD = {
+    sunnyDay: 'sun', rainDance: 'rain', sandstorm: 'sand', hail: 'hail', lightScreen: 'screen', tailwind: 'wind', taunt: 'taunt', flowerShield: 'flowers',
+  } as const;
+  // Weather, Light Screen and Tailwind move a stat one stage, but never past +1 (or, lowering, past -1).
+  const capped = (x: Unit, stat: StatId, delta: 1 | -1, label: string): void => {
+    if (delta > 0 ? x.stages[stat] < 1 : x.stages[stat] > -1) applyStage(ctx, x, stat, delta, { source: u, label });
+  };
   const kind = move.fx.special && move.fx.special in FIELD ? FIELD[move.fx.special as keyof typeof FIELD] : null;
   if (kind) emit(ctx, { t: 'field', kind, side: u.side });
   switch (move.fx.special) {
     case 'sunnyDay':
       for (const x of all) {
-        if (hasType(x, 'Fire')) applyStage(ctx, x, 'atk', 1, { source: u, label: 'Sunny Day' });
-        if (hasType(x, 'Water') && hurt.includes(x)) applyStage(ctx, x, 'atk', -1, { source: u, label: 'Sunny Day' });
+        if (hasType(x, 'Fire')) capped(x, 'atk', 1, 'Sunny Day');
+        if (hasType(x, 'Water') && hurt.includes(x)) capped(x, 'atk', -1, 'Sunny Day');
       }
       for (const c of withAbility(s, 'flowerGiftOvercast')) {
         transform(ctx, c, 'cherrim-sunshine', false);
@@ -285,19 +295,19 @@ function globalMove(ctx: Ctx, u: Unit, move: MoveDef): void {
       break;
     case 'rainDance':
       for (const x of all) {
-        if (hasType(x, 'Water')) applyStage(ctx, x, 'atk', 1, { source: u, label: 'Rain Dance' });
-        if (hasType(x, 'Fire') && hurt.includes(x)) applyStage(ctx, x, 'atk', -1, { source: u, label: 'Rain Dance' });
+        if (hasType(x, 'Water')) capped(x, 'atk', 1, 'Rain Dance');
+        if (hasType(x, 'Fire') && hurt.includes(x)) capped(x, 'atk', -1, 'Rain Dance');
       }
       break;
     case 'sandstorm':
       for (const x of all) {
-        if (hasType(x, 'Rock')) applyStage(ctx, x, 'def', 1, { source: u, label: 'Sandstorm' });
+        if (hasType(x, 'Rock')) capped(x, 'def', 1, 'Sandstorm');
         if (!hasType(x, 'Rock') && !hasType(x, 'Ground') && !hasType(x, 'Steel') && hurt.includes(x)) dealDamage(ctx, x, 20, { source: u, label: 'Sandstorm' });
       }
       break;
     case 'hail':
       for (const x of all) {
-        if (hasType(x, 'Ice')) applyStage(ctx, x, 'def', 1, { source: u, label: 'Hail' });
+        if (hasType(x, 'Ice')) capped(x, 'def', 1, 'Hail');
         else if (hurt.includes(x)) dealDamage(ctx, x, 20, { source: u, label: 'Hail' });
       }
       break;
@@ -306,7 +316,11 @@ function globalMove(ctx: Ctx, u: Unit, move: MoveDef): void {
       break;
     case 'lightScreen':
       // +1 Defense for the whole team, but never above +1.
-      for (const x of liveUnits(s, u.side)) if (x.stages.def < 1) applyStage(ctx, x, 'def', 1, { source: u, label: 'Light Screen' });
+      for (const x of liveUnits(s, u.side)) capped(x, 'def', 1, 'Light Screen');
+      break;
+    case 'tailwind':
+      // +1 movement for the user and all its allies, but never above +1.
+      for (const x of liveUnits(s, u.side)) capped(x, 'mov', 1, 'Tailwind');
       break;
     case 'taunt':
       s.taunted = otherSide(u.side);
@@ -525,24 +539,27 @@ function statusEffects(ctx: Ctx, u: Unit, t: Unit, move: MoveDef): void {
     t.dmgBonus += 30;
     log(ctx, `${nameOf(t)} deals 30 extra damage for the rest of this turn (Helping Hand).`, 'good', t.side);
   }
-  if (fx.special === 'afterYou') queueAfterYou(ctx, t);
+  if (fx.special === 'afterYou') grantAfterYou(ctx, t);
 }
 
-/** After You: the target may move again (the player picks where, or stays). */
-function queueAfterYou(ctx: Ctx, t: Unit): void {
-  const s = ctx.s;
-  const options = [...reachable(s, t, afterYouBudget(s, t)).keys()];
-  if (!options.length) {
-    log(ctx, `${nameOf(t)} has nowhere to move.`, 'info', t.side);
+/**
+ * After You: the ally can act again this turn — another activation, moving and then acting. An ally
+ * that is already done is ready again at once; one that hasn't gone yet gets two activations. Each
+ * Pokémon can be given this once per turn.
+ */
+function grantAfterYou(ctx: Ctx, t: Unit): void {
+  if (t.gotAfterYou) {
+    log(ctx, `${nameOf(t)} already got to act again this turn.`, 'info', t.side);
     return;
   }
-  log(ctx, `${nameOf(t)} can move again (After You).`, 'good', t.side);
-  s.pending.push({ kind: 'afterYou', side: t.side, unitId: t.id, options });
-}
-
-export function afterYouBudget(s: GameState, t: Unit): number {
-  if (t.turn.noMove || t.status === 'slp' || t.status === 'frz') return 0;
-  return effectiveMov(s, t) + t.movBonus + (turnEffect(s, t.side) === 'rally' ? 1 : 0);
+  t.gotAfterYou = true;
+  if (t.activated) {
+    t.activated = false;
+    log(ctx, `${nameOf(t)} can act again (After You)!`, 'good', t.side);
+  } else {
+    t.actAgain += 1;
+    log(ctx, `${nameOf(t)} will be able to act twice this turn (After You)!`, 'good', t.side);
+  }
 }
 
 function knockback(ctx: Ctx, t: Unit, dir: Dir, k: number, collide = false): void {

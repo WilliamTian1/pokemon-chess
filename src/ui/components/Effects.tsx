@@ -103,7 +103,7 @@ type FieldKind = Extract<GameEvent, { t: 'field' }>['kind'];
 
 const FIELD_TEXT: Record<FieldKind, string> = {
   sun: 'The sunlight turned harsh!', rain: 'It started to rain!', sand: 'A sandstorm kicked up!', hail: 'It started to hail!',
-  screen: 'Light Screen!', taunt: 'Taunt!', flowers: 'Flower Shield!',
+  screen: 'Light Screen!', wind: 'Tailwind!', taunt: 'Taunt!', flowers: 'Flower Shield!',
 };
 
 /** Weather and other field-wide moves wash over the screen for a moment. */
@@ -117,7 +117,7 @@ export function FieldFx({ events }: { events: EventBatch }) {
     return () => window.clearTimeout(t);
   }, [events.seq]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!fx) return null;
-  const drops = Array.from({ length: fx.kind === 'rain' ? 70 : fx.kind === 'hail' ? 45 : fx.kind === 'sand' ? 60 : fx.kind === 'flowers' ? 30 : 0 }, (_, i) => i);
+  const drops = Array.from({ length: fx.kind === 'rain' ? 70 : fx.kind === 'hail' ? 45 : fx.kind === 'sand' || fx.kind === 'wind' ? 60 : fx.kind === 'flowers' ? 30 : 0 }, (_, i) => i);
   return createPortal(
     <div key={fx.key} className="pointer-events-none fixed inset-0 z-[55] overflow-hidden animate-fieldFade">
       {fx.kind === 'sun' && <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_-10%,rgba(253,224,71,.65),rgba(251,146,60,.25)_40%,transparent_70%)]" />}
@@ -134,8 +134,11 @@ export function FieldFx({ events }: { events: EventBatch }) {
             ? 'h-2 w-2 rounded-full bg-white/90 animate-hailDrop'
             : fx.kind === 'sand'
               ? 'h-1 w-3 rounded-full bg-amber-300/70 animate-sandDrift'
-              : 'h-3 w-3 rounded-full bg-pink-300/90 animate-hailDrop';
-        return <span key={i} className={`absolute ${cls}`} style={{ left: `${left}%`, top: fx.kind === 'sand' ? `${(i * 29) % 100}%` : '-5%', animationDelay: `${delay}s` }} />;
+              : fx.kind === 'wind'
+                ? 'h-px w-16 rounded-full bg-white/80 animate-sandDrift'
+                : 'h-3 w-3 rounded-full bg-pink-300/90 animate-hailDrop';
+        const across = fx.kind === 'sand' || fx.kind === 'wind';
+        return <span key={i} className={`absolute ${cls}`} style={{ left: `${left}%`, top: across ? `${(i * 29) % 100}%` : '-5%', animationDelay: `${delay}s` }} />;
       })}
       <div className="absolute inset-x-0 top-[18%] text-center text-3xl font-black italic text-white drop-shadow-[0_3px_0_rgba(0,0,0,.6)] animate-fieldText">{FIELD_TEXT[fx.kind]}</div>
     </div>,

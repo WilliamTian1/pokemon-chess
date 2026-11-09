@@ -110,9 +110,6 @@ export function BattleView({ ctl }: { ctl: Controller }) {
   const aimOpt = aimedOption(opts, aim);
   /** Transform previews the borrowed move as the user's own. */
   const copied: { move?: MoveDef } = aim?.kind === 'move' && aim.copy ? { move: aim.copy.move } : {};
-  const pending = s.pending[0];
-  const myPending = !!pending && ctl.mySides.includes(pending.side);
-  const afterYou = myPending && pending.kind === 'afterYou' ? pending : null;
 
   // ---------------------------------------------------------------- aim preview
   const preview = useMemo(() => {
@@ -236,10 +233,6 @@ export function BattleView({ ctl }: { ctl: Controller }) {
 
   const onTile = (p: Pos) => {
     const u = unitAt(s, p);
-    if (afterYou) {
-      if (afterYou.options.includes(posKey(p))) ctl.dispatch({ type: 'choose', option: posKey(p) });
-      return;
-    }
     if (aim?.kind === 'special') {
       if (u && specialTargets(s, s.side).includes(u.id)) send({ type: 'trainerSpecial', unitId: u.id });
       return;
@@ -302,7 +295,7 @@ export function BattleView({ ctl }: { ctl: Controller }) {
   };
 
   const overlay: Overlay = {
-    reach: afterYou ? new Set(afterYou.options) : !isPost && reach.size ? new Set(reach.keys()) : undefined,
+    reach: !isPost && reach.size ? new Set(reach.keys()) : undefined,
     post: isPost && reach.size ? new Set(reach.keys()) : undefined,
     zone: preview.zone,
     dash: preview.dash,
@@ -422,12 +415,7 @@ export function BattleView({ ctl }: { ctl: Controller }) {
             <button type="button" className="btn-ghost" onClick={cancelAim}>Cancel</button>
           </div>
         )}
-        {afterYou ? (
-          <div className="panel flex flex-wrap items-center justify-between gap-2 p-3">
-            <span className="text-sm text-emerald-300">After You: tap a highlighted tile to move {cardOf(s.units.find((x) => x.id === afterYou.unitId)!).name} there.</span>
-            <button type="button" className="btn-ghost" onClick={() => ctl.dispatch({ type: 'choose', option: null })}>Stay put</button>
-          </div>
-        ) : placing ? (
+        {placing ? (
           <PlacementBar ctl={ctl} placeSide={placeSide} myPlacement={myPlacement} unplaced={unplaced} selected={placeUnit} onSelect={setPlaceSel} />
         ) : (
           <ActionBar
@@ -851,7 +839,7 @@ function PendingModal({ ctl, view }: { ctl: Controller; view: BoardView }) {
   const s = ctl.state;
   const p = s.pending[0];
   const [hover, setHover] = useState<string | null>(null);
-  if (!p || !ctl.mySides.includes(p.side) || p.kind === 'afterYou') return null;
+  if (!p || !ctl.mySides.includes(p.side)) return null;
   const u = s.units.find((x) => x.id === p.unitId)!;
   const choose = (option: string | null) => {
     setHover(null);

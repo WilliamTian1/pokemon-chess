@@ -2,8 +2,8 @@ import { CARDS, DRAFTABLE, getCard } from './data/cards';
 import { DEFAULT_MAP_ID, getMap } from './data/maps';
 import { TRAINER_LIST, TRAINER_POOL_SIZE, getTrainer } from './data/trainers';
 import {
-  UNCOPYABLE, afterYouBudget, aimOptions, canTargetFrom, dancerOptions, emergencyExitOptions, executeMove, followMeUsers,
-  isHealingMove, isSupportOnly, liquidVoiceCopy, moveOffline, parseAim, targeting, trebuchetAttack, weatherProof,
+  UNCOPYABLE, aimOptions, canTargetFrom, dancerOptions, emergencyExitOptions, executeMove, followMeUsers,
+  isHealingMove, isSupportOnly, liquidVoiceCopy, moveOffline, parseAim, targeting, trebuchetAttack, truantRests, weatherProof,
 } from './moves';
 import {
   type Ctx, RuleError, applyStage, checkWin, cureStatus, dealDamage, emit, endGame, enterTile, heal, log, nameOf, resetStages,
@@ -121,7 +121,7 @@ function makeUnit(id: string, side: Side, cardId: string): Unit {
     id, side, cardId, draftId: cardId, hp: c.hp, maxHp: c.hp, pos: null, fainted: false,
     stages: { atk: 0, def: 0, mov: 0 }, status: null, toxicN: 0, confused: false, flinched: false,
     sturdyBroken: false, nextTurn: { noMove: false, noAct: false },
-    turn: { noMove: false, noAct: false, reasons: [] }, activated: false, followMe: null,
+    turn: { noMove: false, noAct: false, reasons: [] }, activated: false, actAgain: 0, gotAfterYou: false, followMe: null,
     locked: [], dmgBonus: 0, movBonus: 0, ignoreDefBoosts: false,
   };
 }
@@ -332,6 +332,8 @@ function startTurn(ctx: Ctx, side: Side): void {
 
   for (const u of liveUnits(s, side)) {
     u.activated = false;
+    u.actAgain = 0;
+    u.gotAfterYou = false;
     const flags = { noMove: false, noAct: false, reasons: [] as string[] };
     if (u.flinched) {
       flags.noMove = flags.noAct = true;
@@ -361,10 +363,8 @@ function startTurn(ctx: Ctx, side: Side): void {
       flags.reasons.push('Fully paralyzed');
       log(ctx, `${nameOf(u)} is fully paralyzed and can't act this turn!`, 'bad', side);
     }
-    if (abilityOf(u) === 'truant' && s.round % 2 === 0) {
-      flags.noMove = true;
-      flags.reasons.push('Truant (even round)');
-    }
+    // Truant: it can still move and use status moves, but attacks wait for odd rounds.
+    if (truantRests(s, u)) flags.reasons.push('Truant: no attacks this round');
     u.turn = flags;
     if (abilityOf(u) === 'speedBoost' && s.round % 2 === 0) applyStage(ctx, u, 'mov', 1, { source: u, label: 'Speed Boost' });
   }
@@ -398,7 +398,7 @@ export function triageTiles(s: GameState, u: Unit, budget: number): Map<string, 
 /** Whether `u` could hit an opponent with a damaging move from where it stands (Taunt). */
 export function canAttackAnOpponent(s: GameState, u: Unit): boolean {
   if (!u.pos || !canActNow(u)) return false;
-  if (isTrebuchet(s, u.pos) && enemiesOf(s, u).length > 0) return true;
+  if (isTrebuchet(s, u.pos) && enemiesOf(s, u).length > 0 && !truantRests(s, u)) return true;
   return ([0, 1] as const).some((i) => {
     const m = moveOf(u, i);
     if (m.kind !== 'attack' || moveBlocked(s, u, m)) return false;
@@ -574,6 +574,7 @@ function useTrebuchet(ctx: Ctx, a: Extract<Action, { type: 'trebuchet' }>): void
   if (!canActNow(u)) throw new RuleError(`${cardOf(u).name} can't act this turn.`);
   if (act.mustHeal) throw new RuleError('Triage: after walking extra tiles it must use a healing move.');
   if (!isTrebuchet(s, u.pos!)) throw new RuleError('Stand on the trebuchet to fire it.');
+  if (truantRests(s, u)) throw new RuleError(`${cardOf(u).name} can only attack in odd-numbered rounds (Truant).`);
   const t = getUnit(s, a.targetId);
   if (!onBoard(t) || t.id === u.id) throw new RuleError('Choose a Pokémon to fire at.');
   enforceFollowMe(s, u, [t.id]);
@@ -600,9 +601,10 @@ function afterAction(ctx: Ctx, u: Unit, movePost: number, kos: number): void {
   }
   let post = movePost;
   if (abilityOf(u) === 'runAway') post = Math.max(post, act.movBudget - act.moveCost);
+  // Celebrate: a KO earns a whole extra activation (move and act), taken once this one ends.
   if (abilityOf(u) === 'celebrate' && kos > 0) {
-    post = Math.max(post, effectiveMov(s, u));
-    log(ctx, `${nameOf(u)} celebrates and can move again!`, 'good', u.side);
+    u.actAgain += 1;
+    log(ctx, `${nameOf(u)} celebrates and can act again!`, 'good', u.side);
   }
   if (u.turn.noMove || u.status === 'slp' || u.status === 'frz') post = 0;
   if (post > 0 && reachable(s, u, post).size > 0) {
@@ -655,6 +657,11 @@ function finishActivation(ctx: Ctx, u: Unit): void {
   if (s.active?.unitId === u.id) s.active = null;
   u.activated = true;
   if (onBoard(u)) endOfActivation(ctx, u, moved);
+  if (onBoard(u) && u.actAgain > 0) {
+    u.actAgain -= 1;
+    u.activated = false;
+    log(ctx, `${nameOf(u)} is ready to act again.`, 'good', u.side);
+  }
   checkWin(ctx);
 }
 
@@ -781,20 +788,6 @@ function resolvePending(ctx: Ctx, option: string | null): void {
       const src = getUnit(s, option);
       u.stages = { ...src.stages };
       log(ctx, `${nameOf(u)} copied ${nameOf(src)}'s stat changes (Imposter).`, 'info', u.side);
-      return;
-    }
-    case 'afterYou': {
-      if (option !== null && !p.options.includes(option)) throw new RuleError('Choose one of the highlighted tiles, or stay.');
-      s.pending.shift();
-      const u = getUnit(s, p.unitId);
-      if (option === null || !onBoard(u)) return;
-      const info = reachable(s, u, afterYouBudget(s, u)).get(option);
-      if (!info) {
-        log(ctx, `${nameOf(u)} can no longer move there.`, 'info', u.side);
-        return;
-      }
-      walkPath(ctx, u, info.path);
-      checkWin(ctx);
       return;
     }
     case 'metronome': {

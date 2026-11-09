@@ -813,7 +813,7 @@ function legalFallback(s: GameState, side: Side): Action[] {
 function greedyTurn(s0: GameState, side: Side, deadline: number): GameState {
   let s = s0;
   const ev = new Evaluator(s0, side, 'hard');
-  for (let guard = 0; guard < 8 && s.phase === 'battle' && decider(s) === side; guard++) {
+  for (let guard = 0; guard < 12 && s.phase === 'battle' && decider(s) === side; guard++) {
     if (performance.now() > deadline) break;
     const units = s.active ? [getUnit(s, s.active.unitId)] : liveUnits(s, side).filter((u) => !u.activated);
     let top: Plan | null = null;
@@ -829,7 +829,7 @@ function greedyTurn(s0: GameState, side: Side, deadline: number): GameState {
 
 /** Choices a pending decision may be answered with (null: decline, where that's allowed). */
 function pendingChoices(p: GameState['pending'][number]): (string | null)[] {
-  const optional = p.kind === 'liquidVoice' || p.kind === 'imposter' || p.kind === 'afterYou';
+  const optional = p.kind === 'liquidVoice' || p.kind === 'imposter';
   return optional ? [...p.options, null] : [...p.options];
 }
 
@@ -853,7 +853,8 @@ function signature(s: GameState): string {
     s.phase, s.round, s.side, s.active, s.pending, s.hazards, s.substitute, s.futureSight, s.taunted,
     s.trainers && [s.trainers.used, s.trainers.effect],
     s.units.map((u) => [u.id, u.cardId, u.hp, u.pos, u.fainted, u.stages, u.status, u.toxicN, u.confused, u.flinched,
-      u.sturdyBroken, u.nextTurn, u.turn, u.activated, u.followMe, u.locked, u.dmgBonus, u.movBonus, u.ignoreDefBoosts]),
+      u.sturdyBroken, u.nextTurn, u.turn, u.activated, u.actAgain, u.gotAfterYou, u.followMe, u.locked, u.dmgBonus, u.movBonus,
+      u.ignoreDefBoosts]),
   ]);
 }
 
@@ -941,7 +942,8 @@ function beamTurn(s0: GameState, side: Side, ev: Evaluator, width: number, perUn
     const e = n.s.phase === 'battle' && decider(n.s) === side ? simulate(n.s, { type: 'endTurn' }, expectedRng) : null;
     finished.push(e ? { s: e, steps: [...n.steps, { actions: [{ type: 'endTurn' }], after: signature(e) }], score: n.score } : n);
   };
-  for (let depth = 0; depth < 8 && beam.length; depth++) {
+  // Up to 12 steps: activations, post-moves, and extra activations (Celebrate, After You).
+  for (let depth = 0; depth < 12 && beam.length; depth++) {
     const children: TurnNode[] = [];
     for (const node of beam) {
       const s = node.s;

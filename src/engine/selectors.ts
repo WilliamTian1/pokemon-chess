@@ -3,7 +3,7 @@ import {
 } from './damage';
 import { canActNow, cloneState, followMeTiles, moveBlocked, movementAllowance, triageTiles } from './engine';
 import { STATUS_NAME, canHaveStatus, pressureMult } from './mutate';
-import { UNCOPYABLE, type Targeting, canTargetFrom, followMeUsers, isSupportOnly, liquidVoiceCopy, pushDistance, targeting } from './moves';
+import { UNCOPYABLE, type Targeting, canTargetFrom, followMeUsers, isSupportOnly, liquidVoiceCopy, pushDistance, targeting, truantRests } from './moves';
 import {
   abilityOf, cardOf, getUnit, isTrebuchet, liveUnits, moveOf, onBoard, parseGrid, reachable, type ReachInfo, terrainBonus,
 } from './query';
@@ -176,7 +176,7 @@ export interface TrebuchetOption {
 export function trebuchetOption(s: GameState, u: Unit): TrebuchetOption {
   const info = unitTurnInfo(s, u);
   const types = cardOf(u).types;
-  if (!info.canAct || !u.pos || !isTrebuchet(s, u.pos) || followMeBlock(s, u)) return { usable: false, types, targets: [] };
+  if (!info.canAct || !u.pos || !isTrebuchet(s, u.pos) || truantRests(s, u) || followMeBlock(s, u)) return { usable: false, types, targets: [] };
   const users = followMeUsers(s, u);
   let targets = liveUnits(s).filter((x) => x.id !== u.id).map((x) => x.id);
   if (users.length && fmFilter(s, u)) targets = targets.filter((id) => users.some((f) => f.id === id));
@@ -265,7 +265,10 @@ export function previewAction(s0: GameState, unitId: string, which: 0 | 1 | 'tre
       const allyOnly = fx.alliesStages || fx.healSelfAndAllies || fx.special === 'helpingHand' || fx.special === 'afterYou';
       if (allyOnly && t.side !== u.side) continue;
       if (fx.special === 'helpingHand') notes.push('+30 damage this turn');
-      if (fx.special === 'afterYou') notes.push('Moves again');
+      if (fx.special === 'afterYou') {
+        if (t.side === u.side && t.gotAfterYou) continue;
+        notes.push('Acts again');
+      }
       if (fx.status) {
         const ok = canHaveStatus(t, fx.status.id, fx.grassImmune);
         notes.push(ok ? `${STATUS_NAME[fx.status.id]}${fx.hitChance && !neverMisses(s, u) ? ` (${pct(fx.hitChance)})` : ''}` : 'Status won’t stick');

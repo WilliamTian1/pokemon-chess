@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   type GameState, CARD_LIST, applyAction, decider, draftOptions, getCard, hitTypeMultiplier, isTrainerPick, makeAttackCtx,
-  moveOptions, moveTargets, movementAllowance, newGame, previewAction, seededRng,
+  moveOptions, moveTargets, movementAllowance, newGame, previewAction, seededRng, targeting,
 } from '../src/engine';
 import { act, park, scriptedRng, setup, unit } from './helpers';
 
@@ -163,14 +163,30 @@ describe('expansion cards', () => {
     expect(unit(n, 'A0').stages.atk).toBe(2);
   });
 
-  it('After You lets an ally move again', () => {
+  it('After You lets an ally that already went act again — once per turn', () => {
+    const s = setup(['comfey', 'tauros'], ['snorlax'], { A0: P(9, 8), A1: P(9, 7), D0: P(9, 5) });
+    park(s, ['A0', 'A1', 'D0']);
+    let n = act(s, { type: 'wait', unitId: 'A1' });
+    expect(unit(n, 'A1').activated).toBe(true);
+    n = act(n, { type: 'useMove', unitId: 'A0', moveIndex: 0, dir: 'N' });
+    expect(n.pending).toHaveLength(0);
+    expect(unit(n, 'A1')).toMatchObject({ activated: false, gotAfterYou: true });
+    // A whole new activation: Tauros can attack again.
+    n = act(n, { type: 'useMove', unitId: 'A1', moveIndex: 1, dir: 'N' });
+    expect(unit(n, 'D0').hp).toBeLessThan(unit(n, 'D0').maxHp);
+    // After You can't be given to the same Pokémon twice in one turn.
+    expect(targeting(n, unit(n, 'A0'), getCard('comfey').moves[0], { dir: 'N' }).ok).toBe(false);
+  });
+
+  it('After You on an ally that hasn’t gone yet gives it two activations', () => {
     const s = setup(['comfey', 'tauros'], ['snorlax'], { A0: P(9, 8), A1: P(9, 7) });
     park(s, ['A0', 'A1']);
     let n = act(s, { type: 'useMove', unitId: 'A0', moveIndex: 0, dir: 'N' });
-    expect(n.pending[0]).toMatchObject({ kind: 'afterYou', unitId: 'A1' });
-    expect(n.pending[0].options).toContain('11,7');
-    n = act(n, { type: 'choose', option: '11,7' });
-    expect(unit(n, 'A1').pos).toEqual(P(11, 7));
+    expect(unit(n, 'A1')).toMatchObject({ activated: false, actAgain: 1 });
+    n = act(n, { type: 'wait', unitId: 'A1' });
+    expect(unit(n, 'A1')).toMatchObject({ activated: false, actAgain: 0 });
+    n = act(n, { type: 'wait', unitId: 'A1' });
+    expect(unit(n, 'A1').activated).toBe(true);
   });
 
   it('Speed Boost raises movement at the start of even rounds', () => {
@@ -337,5 +353,67 @@ describe('trainers', () => {
     const blissey = unit(n, 'D1');
     expect(blissey.pos).toEqual(P(11, 0));
     expect(n.log.some((l) => l.text.includes('collision'))).toBe(true);
+  });
+});
+
+describe('card updates (2026-11-09 card file)', () => {
+  it('reads the new types and abilities', () => {
+    expect(getCard('amoonguss').types).toEqual(['Grass', 'Poison']);
+    expect(getCard('oricorio').types).toEqual(['Flying', 'Ghost']);
+    expect(getCard('oricorio').moves[0]).toMatchObject({ name: 'Revelation Dance', type: 'Ghost' });
+    expect(getCard('slowbro').ability).toBe('regenerator');
+  });
+
+  it('Celebrate: a KO lets Pikachu move and act again', () => {
+    const s = setup(['pikachu'], ['snorlax', 'tauros'], { A0: P(8, 7), D0: P(8, 5), D1: P(8, 4) });
+    park(s, ['A0', 'D0', 'D1']);
+    unit(s, 'D0').hp = 1;
+    let n = act(s, { type: 'useMove', unitId: 'A0', moveIndex: 0, dir: 'N' });
+    expect(unit(n, 'D0').fainted).toBe(true);
+    expect(unit(n, 'A0').activated).toBe(false);
+    n = act(n, { type: 'move', unitId: 'A0', to: P(8, 6) });
+    n = act(n, { type: 'useMove', unitId: 'A0', moveIndex: 0, dir: 'N' });
+    expect(unit(n, 'D1').hp).toBeLessThan(unit(n, 'D1').maxHp);
+    expect(unit(n, 'A0').activated).toBe(true);
+  });
+
+  it('Tailwind raises the whole team’s movement, to at most +1', () => {
+    let s = setup(['whimsicott', 'tauros'], ['snorlax'], { A0: P(9, 8), A1: P(2, 8) });
+    park(s, ['A0', 'A1']);
+    s = act(s, { type: 'useMove', unitId: 'A0', moveIndex: 1 });
+    expect([unit(s, 'A0').stages.mov, unit(s, 'A1').stages.mov, unit(s, 'D0').stages.mov]).toEqual([1, 1, 0]);
+    s = act(act(s, { type: 'endTurn' }), { type: 'endTurn' });
+    s = act(s, { type: 'useMove', unitId: 'A0', moveIndex: 1 });
+    expect([unit(s, 'A0').stages.mov, unit(s, 'A1').stages.mov]).toEqual([1, 1]);
+  });
+
+  it('Howl raises adjacent allies’ attack, not the user’s', () => {
+    const s = setup(['arcanine', 'tauros'], ['snorlax'], { A0: P(9, 8), A1: P(10, 8) });
+    park(s, ['A0', 'A1']);
+    const n = act(s, { type: 'useMove', unitId: 'A0', moveIndex: 1, dir: 'N' });
+    expect(unit(n, 'A1').stages.atk).toBe(1);
+    expect(unit(n, 'A0').stages.atk).toBe(0);
+    unit(s, 'A1').pos = P(2, 8);
+    expect(targeting(s, unit(s, 'A0'), getCard('arcanine').moves[1], { dir: 'N' }).ok).toBe(false);
+  });
+
+  it('weather moves change attack by one stage, never past ±1', () => {
+    let s = setup(['milotic'], ['arcanine'], { A0: P(9, 8), D0: P(9, 2) });
+    park(s, ['A0', 'D0']);
+    for (let i = 0; i < 2; i++) {
+      s = act(s, { type: 'useMove', unitId: 'A0', moveIndex: 1 });
+      expect(unit(s, 'A0').stages.atk).toBe(1);
+      expect(unit(s, 'D0').stages.atk).toBe(-1);
+      s = act(act(s, { type: 'endTurn' }), { type: 'endTurn' });
+    }
+  });
+
+  it('Sleep Powder always lands; Leaf Storm lowers the user’s attack by two', () => {
+    const s = setup(['vivillon', 'meganium'], ['snorlax'], { A0: P(9, 8), A1: P(4, 8), D0: P(9, 7) });
+    park(s, ['A0', 'A1', 'D0']);
+    expect(unit(act(s, { type: 'useMove', unitId: 'A0', moveIndex: 1, dir: 'N' }), 'D0').status).toBe('slp');
+    unit(s, 'A1').pos = P(9, 8);
+    unit(s, 'A0').pos = P(2, 8);
+    expect(unit(act(s, { type: 'useMove', unitId: 'A1', moveIndex: 0, dir: 'N' }), 'A1').stages.atk).toBe(-2);
   });
 });

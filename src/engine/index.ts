@@ -14,8 +14,8 @@ export {
   basePower, computeDamage, grazeApplies, hitTypeMultiplier, isImmune, makeAttackCtx, pixilateAt, trebuchetCtx, typeEffectLabel,
 } from './damage';
 export {
-  DANCE_RE, LIQUID_VOICE_RE, UNCOPYABLE, afterYouBudget, aimOptions, dancerOptions, followMeUsers, isHealingMove, isSupportOnly,
-  liquidVoiceCopy, metronomeOptions, parseAim, targeting, type Targeting,
+  DANCE_RE, LIQUID_VOICE_RE, UNCOPYABLE, aimOptions, dancerOptions, followMeUsers, isHealingMove, isSupportOnly,
+  liquidVoiceCopy, metronomeOptions, parseAim, targeting, truantRests, type Targeting,
 } from './moves';
 export { STATUS_NAME, STAT_NAME } from './mutate';
 export * from './query';

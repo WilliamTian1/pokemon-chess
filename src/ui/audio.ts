@@ -1,6 +1,6 @@
 /**
  * Sound: synthesized effects and chiptune music (Web Audio, no audio files — every tune here is
- * original), plus trainer voicelines read by the browser's speech synthesis. Browsers only allow
+ * original), plus recorded trainer voicelines. Browsers only allow
  * sound after the player has interacted with the page, so nothing plays before the first click.
  */
 
@@ -170,7 +170,7 @@ function freq(name: string): number {
 
 export type Sfx =
   | 'hit' | 'bigHit' | 'heal' | 'miss' | 'faint' | 'statUp' | 'statDown' | 'burn' | 'paralysis' | 'poison' | 'sleep'
-  | 'freeze' | 'confuse' | 'flinch' | 'special' | 'sun' | 'rain' | 'sand' | 'hail' | 'screen' | 'taunt' | 'flowers'
+  | 'freeze' | 'confuse' | 'flinch' | 'special' | 'sun' | 'rain' | 'sand' | 'hail' | 'screen' | 'wind' | 'taunt' | 'flowers'
   | 'turn' | 'pick' | 'place' | 'step' | 'trebuchet' | 'click' | 'victory' | 'defeat' | 'count' | 'go';
 
 export function sfx(name: Sfx, delay = 0): void {
@@ -245,6 +245,10 @@ export function sfx(name: Sfx, delay = 0): void {
     case 'screen':
       ['G5', 'D6', 'G6'].forEach((n, i) => tone(freq(n), 0.6, { at: at + i * 0.07, wave: 'sine', vol: 0.12, attack: 0.05 }));
       break;
+    case 'wind':
+      noise(1.2, { at, vol: 0.25, filter: 'bandpass', freq: 400, sweepTo: 2500 });
+      noise(0.9, { at: at + 0.35, vol: 0.18, filter: 'bandpass', freq: 600, sweepTo: 3500 });
+      break;
     case 'taunt':
       tone(330, 0.12, { at, wave: 'square', vol: 0.2 });
       tone(247, 0.25, { at: at + 0.13, wave: 'square', vol: 0.2 });
@@ -296,7 +300,7 @@ export function sfx(name: Sfx, delay = 0): void {
 
 // ---------------------------------------------------------------- voicelines
 
-/** Each trainer's line when they use their Special Move (original lines, read by speech synthesis). */
+/** Fallback lines when a recorded trainer clip cannot be loaded. */
 const VOICE: Record<string, { line: string; pitch: number; rate: number }> = {
   mitsuhide: { line: 'Clear skies, steady hands. Strike true!', pitch: 0.85, rate: 0.95 },
   n: { line: 'Rest now, my friends. Be whole again.', pitch: 1.05, rate: 0.9 },
@@ -307,42 +311,49 @@ const VOICE: Record<string, { line: string; pitch: number; rate: number }> = {
 };
 
 /**
- * Recorded voicelines: an audio file at public/voices/<trainer>.mp3 (or .ogg) plays instead of the
- * synthesized line. None ship with the game; add clips you have the rights to.
+ * Recorded voicelines in public/voices: four short battle callouts per trainer (picked from the
+ * transcribed sets in `Pokemon Chess Voicelines/`), one chosen at random each time the trainer's
+ * Special Move is used. Red has no spoken lines, so his are battle shouts.
  */
-const voiceFiles = new Map<string, Promise<string | null>>();
+const VOICE_CLIPS: Record<string, string[]> = {
+  // "This should finish you!", "Now is our chance!", "My blade shall run you through!", "Witness the power of a true strategist!"
+  mitsuhide: ['mitsuhide-1.wav', 'mitsuhide-2.wav', 'mitsuhide-3.wav', 'mitsuhide-4.wav'],
+  // "Let's do this!", "Unleash your power!", "You can't stop me.", "TRUTH!"
+  n: ['n-1.ogg', 'n-2.ogg', 'n-3.ogg', 'n-4.ogg'],
+  // "CRUSH THEM IN ONE BLOW!", "Feel my wrath!", "Tremble before Nobunaga!", "Run them through!"
+  nobunaga: ['nobunaga-1.wav', 'nobunaga-2.wav', 'nobunaga-3.wav', 'nobunaga-4.wav'],
+  // "Tah!", "Hut!", "Huah!", "Huh!"
+  red: ['red-1.ogg', 'red-2.ogg', 'red-3.ogg', 'red-4.ogg'],
+  // "Bring it!", "Get 'em!", "I'll show you!", "I'll teach you just how strong I am!"
+  blue: ['blue-1.ogg', 'blue-2.ogg', 'blue-3.ogg', 'blue-4.ogg'],
+  // "Here we come!", "Now!", "Fight!", "You haven't seen my true strength yet."
+  lance: ['lance-1.ogg', 'lance-2.ogg', 'lance-3.ogg', 'lance-4.ogg'],
+};
 
-function voiceFile(trainer: string): Promise<string | null> {
-  let p = voiceFiles.get(trainer);
-  if (!p) {
-    const base = `${import.meta.env.BASE_URL}voices/${trainer}`;
-    p = (async () => {
-      for (const ext of ['mp3', 'ogg']) {
-        try {
-          const r = await fetch(`${base}.${ext}`, { method: 'HEAD' });
-          if (r.ok && (r.headers.get('content-type') ?? '').startsWith('audio')) return `${base}.${ext}`;
-        } catch {
-          // No file (or offline): fall back to speech synthesis.
-        }
-      }
-      return null;
-    })();
-    voiceFiles.set(trainer, p);
-  }
-  return p;
+const lastVoiceClip = new Map<string, number>();
+
+/** A random clip for `trainer`, never the same one twice in a row. */
+function randomVoiceClip(trainer: string): string | null {
+  const clips = VOICE_CLIPS[trainer];
+  if (!clips?.length) return null;
+  const last = lastVoiceClip.get(trainer);
+  let i = Math.floor(Math.random() * clips.length);
+  if (clips.length > 1 && i === last) i = (i + 1 + Math.floor(Math.random() * (clips.length - 1))) % clips.length;
+  lastVoiceClip.set(trainer, i);
+  return `${import.meta.env.BASE_URL}voices/${clips[i]}`;
 }
 
 export function speakTrainer(trainer: string): void {
   if (!settings.voice || !unlocked) return;
-  void voiceFile(trainer).then((url) => {
-    if (url) {
-      const a = new Audio(url);
-      a.volume = Math.min(1, settings.volume + 0.2);
-      void a.play().catch(() => synthLine(trainer));
-    } else {
-      synthLine(trainer);
-    }
-  });
+  const url = randomVoiceClip(trainer);
+  if (!url) {
+    synthLine(trainer);
+    return;
+  }
+  const a = new Audio(url);
+  a.volume = Math.min(1, settings.volume + 0.2);
+  // A clip that can't load or play (offline, unsupported format) falls back to the synthesized line.
+  void a.play().catch(() => synthLine(trainer));
 }
 
 function synthLine(trainer: string): void {

@@ -1,4 +1,4 @@
-// Trainer cards from page 3 of `Conquest Cards - Google Slides.pdf`. In trainer mode four of them are
+// Trainer cards from page 12 of `Conquest Cards.pdf` (2026-11-09 edition). In trainer mode four of them are
 // offered after the draft; each side keeps one. The passive always applies to its own side; the
 // Special Move can be used once per game, at any point of its own turn, without using an action.
 

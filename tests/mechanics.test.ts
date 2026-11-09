@@ -88,12 +88,19 @@ describe('abilities', () => {
     expect(m.log.some((l) => l.text.includes('Clear Body'))).toBe(true);
   });
 
-  it('Truant stops Slaking from moving on even rounds', () => {
-    let s = setup(['slaking'], ['snorlax'], { A0: P(8, 7) });
-    park(s, ['A0']);
+  it('Truant stops Slaking from attacking on even rounds (it can still move and Slack Off)', () => {
+    let s = setup(['slaking'], ['snorlax'], { A0: P(8, 7), D0: P(8, 5) });
+    park(s, ['A0', 'D0']);
     for (let i = 0; i < 4; i++) s = act(s, { type: 'endTurn' });
     expect(s.round).toBe(4);
-    expect(() => act(s, { type: 'move', unitId: 'A0', to: P(8, 6) })).toThrow(/can't move/);
+    expect(() => act(s, { type: 'useMove', unitId: 'A0', moveIndex: 0, dir: 'N' })).toThrow(/Truant/);
+    expect(act(s, { type: 'move', unitId: 'A0', to: P(8, 6) }).units.find((u) => u.id === 'A0')!.pos).toEqual(P(8, 6));
+    unit(s, 'A0').hp = 100;
+    expect(unit(act(s, { type: 'useMove', unitId: 'A0', moveIndex: 1 }), 'A0').hp).toBe(150);
+    s = act(act(s, { type: 'endTurn' }), { type: 'endTurn' });
+    expect(s.round).toBe(5);
+    const hit = act(s, { type: 'useMove', unitId: 'A0', moveIndex: 0, dir: 'N' });
+    expect(unit(hit, 'D0').hp).toBeLessThan(unit(hit, 'D0').maxHp);
   });
 
   it('U-turn and Run Away grant movement after acting', () => {

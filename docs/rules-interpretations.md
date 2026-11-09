@@ -26,7 +26,7 @@ Players choose a map before each match (online, the host chooses). Both maps are
 ## Card grids
 
 - **Orange:** the tiles hit. Every Pokémon on them is hit, allies included.
-- A move can only be used if its zone contains at least one Pokémon, ally or opponent (or the substitute). Ally-boosting moves (Tailwind) need an ally in the zone. Moves that also heal the user (Life Dew) can always be used.
+- A move can only be used if its zone contains at least one Pokémon, ally or opponent (or the substitute). Ally-boosting moves (Howl, Coaching, Helping Hand, After You) need an ally in the zone. Moves that also heal the user (Life Dew) can always be used.
 - **Green:** the user.
 - **Blue:** the user charges onto this tile before the hit. The tile must be empty and standable for the user, otherwise the move can't be aimed that way.
 - **Red:** where the Pokémon hit are knocked back to. That is 1 tile, or 2 for Roar. Knockback stops at the board edge, at other Pokémon, at a substitute, or at terrain the target can't stand on. Hazards on the tiles it crosses trigger.
@@ -49,7 +49,7 @@ Players choose a map before each match (online, the host chooses). Both maps are
 - **Confusion** (Hurricane): lasts through the Pokémon's next activation. When it uses a move or the trebuchet, there is a ⅓ chance the action fails and it takes 30 damage instead.
 - **Hyper Beam and Solar Blade** ("cannot move next turn"): the user can still act. **Solar Beam** ("must recharge") and **Meteor Beam**: the user can neither move nor act next turn.
 - **Drought** removes the Solar Beam and Solar Blade recharge for everyone while Groudon is alive. **Drizzle** stops Hurricane from grazing while Kyogre is alive.
-- **Truant:** Slaking can't move on even rounds, but can still act.
+- **Truant:** on even rounds Slaking can't attack (neither its damaging move nor the trebuchet), but it can still move and use Slack Off.
 - **Paralysis:** the 20% "can't act" roll happens at the start of the owner's turn.
 - **Sleep and freeze:** roll at the start of the owner's turn; a 5 or 6 frees the Pokémon, and it acts that same turn.
 
@@ -66,21 +66,20 @@ Only the immunities printed in the rules or on cards apply:
 
 - Spikes and sticky webs affect every non-Flying, non-Levitate Pokémon, on either side. They trigger when a Pokémon walks through, lands on, or is knocked onto them. A Pokémon that ends an activation without moving off one is hit again.
 - Skarmory's Spikes has no printed grid, so it uses Gliscor's (2 tiles ahead).
-- Substitute has no printed grid either:
-  - It goes on the tile directly in front of the user.
+- Substitute:
+  - It goes on the tile directly in front of the user (its printed grid).
   - It costs 30 HP, so the user needs more than 30 HP.
   - Only one substitute can be on the field at a time.
   - An attack whose zone includes it hits only the substitute, which breaks.
-  - Support moves (Tailwind, Life Dew, Heal Pulse) ignore it.
+  - Support moves (Howl, Life Dew, Heal Pulse) ignore it.
 
 ## Specific cards and abilities
 
-- **Mach Punch:** the power is printed as "-", so it uses 30, the same as Bullet Punch.
 - **Foul Play:** uses the target's first printed attack power and the target's Attack stage.
 - **Ally Switch:** works with any ally on the board.
 - **Emergency Exit:** the owner chooses which ally to switch with.
 - **Liquid Voice:** Primarina's owner chooses a direction for the copy, or declines it. Copies are Water-type.
-- **Follow Me / Rage Powder:** this applies to any opponent that could hit the user this turn from a tile it can reach. That opponent must move to such a tile and use a move whose zone includes the user, or fire the trebuchet at it. The turn can't end until it has done so. Healing and ally-boosting moves (Heal Pulse, Life Dew, Tailwind) don't count: they neither satisfy nor trigger the requirement.
+- **Follow Me / Rage Powder:** this applies to any opponent that could hit the user this turn from a tile it can reach. That opponent must move to such a tile and use a move whose zone includes the user, or fire the trebuchet at it. The turn can't end until it has done so. Healing and ally-boosting moves (Heal Pulse, Life Dew, Howl) don't count: they neither satisfy nor trigger the requirement.
 - **Future Sight:** at the start of the owner's next turn, deals 100 flat damage to every other Pokémon within 3 tiles of Slowbro, allies included. If Slowbro has fainted by then, it fizzles.
 - **Leech:** Volcarona heals half of the attack damage that other Pokémon deal to targets within 3 tiles of it, rounded up to a multiple of 5.
 - **Heal Pulse** heals every Pokémon in its zone, opponents included. **Pollen Puff** heals allies and damages opponents.
@@ -106,23 +105,37 @@ Only the immunities printed in the rules or on cards apply:
 
 - Clicking an opposing Pokémon (on the board or its card) shows every tile it could hit with each of its moves, from its current tile or any tile it can walk to. Its first move's range is filled red; its second move's is outlined in yellow. Moves that only help their own side are left out. Click it again, or press Esc, to hide it.
 - There is no all-opponents view any more; it was replaced by this per-Pokémon view.
-- During the opponent's own turn, only Pokémon that still have an action left count. Before their turn, Pokémon that are flinched or can't act next turn are left out. Pokémon that can attack but not move next turn (Hyper Beam, or Truant on an even round) count from their current tile only.
+- During the opponent's own turn, only Pokémon that still have an action left count. Before their turn, Pokémon that are flinched or can't act next turn are left out. Pokémon that can attack but not move next turn (Hyper Beam) count from their current tile only; Slaking doesn't count before an even round (Truant).
 - The trebuchet is not painted (it would cover the whole board). The key says "+ trebuchet" when the Pokémon can reach it.
 
 ## Not used on this map
 
 Cannons, wooden logs and ice sliding are not implemented. Magma and pit tiles exist in the engine's movement rules, but this map has none.
 
-## Expansion cards (Conquest Cards - Google Slides.pdf)
+## Card updates (2026-11-09 card file)
 
-19 Pokémon from the expansion sheet are in the draft pool (pages 10–13 here). Golurk is left out for now: its card is still an unfinished copy of Octillery's (Water type, Octazooka, Helping Hand).
+- **Weather caps.** Sunny Day, Rain Dance, Sandstorm and Hail raise (or lower) a stat by one stage, but never past +1 (or −1): a Fire type at +1 Attack gets nothing more from a second Sunny Day. Light Screen and Tailwind work the same way.
+- **Tailwind** (Whimsicott, Lumineon) now affects the user and every ally on the field, wherever they are: +1 movement, to at most +1. It needs no aim.
+- **Howl** (Arcanine) raises the Attack of adjacent allies by one stage, not the user's. It needs an adjacent ally.
+- **Celebrate** (Pikachu) and **After You** (Comfey) now say "act again" (see above).
+- **Truant** (Slaking) now stops attacks, not movement (see Turn restrictions).
+- **Slowbro** has Regenerator instead of Sturdy. **Future Sight** says "a flat 100 damage", which is what it already did.
+- **Meganium's Leaf Storm** lowers the user's Attack by two stages. **Vivillon's Sleep Powder** no longer has an 80% hit chance: it always lands (Grass types are still immune).
+- **Amoonguss** is Grass/Poison; **Oricorio** is Flying/Ghost and Revelation Dance is a Ghost move; **Haxorus** has its Dragon icon.
+- **Gengar's Shadow Ball** grid now has a red tile: it hits 2 tiles ahead and knocks the target back 1.
+- Sudowoodo's Substitute and Breloom's Mach Punch (30) are now printed, matching what the game already did.
 
-- **Types read from the icons.** Tinkaton is Steel/Fairy, Corsola Rock/Water, Wigglytuff Fairy. Haxorus and Oricorio have no type icons yet: Haxorus is read as Dragon, Oricorio as Ice/Flying (Revelation Dance is printed as Ice, and in the games it takes the user's type).
+## Expansion cards (Conquest Cards.pdf, pages 10–13)
+
+19 Pokémon from the expansion sheet are in the draft pool (pages 10–13 here). Golurk is left out for now: its card is still an unfinished copy of Octillery's (Water type, Octazooka, Helping Hand). In the 2026-11-09 `Conquest Cards.pdf`, Wigglytuff sits on page 13, which is otherwise a work-in-progress page (unfinished copies named Golurk, Pelipper, Ninetales and others are not used).
+
+- **Types read from the icons.** Tinkaton is Steel/Fairy, Corsola Rock/Water, Wigglytuff Fairy, Haxorus Dragon, Oricorio Flying/Ghost (Revelation Dance is Ghost).
 - **Flying Press** counts as Fighting and Flying at once: effectiveness multiplies across both, and an immunity to either (Ghost to Fighting) stops it.
 - **Fake Out:** after it is used, it can't be used again until the user ends an activation 4+ tiles (counted like movement) from every opponent.
 - **Gigaton Hammer** only works in even-numbered rounds.
 - **Light Screen:** +1 Defense for the whole team, but no Pokémon goes above +1 from it.
-- **Coaching, Helping Hand, After You** only affect allies in the zone. Helping Hand's +30 lasts until the end of the current turn. After You lets the ally move again (up to its normal movement) right away; the player picks the tile or stays.
+- **Coaching, Helping Hand, After You** only affect allies in the zone. Helping Hand's +30 lasts until the end of the current turn.
+- **"Act again"** (After You, Celebrate) means another whole activation in the same turn: the Pokémon can move again and then use a move or the trebuchet. End-of-activation effects (poison, burn, Regenerator, flowers…) happen at the end of each activation. After You on an ally that is already done makes it ready again at once; on one that hasn't gone yet, it gets two activations. Each Pokémon can get After You once per turn (otherwise two Pokémon with it could pass turns back and forth forever). Celebrate gives one extra activation per KO.
 - **Octazooka** targets one Pokémon 4–6 steps away.
 - **Floral Healing** heals 40, or 80 for a Pokémon standing on a berry bush or flowers (Flying and Levitate Pokémon don't count as on them). Like other heals, it heals every Pokémon in its zone.
 - **Taunt:** during the opponent's next turn, a Pokémon that can hit one of its opponents with a damaging move from where it stands can't use status moves.

@@ -1,7 +1,7 @@
 import { typeMultiplier } from './data/typechart';
 import { canActNow, movementAllowance } from './engine';
-import { isSupportOnly, targeting } from './moves';
-import { abilityOf, effectiveMov, inBounds, isTrebuchet, liveUnits, mapOf, moveOf, reachable } from './query';
+import { isSupportOnly, targeting, truantRests } from './moves';
+import { effectiveMov, inBounds, isTrebuchet, liveUnits, mapOf, moveOf, reachable } from './query';
 import type { AbilityId, CardDef, GameState, MoveDef, PType, Pos, Side, Unit } from './types';
 import { DIRS, TYPES } from './types';
 import { posKey } from './util';
@@ -88,7 +88,8 @@ function nextActivation(s: GameState, e: Unit): number | null {
   if (e.flinched || e.nextTurn.noAct) return null;
   // Its next turn: D moves after A in the same round, A in the next one.
   const round = s.phase !== 'battle' ? 1 : e.side === 'D' ? s.round : s.round + 1;
-  if (e.nextTurn.noMove || (abilityOf(e) === 'truant' && round % 2 === 0)) return 0;
+  if (truantRests(s, e, round)) return null;
+  if (e.nextTurn.noMove) return 0;
   return effectiveMov(s, e);
 }
 
@@ -111,7 +112,7 @@ export function dangerZone(s: GameState, side: Side, onlyId?: string): DangerZon
   for (const e of liveUnits(s, side)) {
     if (onlyId && e.id !== onlyId) continue;
     const budget = nextActivation(s, e);
-    if (budget === null) continue;
+    if (budget === null || (s.phase === 'battle' && s.side === e.side && truantRests(s, e))) continue;
     const origins: Pos[] = [e.pos!, ...[...reachable(s, e, budget).values()].map((r) => r.pos)];
     if (origins.some((p) => isTrebuchet(s, p))) trebuchet.push(e.id);
     // Its next activation's round (Gigaton Hammer only works in even rounds).

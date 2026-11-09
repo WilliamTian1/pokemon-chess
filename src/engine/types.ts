@@ -77,7 +77,7 @@ export type Bonus =
 export type SpecialMove =
   | 'foulPlay' | 'powerTrip' | 'endeavor' | 'gyroBall' | 'allySwitch' | 'followMe'
   | 'ragePowder' | 'futureSight' | 'sunnyDay' | 'rainDance' | 'sandstorm' | 'hail'
-  | 'flowerShield' | 'lightScreen' | 'helpingHand' | 'afterYou' | 'transform' | 'batonPass' | 'taunt' | 'metronome';
+  | 'flowerShield' | 'lightScreen' | 'tailwind' | 'helpingHand' | 'afterYou' | 'transform' | 'batonPass' | 'taunt' | 'metronome';
 
 export interface MoveFx {
   graze?: { chance: number; power: number; negateNear?: 'water' | 'ice' };
@@ -117,7 +117,6 @@ export interface MoveFx {
   selfHeal?: number;
   healSelfAndAllies?: number;
   alliesStages?: Partial<Stages>;
-  selfAndAdjAlliesStages?: Partial<Stages>;
   grassImmune?: boolean;
   special?: SpecialMove;
   /** Gigaton Hammer: usable only in even-numbered rounds. */
@@ -210,6 +209,13 @@ export interface Unit {
   nextTurn: { noMove: boolean; noAct: boolean };
   turn: TurnFlags;
   activated: boolean;
+  /**
+   * Extra activations this turn, taken after the current one ends ("can act again": Celebrate, or
+   * After You on an ally that hasn't gone yet).
+   */
+  actAgain: number;
+  /** After You already gave this Pokémon an extra activation this turn (once per turn). */
+  gotAfterYou: boolean;
   followMe: null | { kind: 'followMe' | 'ragePowder'; duringTurnOf: Side };
   /** Moves on cooldown (Fake Out) until the user ends an activation far enough from opponents. */
   locked: string[];
@@ -243,8 +249,6 @@ export type Pending =
   | { kind: 'emergencyExit'; side: Side; unitId: string; options: string[] }
   /** Imposter: copy the stat changes of one of these adjacent Pokémon (or decline). */
   | { kind: 'imposter'; side: Side; unitId: string; options: string[] }
-  /** After You: the unit may move again, to one of these tiles (posKey), or stay. */
-  | { kind: 'afterYou'; side: Side; unitId: string; options: string[] }
   /** Metronome: one of the drawn card's moves and how to aim it ("index:dir", "index:@unitId" or "index"). */
   | { kind: 'metronome'; side: Side; unitId: string; cardId: string; options: string[] }
   /** Dancer: copy another Pokémon's dance move, aimed one of these ways. */
@@ -337,7 +341,7 @@ export type GameEvent =
   /** A trainer's Special Move. */
   | { t: 'special'; side: Side; trainer: string }
   /** A move or ability that affects the whole field (weather, Light Screen, Taunt…). */
-  | { t: 'field'; kind: 'sun' | 'rain' | 'sand' | 'hail' | 'screen' | 'taunt' | 'flowers'; side: Side }
+  | { t: 'field'; kind: 'sun' | 'rain' | 'sand' | 'hail' | 'screen' | 'wind' | 'taunt' | 'flowers'; side: Side }
   | { t: 'text'; text: string };
 
 export interface Rng {

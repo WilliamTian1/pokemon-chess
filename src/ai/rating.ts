@@ -45,7 +45,7 @@ function utilityValue(m: MoveDef): number {
   if (fx.special === 'followMe' || fx.special === 'ragePowder') return 25;
   if (fx.special === 'futureSight') return 35;
   if (fx.targetStages) return 25;
-  if (fx.alliesStages || fx.selfAndAdjAlliesStages) return 22;
+  if (fx.alliesStages || fx.special === 'tailwind') return 22;
   if (fx.special === 'sandstorm' || fx.special === 'hail') return 20;
   return 15;
 }

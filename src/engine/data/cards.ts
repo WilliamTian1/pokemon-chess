@@ -1,8 +1,8 @@
 import type { AbilityId, CardDef, MoveDef, MoveFx, PType, TargetSpec } from '../types';
 
-// Transcribed from `Conquest Cards.pdf`, pages 1–9 (v1.0 roster), and the expansion in
-// `Conquest Cards - Google Slides.pdf` (pages 10–13 here). Moves are listed in the order they appear
-// on the card (top first) — Foul Play reads the target's *first* attack.
+// Transcribed from `Conquest Cards.pdf` (2026-11-09 edition): pages 1–9 are the v1.0 roster, 10–12
+// the expansion, and Wigglytuff is on page 13 (otherwise a work-in-progress page). Moves are listed in
+// the order they appear on the card (top first) — Foul Play reads the target's *first* attack.
 
 const grid = (g: string): TargetSpec => ({ kind: 'grid', grid: g });
 const SELF: TargetSpec = { kind: 'self' };
@@ -46,8 +46,8 @@ function card(c: CardInput): CardDef {
 const QUIVER_DANCE = sts('Quiver Dance', SELF, 'Raises the user’s attack, defense, and mov by one stage.', {
   selfStages: { stages: { atk: 1, def: 1, mov: 1 } },
 });
-const TAILWIND = sts('Tailwind', grid('OOO/OGO/OOO'), 'Raises the movement speed of adjacent allies by one stage.', {
-  alliesStages: { mov: 1 },
+const TAILWIND = sts('Tailwind', GLOBAL, 'Raises the movement speed of all allies and this pokemon by one stage to a maximum of one stage.', {
+  special: 'tailwind',
 });
 const HAZE = sts('Haze', grid('OOO/OOO/.../.G.'), 'The target(s) have their stat changes reset.', { resetTargetStages: true });
 const FOLLOW_ME_TEXT = 'During your opponent’s next turn, any pokemon who can target this pokemon must do so.';
@@ -209,7 +209,7 @@ export const CARD_LIST: CardDef[] = [
   card({
     id: 'gengar', name: 'Gengar', types: ['Ghost', 'Poison'], hp: 105, mov: 4, page: 2,
     moves: [
-      atk('Shadow Ball', 'Ghost', 65, grid('.O./.../.G.'), '20% chance to lower the target’s defense.', { targetStages: { stages: { def: -1 }, chance: 0.2 } }),
+      atk('Shadow Ball', 'Ghost', 65, grid('.R./.O./.../.G.'), '20% chance to lower the target’s defense.', { targetStages: { stages: { def: -1 }, chance: 0.2 } }),
       sts('Will-O-Wisp', grid('.O./.../.G.'), '80% chance to hit. Burns the target. Fire types are immune.', { hitChance: 0.8, status: { id: 'brn', chance: 1 } }),
     ],
     ability: A.shadowDash,
@@ -312,7 +312,7 @@ export const CARD_LIST: CardDef[] = [
     formLabel: 'Overcast', forms: ['cherrim', 'cherrim-sunshine'],
     moves: [
       sts('Flower Shield', GLOBAL, 'Raises the defense of all grass types on the field by one stage.', { special: 'flowerShield' }),
-      sts('Sunny Day', GLOBAL, 'Raises the attack of all fire types. Lowers the attack of all water types.', { special: 'sunnyDay' }),
+      sts('Sunny Day', GLOBAL, 'Raises the attack of all fire types. Lowers the attack of all water types. Both are to a maximum of one stage.', { special: 'sunnyDay' }),
     ],
     ability: ['flowerGiftOvercast', 'Flower Gift (Overcast)', 'When a pokemon on the field uses sunny day, this pokemon changes into its sunshine form.'],
   }),
@@ -348,7 +348,7 @@ export const CARD_LIST: CardDef[] = [
     id: 'arcanine', name: 'Arcanine', types: ['Fire'], hp: 155, mov: 3, page: 4,
     moves: [
       atk('Flare Blitz', 'Fire', 85, grid('.O./OBO/.G.'), 'Deals 25 recoil damage. 10% chance to burn.', { recoil: 25, status: { id: 'brn', chance: 0.1 } }),
-      sts('Howl', SELF, 'Raises the attack of the user and adjacent allies.', { selfAndAdjAlliesStages: { atk: 1 } }),
+      sts('Howl', grid('OOO/OGO/OOO'), 'Raises the attack of adjacent allies by one stage.', { alliesStages: { atk: 1 } }),
     ],
     ability: ['justified', 'Justified', 'If this pokemon gets hit by a dark type attack, its attack goes up by one stage.'],
   }),
@@ -391,7 +391,7 @@ export const CARD_LIST: CardDef[] = [
       atk('Ancient Power', 'Rock', 20, grid('OOO/OOO/.G.'), '10% chance to raise the user’s attack, speed and defense.', {
         selfStages: { stages: { atk: 1, def: 1, mov: 1 }, chance: 0.1 },
       }),
-      sts('Sandstorm', GLOBAL, 'Does 20 flat damage to all pokemon other than rock/ground/steel types. The defense of all rock types gets raised by one stage.', { special: 'sandstorm' }),
+      sts('Sandstorm', GLOBAL, 'Does 20 flat damage to all pokemon other than rock/ground/steel types. The defense of all rock types gets raised by one stage to a maximum of one stage.', { special: 'sandstorm' }),
     ],
     ability: ['shieldsDownMeteor', 'Shields Down (Meteor)', 'When this pokemon runs out of hp, instead of fainting, heal all damage and transform into core form. Immune to status conditions.'],
   }),
@@ -501,7 +501,7 @@ export const CARD_LIST: CardDef[] = [
       atk('Thunderbolt', 'Electric', 45, grid('OOO/.../.G.'), '20% chance to paralyze each target.', { status: { id: 'par', chance: 0.2 } }),
       atk('Nuzzle', 'Electric', 10, grid('.../.O./.G.'), 'Paralyzes the target.', { status: { id: 'par', chance: 1 } }),
     ],
-    ability: ['celebrate', 'Celebrate', 'This pokemon can move again if they KO a pokemon that they hit.'],
+    ability: ['celebrate', 'Celebrate', 'This pokemon can act again if they KO a pokemon that they hit.'],
   }),
   card({
     id: 'sudowoodo', name: 'Sudowoodo', types: ['Rock'], hp: 145, mov: 2, page: 6,
@@ -511,7 +511,6 @@ export const CARD_LIST: CardDef[] = [
         'Uses 30 hp to make a substitute that absorbs attacks. Fails if a pokemon or hazard is in the way, or if a substitute already exists.'),
     ],
     ability: A.sturdy,
-    notes: ['Substitute has no grid printed; it is placed on the tile directly in front of the user.'],
   }),
   card({
     id: 'slaking', name: 'Slaking', types: ['Normal'], hp: 235, mov: 3, page: 6,
@@ -519,13 +518,13 @@ export const CARD_LIST: CardDef[] = [
       atk('Giga Impact', 'Normal', 150, grid('.O./OBO/.G.'), '10% chance to graze and deal 60 damage.', { graze: { chance: 0.1, power: 60 } }),
       sts('Slack Off', SELF, 'The user recovers 50 hp.', { selfHeal: 50 }),
     ],
-    ability: ['truant', 'Truant', 'This pokemon can only move on odd numbered turns.'],
+    ability: ['truant', 'Truant', 'This pokemon can only attack on odd numbered turns.'],
   }),
   card({
     id: 'milotic', name: 'Milotic', types: ['Water'], hp: 200, mov: 3, page: 6,
     moves: [
       atk('Scald', 'Water', 50, grid('.O./.O./.G.'), '30% chance to burn each target.', { status: { id: 'brn', chance: 0.3 } }),
-      sts('Rain Dance', GLOBAL, 'The attack of all water types goes up. The attack of all fire types goes down.', { special: 'rainDance' }),
+      sts('Rain Dance', GLOBAL, 'The attack of all water types goes up. The attack of all fire types goes down. Both are to a maximum of one stage.', { special: 'rainDance' }),
     ],
     ability: ['competitive', 'Competitive', 'If this pokemon has their stats lowered by another pokemon, max out their attack.'],
   }),
@@ -622,7 +621,6 @@ export const CARD_LIST: CardDef[] = [
       atk('Mach Punch', 'Fighting', 30, { kind: 'range', range: 4 }, 'Hits any single pokemon within 4 tiles of the user.'),
     ],
     ability: A.technician,
-    notes: ['Mach Punch’s power is printed as “-”; it uses 30, the same as Scizor’s Bullet Punch.'],
   }),
   card({
     id: 'zoroark-hisui', name: 'Zoroark (Hisuian)', types: ['Ghost', 'Normal'], hp: 90, mov: 4, page: 8,
@@ -666,7 +664,7 @@ export const CARD_LIST: CardDef[] = [
     ability: ['waveRider', 'Wave Rider', 'Water tiles cost half as much movement speed to move through.'],
   }),
   card({
-    id: 'amoonguss', name: 'Amoonguss', types: ['Grass'], hp: 175, mov: 2, page: 8,
+    id: 'amoonguss', name: 'Amoonguss', types: ['Grass', 'Poison'], hp: 175, mov: 2, page: 8,
     moves: [
       sts('Spore', grid('.../.O./.G.'), 'Puts the target to sleep. Grass types are immune.', { status: { id: 'slp', chance: 1 }, grassImmune: true }),
       sts('Rage Powder', SELF, 'During your opponent’s next turn, any pokemon who can target this pokemon must do so. Grass types are immune.', { special: 'ragePowder' }),
@@ -714,9 +712,9 @@ export const CARD_LIST: CardDef[] = [
     id: 'slowbro', name: 'Slowbro', types: ['Water', 'Psychic'], hp: 185, mov: 2, page: 9,
     moves: [
       atk('Surf', 'Water', 55, grid('OOO/OBO/.G.'), ''),
-      sts('Future Sight', SELF, 'At the start of your next turn, any pokemon within 3 tiles of the user takes 100 damage.', { special: 'futureSight' }),
+      sts('Future Sight', SELF, 'At the start of your next turn, any pokemon within 3 tiles of the user takes a flat 100 damage.', { special: 'futureSight' }),
     ],
-    ability: A.sturdy,
+    ability: A.regenerator,
   }),
   card({
     id: 'frosmoth', name: 'Frosmoth', types: ['Ice', 'Bug'], hp: 125, mov: 3, page: 9,
@@ -740,7 +738,7 @@ export const CARD_LIST: CardDef[] = [
     id: 'cetitan', name: 'Cetitan', types: ['Ice'], hp: 200, mov: 3, page: 9,
     moves: [
       atk('Avalanche', 'Ice', 40, grid('OOO/.../.G.'), 'Deals 40 extra damage if the user has 100 hp or less.', { bonus: [{ when: 'userHpAtMost', hp: 100, amount: 40 }] }),
-      sts('Hail', GLOBAL, 'Deals a flat 20 damage to all pokemon except ice types. Raises the defense of all ice types.', { special: 'hail' }),
+      sts('Hail', GLOBAL, 'Deals a flat 20 damage to all pokemon except ice types. Raises the defense of all ice types to a maximum of one stage.', { special: 'hail' }),
     ],
     ability: ['slushRush', 'Slush Rush', 'This pokemon gets +2 mov while next to another ice type pokemon or while standing on ice.'],
   }),
@@ -782,7 +780,7 @@ export const CARD_LIST: CardDef[] = [
   card({
     id: 'meganium', name: 'Meganium', types: ['Grass'], hp: 175, mov: 3, page: 10,
     moves: [
-      atk('Leaf Storm', 'Grass', 65, grid('OOO/O.O/OOO/.G.'), ''),
+      atk('Leaf Storm', 'Grass', 65, grid('OOO/O.O/OOO/.G.'), 'Lowers the user’s attack by two stages.', { selfStages: { stages: { atk: -2 } } }),
       sts('Light Screen', GLOBAL, 'Raises the defense of this pokemon’s entire team, to a maximum of 1 stage.', { special: 'lightScreen' }),
     ],
     ability: ['leafGuard', 'Leaf Guard', 'This pokemon gets double the effects of terrain bonuses.'],
@@ -809,8 +807,8 @@ export const CARD_LIST: CardDef[] = [
     id: 'vivillon', name: 'Vivillon', types: ['Bug', 'Flying'], hp: 100, mov: 3, page: 10,
     moves: [
       atk('Hurricane', 'Flying', 60, grid('OOO/O.O/OOO/.G.'), '30% chance to confuse the opponent.', { confuse: { chance: 0.3 } }),
-      sts('Sleep Powder', grid('.O./.O./.G.'), '80% chance to hit each target and put them to sleep. Grass types are immune.', {
-        hitChance: 0.8, status: { id: 'slp', chance: 1 }, grassImmune: true,
+      sts('Sleep Powder', grid('.O./.O./.G.'), 'Puts the target to sleep. Grass types are immune.', {
+        status: { id: 'slp', chance: 1 }, grassImmune: true,
       }),
     ],
     ability: A.compoundEyes,
@@ -829,7 +827,7 @@ export const CARD_LIST: CardDef[] = [
   card({
     id: 'comfey', name: 'Comfey', types: ['Fairy'], hp: 130, mov: 3, page: 11,
     moves: [
-      sts('After You', grid('.../.O./.G.'), 'The target can move again.', { special: 'afterYou' }),
+      sts('After You', grid('.../.O./.G.'), 'The target can act again.', { special: 'afterYou' }),
       sts('Floral Healing', grid('.O./OOO/.O./.G.'), 'Heals the targets by 40 hp, or 80 hp if they are on terrain with bonuses.', {
         heal: 40, healOnBonusTerrain: 80,
       }),
@@ -895,16 +893,14 @@ export const CARD_LIST: CardDef[] = [
       sts('Dragon Dance', SELF, 'Raises the user’s attack and speed by one stage.', { selfStages: { stages: { atk: 1, mov: 1 } } }),
     ],
     ability: A.moldBreaker,
-    notes: ['The card has no type icons yet; Haxorus is read as Dragon type.'],
   }),
   card({
-    id: 'oricorio', name: 'Oricorio', types: ['Ice', 'Flying'], hp: 95, mov: 3, page: 12,
+    id: 'oricorio', name: 'Oricorio', types: ['Flying', 'Ghost'], hp: 95, mov: 3, page: 12,
     moves: [
-      atk('Revelation Dance', 'Ice', 55, grid('.O./OBO/.O./.G.'), ''),
+      atk('Revelation Dance', 'Ghost', 55, grid('.O./OBO/.O./.G.'), ''),
       atk('Air Slash', 'Flying', 45, grid('.O./.O./.G.'), '30% chance to make each target flinch.', { flinch: { chance: 0.3 } }),
     ],
     ability: ['dancer', 'Dancer', 'When another pokemon uses an attack with “dance” in the name, this pokemon copies that attack.'],
-    notes: ['The card has no type icons yet; Oricorio is read as Ice/Flying (Revelation Dance is printed as Ice, and in the games it takes the user’s type).'],
   }),
   card({
     id: 'wigglytuff', name: 'Wigglytuff', types: ['Fairy'], hp: 130, mov: 2, page: 13,
