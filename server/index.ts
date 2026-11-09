@@ -48,6 +48,7 @@ interface Room {
   game: GameState | null;
   mapId: string;
   legendaries: boolean;
+  trainers: boolean;
   rng: Rng;
   events: GameEvent[];
   eventSeq: number;
@@ -85,6 +86,7 @@ function view(room: Room): RoomView {
     game: room.game,
     mapId: room.mapId,
     legendaries: room.legendaries,
+    trainers: room.trainers,
     events: room.events,
     eventSeq: room.eventSeq,
   };
@@ -150,7 +152,7 @@ function handle(ws: WebSocket, conn: Conn, msg: ClientMsg): void {
   switch (msg.t) {
     case 'create': {
       const r: Room = {
-        code: newCode(), hostId: conn.playerId, players: new Map(), game: null, mapId: DEFAULT_MAP_ID, legendaries: true, rng: seededRng(randomSeed()),
+        code: newCode(), hostId: conn.playerId, players: new Map(), game: null, mapId: DEFAULT_MAP_ID, legendaries: true, trainers: false, rng: seededRng(randomSeed()),
         events: [], eventSeq: 0, emptySince: null,
       };
       rooms.set(r.code, r);
@@ -193,6 +195,7 @@ function handle(ws: WebSocket, conn: Conn, msg: ClientMsg): void {
         room.mapId = msg.mapId;
       }
       if (msg.legendaries !== undefined) room.legendaries = msg.legendaries !== false;
+      if (msg.trainers !== undefined) room.trainers = msg.trainers === true;
       if (msg.randomRoles && randomSeed() % 2 === 0) for (const p of seated) p.side = p.side === 'A' ? 'D' : 'A';
       startGame(room);
       return;
@@ -231,7 +234,7 @@ function handle(ws: WebSocket, conn: Conn, msg: ClientMsg): void {
 
 function startGame(room: Room): void {
   room.rng = seededRng(randomSeed());
-  room.game = newGame({ rng: room.rng, mapId: room.mapId, legendaries: room.legendaries });
+  room.game = newGame({ rng: room.rng, mapId: room.mapId, legendaries: room.legendaries, trainers: room.trainers });
   room.events = [];
   room.eventSeq += 1;
   broadcast(room);

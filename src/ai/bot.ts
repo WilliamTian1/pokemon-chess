@@ -1,10 +1,11 @@
 import {
-  type Action, CARD_LIST, type CardDef, type Dir, type GameState, type Pos, type Rng, type Side, type Unit,
-  basePower, cardOf, cheb, computeDamage, decider, effectiveMov, expectedRng, getCard, getMap, getUnit, grazeApplies,
+  type Action, CARD_LIST, type CardDef, type CopyOption, type Dir, type GameState, type MoveOption, type Pos, type Rng, type Side, type Unit,
+  basePower, canUseSpecial, cardOf, cheb, computeDamage, decider, effectiveMov, expectedRng, getCard, getMap, getUnit, grazeApplies,
+  isTrainerPick, specialTargets, trainerOf,
   canPass, draftOptions, isImmune, isSupportOnly, isTrebuchet, liveUnits, makeAttackCtx, mapOf, moveOf, moveOptions, moveTargets, onBoard,
   otherSide, parseGrid, posKey, reachable, seededRng, simulate, steps, terrainAt, terrainBonus, trebuchetCtx, trebuchetOption, waitBlock, zoneTiles,
 } from '../engine';
-import { bestDraftPick, hasDraftModel } from './draft';
+import { bestDraftPick, bestTrainerPick, hasDraftModel } from './draft';
 import { matchup, rateCard } from './rating';
 import { type ValueModel, predictValue } from './value';
 
@@ -25,6 +26,10 @@ export function decide(s: GameState, side: Side, level: Difficulty, rng: Rng): A
 // ---------------------------------------------------------------- draft & placement
 
 function draftPick(s: GameState, side: Side, level: Difficulty, rng: Rng): string {
+  if (isTrainerPick(s)) {
+    const options = draftOptions(s);
+    return level === 'easy' ? options[rng.int(options.length)] : bestTrainerPick(s, side);
+  }
   if (level === 'hard' && SEARCH.draftModel && hasDraftModel(s.mapId)) return bestDraftPick(s, side);
   const pool = draftOptions(s).map(getCard);
   const mine = s.draft.picks[side].map(getCard);
@@ -67,13 +72,18 @@ function placements(s: GameState): Action[] {
   return s.units.filter((u) => u.side === side && !u.pos).flatMap((u) => spawns.map((pos): Action => ({ type: 'place', unitId: u.id, pos })));
 }
 
-/** Finishes the placement with the simple rule for both sides and scores the opening for `side`. */
+/**
+ * Finishes the placement with the simple rule for both sides and scores the opening for `side`
+ * (by the value network with `SEARCH.netPlacement`).
+ */
 function openingValue(s0: GameState, side: Side, rng: Rng): number {
   let n: GameState | null = s0;
   for (let guard = 0; n && n.phase === 'placement' && guard < 8; guard++) {
     n = simulate(n, simplePlacement(n, decider(n)!, 'medium', rng), expectedRng);
   }
-  return n ? new Evaluator(n, side, 'hard').evaluate(n) : -Infinity;
+  if (!n) return -Infinity;
+  if (valueNet && SEARCH.netPlacement) return netValue(n, side);
+  return new Evaluator(n, side, 'hard').evaluate(n);
 }
 
 /**
@@ -215,18 +225,25 @@ class Evaluator {
     const mask = new Uint8Array(m.width * m.height);
     const budget = e.nextTurn.noMove ? 0 : effectiveMov(s, e);
     const tiles: Pos[] = [e.pos!, ...[...reachable(s, e, budget).values()].map((r) => r.pos)];
+    // The round of e's next turn (Gigaton Hammer only works in even rounds).
+    const round = e.side === s.side || e.side === 'D' ? s.round : s.round + 1;
     for (const idx of [0, 1] as const) {
       const mv = moveOf(e, idx);
       if (isSupportOnly(mv) || (mv.kind !== 'attack' && !mv.fx.status && !mv.fx.targetStages)) continue;
+      if (e.locked.includes(mv.name) || (mv.fx.evenRoundsOnly && round % 2 !== 0)) continue;
       const bit = 1 << idx;
       if (mv.target.kind === 'grid') {
         const g = parseGrid(mv.target.grid);
         for (const p of tiles) for (const d of DIRS4) for (const z of zoneTiles(s, p, g, d)) mask[z.y * m.width + z.x] |= bit;
       } else if (mv.target.kind === 'range') {
         const r = mv.target.range;
+        const min = mv.target.min ?? 0;
         for (let y = 0; y < m.height; y++) {
           for (let x = 0; x < m.width; x++) {
-            if (tiles.some((p) => Math.abs(p.x - x) + Math.abs(p.y - y) <= r)) mask[y * m.width + x] |= bit;
+            if (tiles.some((p) => {
+              const d = Math.abs(p.x - x) + Math.abs(p.y - y);
+              return d <= r && d >= min;
+            })) mask[y * m.width + x] |= bit;
           }
         }
       }
@@ -604,9 +621,16 @@ function actionCandidates(s: GameState, u: Unit): Action[] {
   const out: Action[] = [];
   // A Pokémon bound by Follow Me must take whatever attack it is allowed, useful or not.
   const forced = waitBlock(s, u) !== null;
+  const options: (MoveOption | (CopyOption & { moveIndex: 0 | 1; copy: { unitId: string; moveIndex: 0 | 1 } }))[] = [];
   for (const o of moveOptions(s, u)) {
     if (!o.usable) continue;
+    // Transform: every borrowable move becomes its own candidate.
+    if (o.aim === 'copy') for (const c of o.copies ?? []) options.push({ ...c, moveIndex: o.moveIndex, copy: { unitId: c.unitId, moveIndex: c.moveIndex } });
+    else options.push(o);
+  }
+  for (const o of options) {
     const mv = o.move;
+    const copy = 'copy' in o ? { copy: o.copy } : {};
     const useful = (targetIds: string[]): boolean => {
       if (forced) return true;
       if (mv.target.kind === 'self' || mv.target.kind === 'global' || mv.target.kind === 'place' || mv.target.kind === 'ally') return true;
@@ -621,16 +645,16 @@ function actionCandidates(s: GameState, u: Unit): Action[] {
         const sig = d.tg.targets.map((t) => t.id).sort().join(',') + (d.tg.dashTo ? posKey(d.tg.dashTo) : '') + (d.tg.placeAt ? posKey(d.tg.placeAt) : '');
         if (seen.has(sig) && !parseGrid((mv.target as { grid: string }).grid).knockback) continue;
         seen.add(sig);
-        if (useful(d.tg.targets.map((t) => t.id))) out.push({ type: 'useMove', unitId: u.id, moveIndex: o.moveIndex, dir: d.dir });
+        if (useful(d.tg.targets.map((t) => t.id))) out.push({ type: 'useMove', unitId: u.id, moveIndex: o.moveIndex, dir: d.dir, ...copy });
       }
     } else if (o.aim === 'unit') {
       for (const id of o.units) {
         const t = getUnit(s, id);
         if (mv.target.kind === 'range' && t.side === u.side) continue;
-        out.push({ type: 'useMove', unitId: u.id, moveIndex: o.moveIndex, targetId: id });
+        out.push({ type: 'useMove', unitId: u.id, moveIndex: o.moveIndex, targetId: id, ...copy });
       }
     } else {
-      out.push({ type: 'useMove', unitId: u.id, moveIndex: o.moveIndex });
+      out.push({ type: 'useMove', unitId: u.id, moveIndex: o.moveIndex, ...copy });
     }
   }
   const tr = trebuchetOption(s, u);
@@ -719,6 +743,15 @@ function battleStep(s: GameState, side: Side, level: Difficulty, rng: Rng): Acti
   const ready = liveUnits(s, side).filter((u) => !u.activated);
   if (!ready.length) return [{ type: 'endTurn' }];
 
+  // A trainer's Special Move is weighed at the start of each turn, before anything moves.
+  if (level !== 'easy' && canUseSpecial(s, side) && ready.length === liveUnits(s, side).length) {
+    const special = chooseSpecial(s, side, level);
+    if (special) return [special];
+  } else if (level === 'easy' && canUseSpecial(s, side) && rng.chance(0.15)) {
+    const targets = specialTargets(s, side);
+    return [{ type: 'trainerSpecial', unitId: trainerOf(s, side) === 'nobunaga' ? targets[rng.int(targets.length)] : undefined }];
+  }
+
   if (level === 'hard') return hardBattle(s, side);
   if (level === 'medium') {
     // Fixed order: fastest first.
@@ -731,6 +764,35 @@ function battleStep(s: GameState, side: Side, level: Difficulty, rng: Rng): Acti
   if (!plans.length) return legalFallback(s, side);
   if (rng.chance(0.35)) return plans[rng.int(plans.length)].actions;
   return best(plans)!.actions;
+}
+
+/**
+ * Whether to spend the trainer's once-per-game Special Move now: the best turn found with it is
+ * compared with the best turn without it, and it's used only if the gain beats a margin that
+ * shrinks as the rounds run out (it can't be used later once spent). Nobunaga's is tried on each
+ * Pokémon that hasn't moved.
+ */
+function chooseSpecial(s: GameState, side: Side, level: Difficulty): Action | null {
+  const [width, perUnit] = level === 'hard' ? [6, 3] : [3, 2];
+  const deadline = performance.now() + SEARCH.budgetMs / 2;
+  const turnValue = (st: GameState): number => beamTurn(st, side, new Evaluator(st, side, 'hard'), width, perUnit, deadline)[0]?.score ?? -Infinity;
+  const base = turnValue(s);
+  const options: Action[] = trainerOf(s, side) === 'nobunaga'
+    ? specialTargets(s, side).map((unitId): Action => ({ type: 'trainerSpecial', unitId }))
+    : [{ type: 'trainerSpecial' }];
+  let bestAct: Action | null = null;
+  let bestGain = -Infinity;
+  for (const a of options) {
+    const n = simulate(s, a, expectedRng);
+    if (!n) continue;
+    const gain = turnValue(n) - base;
+    if (gain > bestGain) {
+      bestGain = gain;
+      bestAct = a;
+    }
+  }
+  const turnsLeft = s.maxRounds - s.round;
+  return bestAct && bestGain > SEARCH.specialMargin * turnsLeft ? bestAct : null;
 }
 
 /** The first legal action found for `side`, so a bot can never stall the game. */
@@ -765,12 +827,18 @@ function greedyTurn(s0: GameState, side: Side, deadline: number): GameState {
   return s;
 }
 
-/** Resolves pending choices with their first option (look-ahead only). */
+/** Choices a pending decision may be answered with (null: decline, where that's allowed). */
+function pendingChoices(p: GameState['pending'][number]): (string | null)[] {
+  const optional = p.kind === 'liquidVoice' || p.kind === 'imposter' || p.kind === 'afterYou';
+  return optional ? [...p.options, null] : [...p.options];
+}
+
+/** Resolves pending choices neutrally: decline where allowed, else the first option (look-ahead only). */
 function settle(s0: GameState): GameState {
   let s = s0;
   for (let i = 0; i < 4 && s.pending.length; i++) {
-    const p = s.pending[0];
-    const next = simulate(s, { type: 'choose', option: p.kind === 'liquidVoice' ? null : p.options[0] }, expectedRng);
+    const choices = pendingChoices(s.pending[0]);
+    const next = simulate(s, { type: 'choose', option: choices.includes(null) ? null : choices[0] }, expectedRng);
     if (!next) break;
     s = next;
   }
@@ -782,9 +850,10 @@ function settle(s0: GameState): GameState {
 /** Everything that matters for play, so a cached plan is reused only if the dice went as predicted. */
 function signature(s: GameState): string {
   return JSON.stringify([
-    s.phase, s.round, s.side, s.active, s.pending, s.hazards, s.substitute, s.futureSight,
+    s.phase, s.round, s.side, s.active, s.pending, s.hazards, s.substitute, s.futureSight, s.taunted,
+    s.trainers && [s.trainers.used, s.trainers.effect],
     s.units.map((u) => [u.id, u.cardId, u.hp, u.pos, u.fainted, u.stages, u.status, u.toxicN, u.confused, u.flinched,
-      u.sturdyBroken, u.nextTurn, u.turn, u.activated, u.followMe]),
+      u.sturdyBroken, u.nextTurn, u.turn, u.activated, u.followMe, u.locked, u.dmgBonus, u.movBonus, u.ignoreDefBoosts]),
   ]);
 }
 
@@ -827,9 +896,18 @@ export const SEARCH = {
    */
   net: 1,
   handScale: 0.002,
+  /**
+   * With a value network: the opponent's reply is the one of its best `netReplies` turns (by its own
+   * evaluation) that leaves the bot worst off by the network, instead of simply its best (≤ 1 = off).
+   */
+  netReplies: 0,
+  /** With a value network: score placements by it instead of the hand evaluation. */
+  netPlacement: false,
 
   /** Soft time limit per search. */
   budgetMs: 2500,
+  /** A trainer's Special Move is used when it improves the turn by more than this per round left. */
+  specialMargin: 15,
   /** Draft with the self-play team model (otherwise the heuristic ratings). */
   draftModel: true,
 };
@@ -924,10 +1002,7 @@ function searchTurn(s0: GameState, side: Side): Step[] {
   if (!finished.length) return [];
   const replyDeadline = deadline + SEARCH.budgetMs;
   const scored = finished.slice(0, SEARCH.replies)
-    .map((c) => {
-      const leaf = replyLeaf(c.s, side, replyDeadline);
-      return { c, leaf, v: leafValue(leaf, side) };
-    })
+    .map((c) => ({ c, ...replyLine(c.s, side, replyDeadline) }))
     .sort((a, b) => b.v - a.v);
   searchHooks.onLeaves?.(side, scored.map((x) => x.leaf));
   const pick = searchHooks.pick ? Math.min(scored.length - 1, searchHooks.pick(scored.length)) : 0;
@@ -956,8 +1031,31 @@ function playTurn(s0: GameState, side: Side, beamWidth: number, perUnit: number,
 function replyLeaf(s0: GameState, side: Side, deadline: number): GameState {
   let s = settle(s0);
   if (s.phase === 'battle' && s.side !== side) s = playTurn(s, s.side, SEARCH.replyBeam, SEARCH.replyPerUnit, deadline);
-  if (SEARCH.followUp && s.phase === 'battle' && s.side === side) s = playTurn(s, side, 0, 0, deadline);
-  return s;
+  return followUp(s, side, deadline);
+}
+
+function followUp(s: GameState, side: Side, deadline: number): GameState {
+  return SEARCH.followUp && s.phase === 'battle' && s.side === side ? playTurn(s, side, 0, 0, deadline) : s;
+}
+
+/**
+ * The line after one of `side`'s finished turns, and its value. With a value network and
+ * `netReplies`, the opponent picks whichever of its best few replies the network likes least for us.
+ */
+function replyLine(s0: GameState, side: Side, deadline: number): { leaf: GameState; v: number } {
+  const s = settle(s0);
+  if (valueNet && SEARCH.netReplies > 1 && SEARCH.replyBeam > 0 && s.phase === 'battle' && s.side !== side) {
+    const replies = beamTurn(s, s.side, new Evaluator(s, s.side, 'hard'), SEARCH.replyBeam, SEARCH.replyPerUnit, deadline).slice(0, SEARCH.netReplies);
+    let worst: { leaf: GameState; v: number } | null = null;
+    for (const r of replies) {
+      const leaf = followUp(settle(r.s), side, deadline);
+      const v = leafValue(leaf, side);
+      if (!worst || v < worst.v) worst = { leaf, v };
+    }
+    if (worst) return worst;
+  }
+  const leaf = replyLeaf(s, side, deadline);
+  return { leaf, v: leafValue(leaf, side) };
 }
 
 /** The value network (scripts/train-value.ts); null = hand evaluation only. */
@@ -1015,8 +1113,7 @@ export function rolloutValue(s0: GameState, side: Side, n: number): number {
 // ---------------------------------------------------------------- pending choices
 
 function choosePending(s: GameState, side: Side, level: Difficulty): Action {
-  const p = s.pending[0];
-  const options: (string | null)[] = p.kind === 'liquidVoice' ? [...p.options, null] : [...p.options];
+  const options = pendingChoices(s.pending[0]);
   if (level === 'easy') return { type: 'choose', option: options[0] };
   const ev = new Evaluator(s, side, level);
   let bestOpt = options[0];

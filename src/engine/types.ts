@@ -47,7 +47,9 @@ export type AbilityId =
   | 'regenerator' | 'celebrate' | 'sturdy' | 'truant' | 'competitive' | 'compoundEyes'
   | 'shadowShield' | 'darkAura' | 'pressure' | 'teravolt' | 'airLock' | 'turboblaze'
   | 'drizzle' | 'drought' | 'leech' | 'infiltrator' | 'ironBarbs' | 'waveRider'
-  | 'hospitality' | 'liquidVoice' | 'iceScales' | 'slushRush';
+  | 'hospitality' | 'liquidVoice' | 'iceScales' | 'slushRush'
+  | 'unburden' | 'pixilate' | 'moldBreaker' | 'leafGuard' | 'snowCloak' | 'adaptability' | 'artilleryExpertise'
+  | 'triage' | 'decoy' | 'imposter' | 'wonderGuard' | 'speedBoost' | 'dancer';
 
 /** Grid strings are the card's mini-grid, rows top→bottom joined by `/`.
  *  `G` user, `O` target, `B` user dashes here first, `R` knockback destination, `.` empty. */
@@ -55,8 +57,10 @@ export type TargetSpec =
   | { kind: 'grid'; grid: string }
   | { kind: 'self' }
   | { kind: 'global' }
-  | { kind: 'range'; range: number }
-  | { kind: 'ally' }
+  /** A single Pokémon within `range` steps (and at least `min` away, Octazooka). */
+  | { kind: 'range'; range: number; min?: number }
+  /** An ally anywhere, or within `range` steps (Baton Pass). */
+  | { kind: 'ally'; range?: number }
   | { kind: 'place'; grid: string; place: 'spikes' | 'web' | 'substitute' };
 
 export type Bonus =
@@ -66,12 +70,14 @@ export type Bonus =
   | { when: 'userHpAtMost'; hp: number; amount: number }
   | { when: 'userDamageAtLeast'; dmg: number; amount: number }
   | { when: 'singleTarget'; amount: number }
-  | { when: 'chance'; chance: number; amount: number };
+  | { when: 'chance'; chance: number; amount: number }
+  /** Fury Cutter: `amount` extra per round number. */
+  | { when: 'round'; amount: number };
 
 export type SpecialMove =
   | 'foulPlay' | 'powerTrip' | 'endeavor' | 'gyroBall' | 'allySwitch' | 'followMe'
   | 'ragePowder' | 'futureSight' | 'sunnyDay' | 'rainDance' | 'sandstorm' | 'hail'
-  | 'flowerShield';
+  | 'flowerShield' | 'lightScreen' | 'helpingHand' | 'afterYou' | 'transform' | 'batonPass' | 'taunt' | 'metronome';
 
 export interface MoveFx {
   graze?: { chance: number; power: number; negateNear?: 'water' | 'ice' };
@@ -114,11 +120,23 @@ export interface MoveFx {
   selfAndAdjAlliesStages?: Partial<Stages>;
   grassImmune?: boolean;
   special?: SpecialMove;
+  /** Gigaton Hammer: usable only in even-numbered rounds. */
+  evenRoundsOnly?: boolean;
+  /** Fake Out: can't be used again until the user ends an activation this many steps from every opponent. */
+  lockUntilFar?: number;
+  /** Mortal Spin: destroys spikes and webs in the zone. */
+  clearHazards?: boolean;
+  /** Floral Healing: heals this much instead of `heal` for targets on bonus terrain (berry bush, flowers). */
+  healOnBonusTerrain?: number;
+  /** A card with only one move fills its second slot with a move that can never be used. */
+  none?: boolean;
 }
 
 export interface MoveDef {
   name: string;
   type: PType | null;
+  /** A second type the move carries at the same time (Flying Press: Fighting and Flying). */
+  extraType?: PType;
   /** Printed power; null for status moves and variable-power moves. */
   power: number | null;
   powerLabel?: string;
@@ -193,6 +211,13 @@ export interface Unit {
   turn: TurnFlags;
   activated: boolean;
   followMe: null | { kind: 'followMe' | 'ragePowder'; duringTurnOf: Side };
+  /** Moves on cooldown (Fake Out) until the user ends an activation far enough from opponents. */
+  locked: string[];
+  /** Extra damage on this unit's attacks until its side's turn ends (Helping Hand, Nobunaga). */
+  dmgBonus: number;
+  /** Nobunaga's special: extra movement this turn and opponents' defense boosts ignored. */
+  movBonus: number;
+  ignoreDefBoosts: boolean;
 }
 
 export interface Hazard {
@@ -210,10 +235,20 @@ export interface ActiveActivation {
   undoable: boolean;
   postMove: number;
   movedThisActivation: boolean;
+  /** Triage: walked past the normal allowance, so the action must be a healing move. */
+  mustHeal?: boolean;
 }
 
 export type Pending =
   | { kind: 'emergencyExit'; side: Side; unitId: string; options: string[] }
+  /** Imposter: copy the stat changes of one of these adjacent Pokémon (or decline). */
+  | { kind: 'imposter'; side: Side; unitId: string; options: string[] }
+  /** After You: the unit may move again, to one of these tiles (posKey), or stay. */
+  | { kind: 'afterYou'; side: Side; unitId: string; options: string[] }
+  /** Metronome: one of the drawn card's moves and how to aim it ("index:dir", "index:@unitId" or "index"). */
+  | { kind: 'metronome'; side: Side; unitId: string; cardId: string; options: string[] }
+  /** Dancer: copy another Pokémon's dance move, aimed one of these ways. */
+  | { kind: 'dancer'; side: Side; unitId: string; source: { cardId: string; moveIndex: 0 | 1 }; options: Dir[] }
   | {
       kind: 'liquidVoice';
       side: Side;
@@ -232,6 +267,16 @@ export interface LogEntry {
 
 export type Phase = 'draft' | 'placement' | 'battle' | 'over';
 
+/** Trainer mode: four trainers are offered after the draft; the Attacker picks one, then the Defender. */
+export interface TrainerState {
+  pool: string[];
+  picks: Record<Side, string | null>;
+  /** Each trainer's Special Move can be used once per game. */
+  used: Record<Side, boolean>;
+  /** A special in effect for the rest of `side`'s current turn. */
+  effect: { side: Side; kind: 'sureHit' | 'rally' | 'push2' } | null;
+}
+
 export interface GameState {
   version: 1;
   mapId: string;
@@ -248,6 +293,10 @@ export interface GameState {
   substitute: { pos: Pos; ownerId: string } | null;
   /** Pending Future Sights; each strikes around its user at the start of the user's next turn. */
   futureSight: { userId: string; side: Side }[];
+  /** Taunt: the side whose current or next turn is taunted. */
+  taunted: Side | null;
+  /** Trainer mode (null when played without trainers). */
+  trainers: TrainerState | null;
   active: ActiveActivation | null;
   pending: Pending[];
   winner: Side | null;
@@ -264,12 +313,15 @@ export type Action =
   | { type: 'place'; unitId: string; pos: Pos }
   | { type: 'move'; unitId: string; to: Pos }
   | { type: 'undoMove'; unitId: string }
-  | { type: 'useMove'; unitId: string; moveIndex: 0 | 1; dir?: Dir; targetId?: string }
+  /** `copy`: Transform uses this move of a Pokémon on the field. */
+  | { type: 'useMove'; unitId: string; moveIndex: 0 | 1; dir?: Dir; targetId?: string; copy?: { unitId: string; moveIndex: 0 | 1 } }
   | { type: 'trebuchet'; unitId: string; targetId: string }
   | { type: 'wait'; unitId: string }
   | { type: 'postMove'; unitId: string; to: Pos }
   | { type: 'skipPostMove'; unitId: string }
   | { type: 'endTurn' }
+  /** The side's trainer Special Move (Nobunaga's names the Pokémon it boosts). */
+  | { type: 'trainerSpecial'; unitId?: string }
   | { type: 'choose'; option: string | null }
   | { type: 'concede'; side: Side };
 
@@ -280,6 +332,8 @@ export type GameEvent =
   | { t: 'heal'; unitId: string; amount: number }
   | { t: 'faint'; unitId: string }
   | { t: 'miss'; unitId: string }
+  | { t: 'status'; unitId: string; status: StatusId | 'confused' | 'flinched' }
+  | { t: 'stage'; unitId: string; stat: StatId; delta: number }
   | { t: 'text'; text: string };
 
 export interface Rng {

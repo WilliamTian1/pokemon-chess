@@ -1,16 +1,19 @@
 import { CARDS, DRAFTABLE, getCard } from './data/cards';
 import { DEFAULT_MAP_ID, getMap } from './data/maps';
+import { TRAINER_LIST, TRAINER_POOL_SIZE, getTrainer } from './data/trainers';
 import {
-  canTargetFrom, emergencyExitOptions, executeMove, followMeUsers, isSupportOnly, liquidVoiceCopy, targeting, trebuchetAttack,
+  UNCOPYABLE, afterYouBudget, aimOptions, canTargetFrom, dancerOptions, emergencyExitOptions, executeMove, followMeUsers,
+  isHealingMove, isSupportOnly, liquidVoiceCopy, moveOffline, parseAim, targeting, trebuchetAttack, weatherProof,
 } from './moves';
 import {
-  type Ctx, RuleError, applyStage, checkWin, cureStatus, dealDamage, emit, endGame, enterTile, heal, log, nameOf,
+  type Ctx, RuleError, applyStage, checkWin, cureStatus, dealDamage, emit, endGame, enterTile, heal, log, nameOf, resetStages,
 } from './mutate';
 import {
-  abilityOf, adjacentToType, alliesOf, cardOf, effectiveMov, enemiesOf, getUnit, hasType, hazardAt, isFlier,
-  isTrebuchet, liveUnits, moveOf, onBoard, reachable, terrainAt, terrainBonus, unitAt, withAbility,
+  abilityOf, adjacentToType, adjacentUnits, alliesOf, cardOf, effectiveMov, enemiesOf, getUnit, hasType, hazardAt, isFlier,
+  isTrebuchet, liveUnits, moveOf, onBoard, reachable, type ReachInfo, terrainAt, terrainBonus, terrainMult, trainerOf, turnEffect, unitAt,
+  withAbility,
 } from './query';
-import type { Action, ActiveActivation, Dir, GameEvent, GameState, Pos, Rng, Side, Unit } from './types';
+import type { Action, ActiveActivation, Dir, GameEvent, GameState, MoveDef, Pos, Rng, Side, Unit } from './types';
 import { SIDE_NAME, otherSide } from './types';
 import { cheb, posKey, samePos, steps } from './util';
 
@@ -44,22 +47,43 @@ export function randomLegendPool(rng: Rng): string[] {
   return shuffled(DRAFTABLE.filter((c) => c.legendary).map((c) => c.id), rng).slice(0, LEGEND_POOL_SIZE);
 }
 
+/** Pokémon picks per side (the trainer pick comes after them). */
+export const TEAM_SIZE = 4;
+
+/** Pick number `index` (0-based, both sides) is a trainer pick: the two picks after the eight Pokémon. */
+export const isTrainerPick = (s: GameState, index = s.draft.index): boolean => !!s.trainers && index >= 2 * TEAM_SIZE;
+
 /**
  * Whether pick number `index` (0-based, both sides) is a legendary pick. Without legendaries (an empty
  * legendary pool) all eight picks come from the normal pool.
  */
 export const isLegendPick = (s: GameState, index = s.draft.index): boolean =>
-  s.draft.legendPool.length > 0 && index >= 2 * NORMAL_PICKS;
+  s.draft.legendPool.length > 0 && index >= 2 * NORMAL_PICKS && index < 2 * TEAM_SIZE;
 
-/** Card ids the side on the clock may draft right now. */
+/** Card (or trainer) ids the side on the clock may draft right now. */
 export function draftOptions(s: GameState): string[] {
   if (s.phase !== 'draft') return [];
+  if (isTrainerPick(s)) {
+    const t = s.trainers!;
+    return t.pool.filter((id) => t.picks.A !== id && t.picks.D !== id);
+  }
   const taken = new Set([...s.draft.picks.A, ...s.draft.picks.D]);
   return (isLegendPick(s) ? s.draft.legendPool : s.draft.pool).filter((id) => !taken.has(id));
 }
 
-/** A new match. The draft pools are drawn from `rng` unless given; `legendaries: false` drafts without them. */
-export function newGame(opts: { rng: Rng; mapId?: string; pool?: string[]; legendPool?: string[]; legendaries?: boolean }): GameState {
+/** `TRAINER_POOL_SIZE` distinct trainers, chosen uniformly at random. */
+export function randomTrainerPool(rng: Rng): string[] {
+  return shuffled(TRAINER_LIST.map((t) => t.id), rng).slice(0, TRAINER_POOL_SIZE);
+}
+
+/**
+ * A new match. The draft pools are drawn from `rng` unless given; `legendaries: false` drafts without
+ * them, and `trainers: true` adds a trainer pick for each side after the draft.
+ */
+export function newGame(opts: {
+  rng: Rng; mapId?: string; pool?: string[]; legendPool?: string[]; legendaries?: boolean; trainers?: boolean; trainerPool?: string[];
+}): GameState {
+  const trainers = !!opts.trainers || !!opts.trainerPool;
   return {
     version: 1,
     mapId: opts.mapId ?? DEFAULT_MAP_ID,
@@ -68,7 +92,7 @@ export function newGame(opts: { rng: Rng; mapId?: string; pool?: string[]; legen
     maxRounds: MAX_ROUNDS,
     side: 'A',
     draft: {
-      order: [...ALTERNATE], index: 0, picks: { A: [], D: [] },
+      order: trainers ? [...ALTERNATE, 'A', 'D'] : [...ALTERNATE], index: 0, picks: { A: [], D: [] },
       pool: opts.pool ?? randomPool(opts.rng, opts.legendaries === false ? NO_LEGEND_POOL_SIZE : DRAFT_POOL_SIZE),
       legendPool: opts.legendPool ?? (opts.legendaries === false ? [] : randomLegendPool(opts.rng)),
     },
@@ -77,6 +101,10 @@ export function newGame(opts: { rng: Rng; mapId?: string; pool?: string[]; legen
     hazards: [],
     substitute: null,
     futureSight: [],
+    taunted: null,
+    trainers: trainers
+      ? { pool: opts.trainerPool ?? randomTrainerPool(opts.rng), picks: { A: null, D: null }, used: { A: false, D: false }, effect: null }
+      : null,
     active: null,
     pending: [],
     winner: null,
@@ -94,6 +122,7 @@ function makeUnit(id: string, side: Side, cardId: string): Unit {
     stages: { atk: 0, def: 0, mov: 0 }, status: null, toxicN: 0, confused: false, flinched: false,
     sturdyBroken: false, nextTurn: { noMove: false, noAct: false },
     turn: { noMove: false, noAct: false, reasons: [] }, activated: false, followMe: null,
+    locked: [], dmgBonus: 0, movBonus: 0, ignoreDefBoosts: false,
   };
 }
 
@@ -110,11 +139,13 @@ export function cloneState(s: GameState, shareLog = false): GameState {
       nextTurn: { ...u.nextTurn },
       turn: { noMove: u.turn.noMove, noAct: u.turn.noAct, reasons: [...u.turn.reasons] },
       followMe: u.followMe && { ...u.followMe },
+      locked: [...u.locked],
     })),
     hazards: s.hazards.map((h) => ({ kind: h.kind, pos: { ...h.pos } })),
     substitute: s.substitute && { pos: { ...s.substitute.pos }, ownerId: s.substitute.ownerId },
     futureSight: s.futureSight.map((f) => ({ ...f })),
     active: s.active && { ...s.active, from: { ...s.active.from } },
+    trainers: s.trainers && { pool: s.trainers.pool, picks: { ...s.trainers.picks }, used: { ...s.trainers.used }, effect: s.trainers.effect && { ...s.trainers.effect } },
     pending: s.pending.map((p) => ({ ...p, options: [...p.options] }) as typeof p),
     log: shareLog ? s.log : [...s.log],
   };
@@ -178,6 +209,7 @@ export function applyInPlace(ctx: Ctx, action: Action): void {
     case 'postMove': return postMove(ctx, action.unitId, action.to);
     case 'skipPostMove': return skipPostMove(ctx, action.unitId);
     case 'endTurn': return endTurn(ctx);
+    case 'trainerSpecial': return trainerSpecial(ctx, action.unitId);
     case 'choose': throw new RuleError('There is nothing to choose.');
   }
 }
@@ -188,6 +220,15 @@ function draftPick(ctx: Ctx, cardId: string): void {
   const s = ctx.s;
   if (s.phase !== 'draft') throw new RuleError('Not drafting.');
   const side = s.draft.order[s.draft.index];
+  if (isTrainerPick(s)) {
+    if (!draftOptions(s).includes(cardId)) throw new RuleError('Choose one of the trainers on offer.');
+    s.trainers!.picks[side] = cardId;
+    log(ctx, `${SIDE_NAME[side]} chose ${getTrainer(cardId).name} as their trainer.`, 'info', side);
+    s.draft.index += 1;
+    if (s.draft.index >= s.draft.order.length) finishDraft(ctx);
+    else s.side = s.draft.order[s.draft.index];
+    return;
+  }
   const c = CARDS[cardId];
   if (!c || !c.draftable) throw new RuleError('That card cannot be drafted.');
   if (s.draft.picks.A.includes(cardId) || s.draft.picks.D.includes(cardId)) throw new RuleError(`${c.name} was already drafted.`);
@@ -246,14 +287,14 @@ function startBattle(ctx: Ctx): void {
     log(ctx, `${nameOf(src)}'s Drizzle makes it rain.`, 'info', src.side);
     for (const x of all) {
       if (hasType(x, 'Water')) applyStage(ctx, x, 'atk', 1, { source: src, label: 'Drizzle' });
-      if (hasType(x, 'Fire')) applyStage(ctx, x, 'atk', -1, { source: src, label: 'Drizzle' });
+      if (hasType(x, 'Fire') && !weatherProof(s, x)) applyStage(ctx, x, 'atk', -1, { source: src, label: 'Drizzle' });
     }
   }
   for (const src of withAbility(s, 'drought')) {
     log(ctx, `${nameOf(src)}'s Drought intensifies the sun.`, 'info', src.side);
     for (const x of all) {
       if (hasType(x, 'Fire')) applyStage(ctx, x, 'atk', 1, { source: src, label: 'Drought' });
-      if (hasType(x, 'Water')) applyStage(ctx, x, 'atk', -1, { source: src, label: 'Drought' });
+      if (hasType(x, 'Water') && !weatherProof(s, x)) applyStage(ctx, x, 'atk', -1, { source: src, label: 'Drought' });
     }
   }
   startTurn(ctx, 'A');
@@ -322,13 +363,56 @@ function startTurn(ctx: Ctx, side: Side): void {
       flags.reasons.push('Truant (even round)');
     }
     u.turn = flags;
+    if (abilityOf(u) === 'speedBoost' && s.round % 2 === 0) applyStage(ctx, u, 'mov', 1, { source: u, label: 'Speed Boost' });
   }
 }
 
 /** Movement left for a fresh activation (0 when the unit can't move this turn). */
 export function movementAllowance(s: GameState, u: Unit): number {
   if (u.turn.noMove || u.status === 'slp' || u.status === 'frz') return 0;
-  return effectiveMov(s, u);
+  return effectiveMov(s, u) + u.movBonus + (turnEffect(s, u.side) === 'rally' ? 1 : 0);
+}
+
+/** Triage: its holder may walk this many extra tiles to a tile where it then uses a healing move. */
+export const TRIAGE_EXTRA = 3;
+
+/** Extra tiles a Triage Pokémon can reach (beyond its allowance) from which it could heal someone. */
+export function triageTiles(s: GameState, u: Unit, budget: number): Map<string, ReachInfo> {
+  const out = new Map<string, ReachInfo>();
+  if (abilityOf(u) !== 'triage' || budget <= 0 || !canActNow(u) || !u.pos) return out;
+  const heals = cardOf(u).moves.filter(isHealingMove);
+  if (!heals.length) return out;
+  const near = reachable(s, u, budget);
+  for (const [k, r] of reachable(s, u, budget + TRIAGE_EXTRA)) {
+    if (near.has(k)) continue;
+    const from = { ...s, units: s.units.map((x) => (x.id === u.id ? { ...x, pos: r.pos } : x)) };
+    const at = from.units.find((x) => x.id === u.id)!;
+    if (heals.some((m) => aimOptions(from, at, m).length > 0)) out.set(k, r);
+  }
+  return out;
+}
+
+/** Whether `u` could hit an opponent with a damaging move from where it stands (Taunt). */
+export function canAttackAnOpponent(s: GameState, u: Unit): boolean {
+  if (!u.pos || !canActNow(u)) return false;
+  if (isTrebuchet(s, u.pos) && enemiesOf(s, u).length > 0) return true;
+  return ([0, 1] as const).some((i) => {
+    const m = moveOf(u, i);
+    if (m.kind !== 'attack' || moveBlocked(s, u, m)) return false;
+    return aimOptions(s, u, m).some((a) => {
+      const tg = targeting(s, u, m, parseAim(a));
+      return tg.targets.some((t) => t.side !== u.side);
+    });
+  });
+}
+
+/** Why `move` can't be used by `u` this turn regardless of aim (cooldown, round parity, Taunt), if so. */
+export function moveBlocked(s: GameState, u: Unit, move: MoveDef): string | null {
+  const offline = moveOffline(s, u, move);
+  if (offline) return offline;
+  if (s.taunted === u.side && move.kind === 'status' && canAttackAnOpponent(s, u)) return 'Taunted: must use a damaging move';
+  if (s.active?.unitId === u.id && s.active.mustHeal && !isHealingMove(move)) return 'Triage: must use a healing move';
+  return null;
 }
 
 export function canActNow(u: Unit): boolean {
@@ -410,7 +494,8 @@ function doMove(ctx: Ctx, unitId: string, to: Pos): void {
   if (u.activated) throw new RuleError(`${cardOf(u).name} has already been activated this turn.`);
   const budget = movementAllowance(s, u);
   if (budget <= 0) throw new RuleError(`${cardOf(u).name} can't move this turn.`);
-  const info = reachable(s, u, budget).get(posKey(to));
+  const triage = triageTiles(s, u, budget).get(posKey(to));
+  const info = reachable(s, u, budget).get(posKey(to)) ?? triage;
   if (!info) throw new RuleError('That tile is out of reach.');
   const fmTiles = followMeTiles(s, u, budget);
   if (fmTiles && !fmTiles.has(posKey(to))) {
@@ -418,7 +503,7 @@ function doMove(ctx: Ctx, unitId: string, to: Pos): void {
   }
   s.active = {
     unitId, stage: 'moved', from: { ...u.pos! }, moveCost: info.cost, movBudget: budget,
-    undoable: info.hazards === 0, postMove: 0, movedThisActivation: true,
+    undoable: info.hazards === 0, postMove: 0, movedThisActivation: true, mustHeal: !!triage,
   };
   walkPath(ctx, u, info.path);
   if (u.fainted) {
@@ -445,7 +530,21 @@ function useMove(ctx: Ctx, a: Extract<Action, { type: 'useMove' }>): void {
   const act = activationFor(s, u);
   if (!canActNow(u)) throw new RuleError(`${cardOf(u).name} can't act this turn (${u.turn.reasons.join(', ') || u.status}).`);
   if (a.moveIndex !== 0 && a.moveIndex !== 1) throw new RuleError('Unknown move.');
-  const move = moveOf(u, a.moveIndex);
+  const own = moveOf(u, a.moveIndex);
+  const ownBlock = moveBlocked(s, u, own);
+  if (ownBlock) throw new RuleError(`${own.name}: ${ownBlock}.`);
+  let move = own;
+  if (own.fx.special === 'transform') {
+    // Transform: use a move of any other Pokémon on the field as Ditto's own.
+    const src = a.copy ? s.units.find((x) => x.id === a.copy!.unitId) : undefined;
+    if (!src || !onBoard(src) || src.id === u.id || (a.copy!.moveIndex !== 0 && a.copy!.moveIndex !== 1)) {
+      throw new RuleError('Transform: choose a move of another Pokémon on the field.');
+    }
+    move = moveOf(src, a.copy!.moveIndex);
+    if (UNCOPYABLE(move)) throw new RuleError(`Transform can't copy ${move.name}.`);
+    const block = moveBlocked(s, u, move);
+    if (block && !move.fx.none) throw new RuleError(`${move.name}: ${block}.`);
+  }
   const tg = targeting(s, u, move, { dir: a.dir, targetId: a.targetId });
   if (!tg.ok) throw new RuleError(tg.reason ?? 'Invalid target.');
   const hitsPokemon = (move.target.kind === 'grid' || move.target.kind === 'range') && !isSupportOnly(move);
@@ -459,7 +558,9 @@ function useMove(ctx: Ctx, a: Extract<Action, { type: 'useMove' }>): void {
     afterAction(ctx, u, 0, 0);
     return;
   }
-  const res = executeMove(ctx, u, move, { dir: a.dir, targetId: a.targetId, moveIndex: a.moveIndex });
+  const copied = move !== own;
+  if (copied) log(ctx, `${nameOf(u)} transformed to copy ${move.name}!`, 'info', u.side);
+  const res = executeMove(ctx, u, move, { dir: a.dir, targetId: a.targetId, moveIndex: copied ? undefined : a.moveIndex, copied: copied ? 'Transform' : undefined });
   afterAction(ctx, u, move.fx.postMove ?? 0, res.kos);
 }
 
@@ -468,6 +569,7 @@ function useTrebuchet(ctx: Ctx, a: Extract<Action, { type: 'trebuchet' }>): void
   const u = controllable(s, a.unitId);
   const act = activationFor(s, u);
   if (!canActNow(u)) throw new RuleError(`${cardOf(u).name} can't act this turn.`);
+  if (act.mustHeal) throw new RuleError('Triage: after walking extra tiles it must use a healing move.');
   if (!isTrebuchet(s, u.pos!)) throw new RuleError('Stand on the trebuchet to fire it.');
   const t = getUnit(s, a.targetId);
   if (!onBoard(t) || t.id === u.id) throw new RuleError('Choose a Pokémon to fire at.');
@@ -513,6 +615,7 @@ function wait(ctx: Ctx, unitId: string): void {
   const s = ctx.s;
   const u = controllable(s, unitId);
   const act = activationFor(s, u);
+  if (act.mustHeal && canActNow(u)) throw new RuleError('Triage: after walking extra tiles it must use a healing move (or undo the move).');
   enforceFollowMe(s, u, null);
   s.active = act;
   finishActivation(ctx, u);
@@ -575,11 +678,25 @@ function endOfActivation(ctx: Ctx, u: Unit, moved: boolean): void {
   if (ab === 'regenerator' && !enemies.some((e) => steps(e.pos!, u.pos!) <= 3)) heal(ctx, u, 30, 'Regenerator');
   if (ab === 'naturalCure' && u.status && enemies.every((e) => steps(e.pos!, u.pos!) > 3)) cureStatus(ctx, u, 'Natural Cure');
   if (ab === 'hospitality') for (const a of alliesOf(s, u)) if (cheb(a.pos!, u.pos!) === 1) heal(ctx, a, 30, 'Hospitality');
-  if (onBoard(u) && terrainBonus(s, u) === 'flower') heal(ctx, u, 30, 'flowers');
+  if (onBoard(u) && terrainBonus(s, u) === 'flower') heal(ctx, u, 30 * terrainMult(u), 'flowers');
   if (u.confused) {
     u.confused = false;
     log(ctx, `${nameOf(u)} snapped out of its confusion.`, 'info', u.side);
   }
+  if (onBoard(u) && u.locked.length && enemies.every((e) => steps(e.pos!, u.pos!) >= 4)) {
+    log(ctx, `${nameOf(u)} is far from its opponents: ${u.locked.join(', ')} can be used again.`, 'good', u.side);
+    u.locked = [];
+  }
+  if (onBoard(u) && ab === 'imposter') {
+    const options = imposterOptions(s, u);
+    if (options.length) s.pending.push({ kind: 'imposter', side: u.side, unitId: u.id, options });
+  }
+}
+
+/** Imposter: adjacent Pokémon whose stat changes differ from the holder's. */
+export function imposterOptions(s: GameState, u: Unit): string[] {
+  const key = (x: Unit) => `${x.stages.atk},${x.stages.def},${x.stages.mov}`;
+  return adjacentUnits(s, u).filter((x) => key(x) !== key(u)).map((x) => x.id);
 }
 
 /** Units that must still attack a Follow Me user before the turn can end. */
@@ -607,6 +724,15 @@ function endTurn(ctx: Ctx): void {
     finishActivation(ctx, u);
     if (s.phase !== 'battle') return;
   }
+  if (s.pending.length) return; // e.g. Imposter at the end of the last activation: choose first, then end the turn
+  for (const u of s.units) {
+    if (u.side !== s.side) continue;
+    u.dmgBonus = 0;
+    u.movBonus = 0;
+    u.ignoreDefBoosts = false;
+  }
+  if (s.trainers?.effect?.side === s.side) s.trainers.effect = null;
+  if (s.taunted === s.side) s.taunted = null;
   if (s.side === 'D') {
     if (s.round >= s.maxRounds) {
       endGame(ctx, 'D', `The Defender survived all ${s.maxRounds} rounds.`);
@@ -622,43 +748,159 @@ function endTurn(ctx: Ctx): void {
 function resolvePending(ctx: Ctx, option: string | null): void {
   const s = ctx.s;
   const p = s.pending[0];
-  if (p.kind === 'emergencyExit') {
-    const g = getUnit(s, p.unitId);
-    const opts = emergencyExitOptions(s, g);
-    if (!onBoard(g) || opts.length === 0) {
+  switch (p.kind) {
+    case 'emergencyExit': {
+      const g = getUnit(s, p.unitId);
+      const opts = emergencyExitOptions(s, g);
+      if (!onBoard(g) || opts.length === 0) {
+        s.pending.shift();
+        return;
+      }
+      if (option === null || !opts.includes(option)) throw new RuleError('Choose an ally to switch places with.');
+      const ally = getUnit(s, option);
+      const a = { ...g.pos! };
+      const b = { ...ally.pos! };
       s.pending.shift();
+      (g as Unit).pos = null;
+      enterTile(ctx, ally, a);
+      if (!g.fainted) enterTile(ctx, g, b);
+      emit(ctx, { t: 'move', unitId: g.id, path: [b] });
+      emit(ctx, { t: 'move', unitId: ally.id, path: [a] });
+      log(ctx, `${nameOf(g)} escaped by switching places with ${nameOf(ally)}!`, 'info', g.side);
+      checkWin(ctx);
       return;
     }
-    if (option === null || !opts.includes(option)) throw new RuleError('Choose an ally to switch places with.');
-    const ally = getUnit(s, option);
-    const a = { ...g.pos! };
-    const b = { ...ally.pos! };
-    s.pending.shift();
-    (g as Unit).pos = null;
-    enterTile(ctx, ally, a);
-    if (!g.fainted) enterTile(ctx, g, b);
-    emit(ctx, { t: 'move', unitId: g.id, path: [b] });
-    emit(ctx, { t: 'move', unitId: ally.id, path: [a] });
-    log(ctx, `${nameOf(g)} escaped by switching places with ${nameOf(ally)}!`, 'info', g.side);
-    checkWin(ctx);
-    return;
+    case 'imposter': {
+      if (option !== null && !p.options.includes(option)) throw new RuleError('Choose an adjacent Pokémon to copy, or decline.');
+      s.pending.shift();
+      const u = getUnit(s, p.unitId);
+      if (option === null || !onBoard(u)) return;
+      const src = getUnit(s, option);
+      u.stages = { ...src.stages };
+      log(ctx, `${nameOf(u)} copied ${nameOf(src)}'s stat changes (Imposter).`, 'info', u.side);
+      return;
+    }
+    case 'afterYou': {
+      if (option !== null && !p.options.includes(option)) throw new RuleError('Choose one of the highlighted tiles, or stay.');
+      s.pending.shift();
+      const u = getUnit(s, p.unitId);
+      if (option === null || !onBoard(u)) return;
+      const info = reachable(s, u, afterYouBudget(s, u)).get(option);
+      if (!info) {
+        log(ctx, `${nameOf(u)} can no longer move there.`, 'info', u.side);
+        return;
+      }
+      walkPath(ctx, u, info.path);
+      checkWin(ctx);
+      return;
+    }
+    case 'metronome': {
+      if (option === null || !p.options.includes(option)) throw new RuleError('Choose one of the drawn moves.');
+      s.pending.shift();
+      const u = getUnit(s, p.unitId);
+      if (!onBoard(u)) return;
+      const cut = option.indexOf(':');
+      const move = getCard(p.cardId).moves[Number(option.slice(0, cut)) as 0 | 1];
+      const aim = parseAim(option.slice(cut + 1));
+      if (!targeting(s, u, move, aim).ok) {
+        log(ctx, `${nameOf(u)}'s ${move.name} has nothing left to hit.`, 'info', u.side);
+        return;
+      }
+      executeMove(ctx, u, move, { ...aim, copied: 'Metronome' });
+      checkWin(ctx);
+      return;
+    }
+    case 'dancer': {
+      if (option === null || !p.options.includes(option as Dir)) throw new RuleError('Choose which way to aim the copied dance.');
+      s.pending.shift();
+      const d = getUnit(s, p.unitId);
+      const move = getCard(p.source.cardId).moves[p.source.moveIndex];
+      if (!dancerOptions(s, d, move).includes(option as Dir)) {
+        log(ctx, `${nameOf(d)}'s copied dance has nothing left to hit.`, 'info', d.side);
+        return;
+      }
+      executeMove(ctx, d, move, { dir: option as Dir, copied: 'Dancer', noEcho: true });
+      checkWin(ctx);
+      return;
+    }
+    case 'liquidVoice': {
+      if (option !== null && !p.options.includes(option as Dir)) throw new RuleError('Choose a direction to aim the copied move.');
+      s.pending.shift();
+      const prim = getUnit(s, p.unitId);
+      if (option === null) {
+        log(ctx, `${nameOf(prim)} let the chance to copy pass.`, 'info', prim.side);
+        return;
+      }
+      if (!onBoard(prim)) return;
+      const copy = liquidVoiceCopy(getCard(p.source.cardId).moves[p.source.moveIndex]);
+      const dir = option as Dir;
+      if (!targeting(s, prim, copy, { dir }).ok) {
+        log(ctx, `${nameOf(prim)}'s copied move has nothing left to hit.`, 'info', prim.side);
+        return;
+      }
+      executeMove(ctx, prim, copy, { dir, moveType: 'Water', copied: 'Liquid Voice copy', noEcho: true });
+      checkWin(ctx);
+    }
   }
-  // Liquid Voice
-  if (option !== null && !p.options.includes(option as Dir)) throw new RuleError('Choose a direction to aim the copied move.');
-  s.pending.shift();
-  const prim = getUnit(s, p.unitId);
-  if (option === null) {
-    log(ctx, `${nameOf(prim)} let the chance to copy pass.`, 'info', prim.side);
-    return;
+}
+
+// ---------------------------------------------------------------- trainers
+
+/** Whether `side` can use its trainer's Special Move right now (trainer mode, once per game, between activations). */
+export function canUseSpecial(s: GameState, side: Side): boolean {
+  return s.phase === 'battle' && s.side === side && !!s.trainers && !!trainerOf(s, side) && !s.trainers.used[side]
+    && !s.active && !s.pending.length;
+}
+
+/** Pokémon Nobunaga's special can boost: the side's Pokémon that haven't been activated this turn. */
+export function specialTargets(s: GameState, side: Side): string[] {
+  return liveUnits(s, side).filter((u) => !u.activated).map((u) => u.id);
+}
+
+function trainerSpecial(ctx: Ctx, unitId?: string): void {
+  const s = ctx.s;
+  if (s.phase !== 'battle') throw new RuleError('The battle has not started.');
+  const side = s.side;
+  const id = trainerOf(s, side);
+  if (!s.trainers || !id) throw new RuleError('There are no trainers in this match.');
+  if (s.trainers.used[side]) throw new RuleError(`${getTrainer(id).name}'s Special Move has already been used.`);
+  if (s.active) throw new RuleError('Finish the current Pokémon’s activation first.');
+  const name = getTrainer(id).name;
+  let boosted: Unit | null = null;
+  if (id === 'nobunaga') {
+    boosted = (unitId && s.units.find((x) => x.id === unitId)) || null;
+    if (!boosted || !specialTargets(s, side).includes(boosted.id)) throw new RuleError(`${name}: choose one of your Pokémon that hasn't been activated this turn.`);
   }
-  if (!onBoard(prim)) return;
-  const copy = liquidVoiceCopy(getCard(p.source.cardId).moves[p.source.moveIndex]);
-  const dir = option as Dir;
-  if (!targeting(s, prim, copy, { dir }).ok) {
-    log(ctx, `${nameOf(prim)}'s copied move has nothing left to hit.`, 'info', prim.side);
-    return;
+  log(ctx, `${SIDE_NAME[side]}'s trainer ${name} used their Special Move!`, 'system', side);
+  s.trainers.used[side] = true;
+  switch (id) {
+    case 'mitsuhide':
+      for (const x of liveUnits(s)) resetStages(ctx, x);
+      s.trainers.effect = { side, kind: 'sureHit' };
+      log(ctx, 'Every move hits for the rest of this turn.', 'info', side);
+      break;
+    case 'n':
+      for (const x of liveUnits(s, side)) {
+        heal(ctx, x, 50, name);
+        cureStatus(ctx, x, name);
+      }
+      break;
+    case 'nobunaga':
+      boosted!.movBonus += 2;
+      boosted!.dmgBonus += 30;
+      boosted!.ignoreDefBoosts = true;
+      log(ctx, `${nameOf(boosted!)} can move 2 extra tiles, deals 30 extra damage and ignores defense boosts this turn.`, 'good', side);
+      break;
+    case 'red':
+    case 'blue':
+      s.trainers.effect = { side, kind: 'rally' };
+      log(ctx, `For the rest of this turn the team moves 1 extra tile and deals 20 extra damage per fainted teammate.`, 'good', side);
+      break;
+    case 'lance':
+      s.trainers.effect = { side, kind: 'push2' };
+      log(ctx, 'For the rest of this turn every attack pushes its target back two tiles.', 'good', side);
+      break;
   }
-  executeMove(ctx, prim, copy, { dir, moveType: 'Water', copied: true });
   checkWin(ctx);
 }
 

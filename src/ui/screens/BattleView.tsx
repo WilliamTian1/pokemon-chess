@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  type Action, DIRS, DIR_VEC, type Dir, type GameState, type Pos, type Side, type TargetPreview, type Unit,
-  addPos, bestHit, cardOf, dangerZone, decider, dirToward, followMeBlockers, followMeUsers, getCard, getMap, inBounds, liveUnits,
-  markedTiles, moveOf, moveOptions, moveTargets, onBoard, otherSide, posKey, previewAction, selfEffectNotes, targeting, trebuchetOption,
-  unitAt, unitTurnInfo, waitBlock,
+  type Action, type CopyOption, DIRS, DIR_VEC, type Dir, type GameState, type MoveDef, type MoveOption, type Pos, type Side, type TargetPreview,
+  type Unit, addPos, bestHit, canUseSpecial, cardOf, dangerZone, decider, dirToward, followMeBlockers, followMeUsers, getCard, getMap,
+  getTrainer, inBounds, liveUnits, markedTiles, moveOf, moveOptions, moveTargets, onBoard, otherSide, parseAim, posKey, previewAction,
+  selfEffectNotes, specialTargets, targeting, trainerOf, trebuchetOption, unitAt, unitTurnInfo, waitBlock,
 } from '../../engine';
 import { Art, HpBar, Modal, SIDE_TEXT, StatusBadge, TypeBadge } from '../components/bits';
 import { ARROW, Board, type BoardView, MOVE_RANGE, type Overlay, screenDir } from '../components/Board';
@@ -14,7 +14,15 @@ import { TeamCards } from '../components/TeamCards';
 import type { Controller } from '../controller';
 import { useBoxSize, usePortraitBoard, useTouch, useWideLayout } from '../hooks';
 
-type Aim = { kind: 'move'; index: 0 | 1 } | { kind: 'treb' };
+/** What's being aimed: a move (Transform: with the move it copies), the trebuchet, or Nobunaga's special. */
+type Aim = { kind: 'move'; index: 0 | 1; copy?: CopyOption } | { kind: 'treb' } | { kind: 'special' };
+
+/** The option being aimed: the move itself, or for Transform the move it copies (same slot). */
+function aimedOption(opts: MoveOption[], aim: Aim | null): MoveOption | undefined {
+  if (aim?.kind !== 'move') return undefined;
+  const c = aim.copy;
+  return c ? { moveIndex: aim.index, move: c.move, usable: true, aim: c.aim, dirs: c.dirs, units: c.units } : opts[aim.index];
+}
 
 export function BattleView({ ctl }: { ctl: Controller }) {
   const s = ctl.state;
@@ -91,6 +99,12 @@ export function BattleView({ ctl }: { ctl: Controller }) {
   const opts = useMemo(() => (controllable && selUnit ? moveOptions(s, selUnit) : []), [controllable, selUnit, s]);
   const treb = useMemo(() => (controllable && selUnit ? trebuchetOption(s, selUnit) : null), [controllable, selUnit, s]);
   const reach = useMemo(() => (controllable && selUnit && !aim ? moveTargets(s, selUnit) : new Map()), [controllable, selUnit, aim, s]);
+  const aimOpt = aimedOption(opts, aim);
+  /** Transform previews the borrowed move as the user's own. */
+  const copied: { move?: MoveDef } = aim?.kind === 'move' && aim.copy ? { move: aim.copy.move } : {};
+  const pending = s.pending[0];
+  const myPending = !!pending && ctl.mySides.includes(pending.side);
+  const afterYou = myPending && pending.kind === 'afterYou' ? pending : null;
 
   // ---------------------------------------------------------------- aim preview
   const preview = useMemo(() => {
@@ -118,7 +132,7 @@ export function BattleView({ ctl }: { ctl: Controller }) {
     }
     if (!aim) return out;
     if (aim.kind === 'move') {
-      const opt = opts[aim.index];
+      const opt = aimOpt;
       if (!opt) return out;
       if (opt.aim === 'dir') {
         out.arrows = DIRS.map((d) => ({ dir: d, pos: addPos(selUnit.pos!, DIR_VEC[d]), active: opt.dirs.some((x) => x.dir === d) }))
@@ -129,16 +143,18 @@ export function BattleView({ ctl }: { ctl: Controller }) {
           out.dash = d.tg.dashTo;
           const t = opt.move.target;
           if (t.kind === 'grid') out.knock = markedTiles(s, t.grid, 'R', selUnit.pos, d.dir);
-          if (opt.move.target.kind === 'grid') for (const p of previewAction(s, id, aim.index, { dir: d.dir })) out.previews.set(p.unitId, p);
+          if (opt.move.target.kind === 'grid') for (const p of previewAction(s, id, aim.index, { dir: d.dir, ...copied })) out.previews.set(p.unitId, p);
         }
       } else if (opt.aim === 'unit') {
         out.targetable = new Set(opt.units);
         if (aimTarget && opt.units.includes(aimTarget)) {
           const tu = s.units.find((u) => u.id === aimTarget)!;
           out.zone = [tu.pos!];
-          for (const p of previewAction(s, id, aim.index, { targetId: aimTarget })) out.previews.set(p.unitId, p);
+          for (const p of previewAction(s, id, aim.index, { targetId: aimTarget, ...copied })) out.previews.set(p.unitId, p);
         }
       }
+    } else if (aim.kind === 'special') {
+      out.targetable = new Set(specialTargets(s, s.side));
     } else if (treb?.usable) {
       out.targetable = new Set(treb.targets);
       if (aimTarget && treb.targets.includes(aimTarget)) {
@@ -146,7 +162,7 @@ export function BattleView({ ctl }: { ctl: Controller }) {
       }
     }
     return out;
-  }, [aim, aimDir, aimTarget, selUnit, opts, treb, s, hoverMove]);
+  }, [aim, aimDir, aimTarget, selUnit, opts, treb, s, hoverMove]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---------------------------------------------------------------- danger zone & matchups
   const dangerSide: Side = ctl.mySides.length === 1 ? otherSide(ctl.mySides[0]) : otherSide(s.side);
@@ -170,11 +186,12 @@ export function BattleView({ ctl }: { ctl: Controller }) {
     ctl.dispatch(a);
   };
 
-  const fireDir = (d: Dir) => aim?.kind === 'move' && selUnit && send({ type: 'useMove', unitId: selUnit.id, moveIndex: aim.index, dir: d });
+  const copyOf = (a: Aim) => (a.kind === 'move' && a.copy ? { copy: { unitId: a.copy.unitId, moveIndex: a.copy.moveIndex } } : {});
+  const fireDir = (d: Dir) => aim?.kind === 'move' && selUnit && send({ type: 'useMove', unitId: selUnit.id, moveIndex: aim.index, dir: d, ...copyOf(aim) });
   const fireAt = (targetId: string) => {
     if (!selUnit || !aim) return;
-    if (aim.kind === 'move') send({ type: 'useMove', unitId: selUnit.id, moveIndex: aim.index, targetId });
-    else send({ type: 'trebuchet', unitId: selUnit.id, targetId });
+    if (aim.kind === 'move') send({ type: 'useMove', unitId: selUnit.id, moveIndex: aim.index, targetId, ...copyOf(aim) });
+    else if (aim.kind === 'treb') send({ type: 'trebuchet', unitId: selUnit.id, targetId });
   };
 
   // ---------------------------------------------------------------- placement
@@ -190,9 +207,9 @@ export function BattleView({ ctl }: { ctl: Controller }) {
    * Which way to aim a direction move at tile `p`: straight at it when that covers it (or it's the
    * arrow tile), otherwise any direction whose zone covers it, so clicking a target always works.
    */
-  const aimDirFor = (index: 0 | 1, p: Pos): Dir | null => {
+  const aimDirFor = (p: Pos): Dir | null => {
     if (!selUnit?.pos) return null;
-    const dirs = opts[index]?.dirs ?? [];
+    const dirs = aimOpt?.dirs ?? [];
     const toward = dirToward(selUnit.pos, p);
     const straight = dirs.find((d) => d.dir === toward);
     const covers = (d: (typeof dirs)[number]) => d.tg.zone.some((z) => z.x === p.x && z.y === p.y);
@@ -201,9 +218,9 @@ export function BattleView({ ctl }: { ctl: Controller }) {
   };
 
   /** Why a move can't be aimed `dir` (null if it can): nothing in the zone, or Follow Me. */
-  const dirBlockReason = (index: 0 | 1, dir: Dir | null): string | null => {
-    if (!selUnit || !dir || opts[index]?.dirs.some((d) => d.dir === dir)) return null;
-    const tg = targeting(s, selUnit, opts[index].move, { dir });
+  const dirBlockReason = (dir: Dir | null): string | null => {
+    if (!selUnit || !dir || !aimOpt || aimOpt.dirs.some((d) => d.dir === dir)) return null;
+    const tg = targeting(s, selUnit, aimOpt.move, { dir });
     const decoys = followMeUsers(s, selUnit);
     if (tg.ok && decoys.length) return `Follow Me: ${cardOf(selUnit).name} must hit ${decoys.map((f) => cardOf(f).name).join(' / ')}, and that direction doesn't.`;
     return tg.reason ? `Can't aim that way: ${tg.reason[0].toLowerCase()}${tg.reason.slice(1)}.` : null;
@@ -211,6 +228,14 @@ export function BattleView({ ctl }: { ctl: Controller }) {
 
   const onTile = (p: Pos) => {
     const u = unitAt(s, p);
+    if (afterYou) {
+      if (afterYou.options.includes(posKey(p))) ctl.dispatch({ type: 'choose', option: posKey(p) });
+      return;
+    }
+    if (aim?.kind === 'special') {
+      if (u && specialTargets(s, s.side).includes(u.id)) send({ type: 'trainerSpecial', unitId: u.id });
+      return;
+    }
     if (placing) {
       if (myPlacement && placeUnit && freeSpawns.some((f) => f.x === p.x && f.y === p.y)) send({ type: 'place', unitId: placeUnit.id, pos: p });
       else if (u) setInspect(u.id);
@@ -218,10 +243,10 @@ export function BattleView({ ctl }: { ctl: Controller }) {
     }
     if (aim && selUnit?.pos) {
       if (u?.id === selUnit.id) return cancelAim();
-      if (aim.kind === 'move' && opts[aim.index]?.aim === 'dir') {
-        const d = aimDirFor(aim.index, p);
-        setAimBlocked(dirBlockReason(aim.index, d ?? dirToward(selUnit.pos, p)));
-        if (d && opts[aim.index].dirs.some((x) => x.dir === d)) {
+      if (aim.kind === 'move' && aimOpt?.aim === 'dir') {
+        const d = aimDirFor(p);
+        setAimBlocked(dirBlockReason(d ?? dirToward(selUnit.pos, p)));
+        if (d && aimOpt.dirs.some((x) => x.dir === d)) {
           if (touch && aimDir !== d) setAimDir(d);
           else fireDir(d);
         }
@@ -258,18 +283,18 @@ export function BattleView({ ctl }: { ctl: Controller }) {
     setHoverUnit(u?.id ?? null);
     setHoverTile(p);
     if (!p || touch || !aim || !selUnit?.pos) return;
-    if (aim.kind === 'move' && opts[aim.index]?.aim === 'dir') {
-      const d = aimDirFor(aim.index, p);
-      const ok = d && opts[aim.index].dirs.some((x) => x.dir === d);
+    if (aim.kind === 'move' && aimOpt?.aim === 'dir') {
+      const d = aimDirFor(p);
+      const ok = d && aimOpt.dirs.some((x) => x.dir === d);
       setAimDir(ok ? d : null);
-      setAimBlocked(ok ? null : dirBlockReason(aim.index, d ?? dirToward(selUnit.pos, p)));
+      setAimBlocked(ok ? null : dirBlockReason(d ?? dirToward(selUnit.pos, p)));
     } else if (u && preview.targetable?.has(u.id)) {
       setAimTarget(u.id);
     }
   };
 
   const overlay: Overlay = {
-    reach: !isPost && reach.size ? new Set(reach.keys()) : undefined,
+    reach: afterYou ? new Set(afterYou.options) : !isPost && reach.size ? new Set(reach.keys()) : undefined,
     post: isPost && reach.size ? new Set(reach.keys()) : undefined,
     zone: preview.zone,
     dash: preview.dash,
@@ -306,6 +331,7 @@ export function BattleView({ ctl }: { ctl: Controller }) {
         <aside key={side} className={`min-w-0 wide:h-full wide:min-h-0 ${i === 0 ? 'order-2 wide:order-1' : 'order-3'}`}>
           <TeamCards
             state={s}
+            events={ctl.events}
             side={side}
             name={ctl.names[side]}
             mine={ctl.mySides.length === 1 && ctl.mySides[0] === side}
@@ -316,6 +342,10 @@ export function BattleView({ ctl }: { ctl: Controller }) {
             onHover={setHoverUnit}
             onPick={(id) => {
               const u = s.units.find((x) => x.id === id)!;
+              if (aim?.kind === 'special') {
+                if (specialTargets(s, s.side).includes(id)) send({ type: 'trainerSpecial', unitId: id });
+                return;
+              }
               if (placing && myPlacement && !u.pos && u.side === placeSide) setPlaceSel(id);
               else if (myBattleTurn && u.side === s.side && onBoard(u) && !u.activated && (!lockedTo || lockedTo === id)) setSel(id);
               else {
@@ -363,7 +393,22 @@ export function BattleView({ ctl }: { ctl: Controller }) {
         </div>
         {/* On phones the controls stay pinned to the bottom of the screen while the board scrolls. */}
         <div className="sticky bottom-0 z-20 -mx-1 rounded-xl bg-slate-950/90 p-1 backdrop-blur wide:static wide:m-0 wide:bg-transparent wide:p-0 wide:backdrop-blur-none">
-        {placing ? (
+        {s.trainers && s.phase !== 'placement' && (
+          <TrainerStrip ctl={ctl} aiming={aim?.kind === 'special'} onSpecial={(needsTarget) => {
+            if (needsTarget) {
+              setSel(null);
+              setAim({ kind: 'special' });
+            } else {
+              send({ type: 'trainerSpecial' });
+            }
+          }} onCancel={cancelAim} />
+        )}
+        {afterYou ? (
+          <div className="panel flex flex-wrap items-center justify-between gap-2 p-3">
+            <span className="text-sm text-emerald-300">After You: tap a highlighted tile to move {cardOf(s.units.find((x) => x.id === afterYou.unitId)!).name} there.</span>
+            <button type="button" className="btn-ghost" onClick={() => ctl.dispatch({ type: 'choose', option: null })}>Stay put</button>
+          </div>
+        ) : placing ? (
           <PlacementBar ctl={ctl} placeSide={placeSide} myPlacement={myPlacement} unplaced={unplaced} selected={placeUnit} onSelect={setPlaceSel} />
         ) : (
           <ActionBar
@@ -371,6 +416,7 @@ export function BattleView({ ctl }: { ctl: Controller }) {
             unit={controllable ? selUnit : null}
             myTurn={myBattleTurn}
             opts={opts}
+            aimOpt={aimOpt}
             treb={treb}
             aim={aim}
             aimDir={aimDir}
@@ -559,6 +605,8 @@ function ActionBar(props: {
   unit: Unit | null;
   myTurn: boolean;
   opts: ReturnType<typeof moveOptions>;
+  /** The move being aimed (for Transform, the copied move). */
+  aimOpt: MoveOption | undefined;
   treb: ReturnType<typeof trebuchetOption> | null;
   aim: Aim | null;
   aimDir: Dir | null;
@@ -577,7 +625,7 @@ function ActionBar(props: {
   onHoverMove: (i: 0 | 1 | null) => void;
   send: (a: Action) => void;
 }) {
-  const { ctl, unit, myTurn, opts, treb, aim, aimDir, aimTarget, aimBlocked, touch, isPost, postBudget, remaining, confirmEnd, setConfirmEnd, onAim, onFireDir, onFireAt, onSelfMove, onHoverMove, send } = props;
+  const { ctl, unit, myTurn, opts, aimOpt, treb, aim, aimDir, aimTarget, aimBlocked, touch, isPost, postBudget, remaining, confirmEnd, setConfirmEnd, onAim, onFireDir, onFireAt, onSelfMove, onHoverMove, send } = props;
   const s = ctl.state;
   if (s.phase === 'over') return null;
   if (!myTurn) {
@@ -623,9 +671,45 @@ function ActionBar(props: {
   const info = unitTurnInfo(s, unit);
   const active = s.active?.unitId === unit.id ? s.active : null;
 
-  if (aim) {
+  if (aim?.kind === 'move' && opts[aim.index]?.aim === 'copy' && !aim.copy) {
+    // Transform: pick the move to borrow first.
+    const copies = opts[aim.index].copies ?? [];
+    return (
+      <div className="panel space-y-2 p-3">
+        <div className="flex items-center justify-between gap-2">
+          <span className="font-bold">Transform: choose a move to copy</span>
+          <button type="button" className="btn-ghost" onClick={() => onAim(null)}>Cancel</button>
+        </div>
+        <div className="grid max-h-48 gap-1.5 overflow-y-auto sm:grid-cols-2">
+          {copies.map((cp) => {
+            const src = s.units.find((x) => x.id === cp.unitId)!;
+            return (
+              <button
+                key={`${cp.unitId}-${cp.moveIndex}`}
+                type="button"
+                onClick={() => (cp.aim === 'none' ? send({ type: 'useMove', unitId: unit.id, moveIndex: aim.index, copy: { unitId: cp.unitId, moveIndex: cp.moveIndex } }) : onAim({ ...aim, copy: cp }))}
+                className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800/80 p-1.5 text-left hover:border-amber-300"
+              >
+                <Art id={src.cardId} className="h-7 w-7 shrink-0 rounded-full" />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-xs text-slate-400">{cardOf(src).name}</span>
+                  <span className="flex items-center gap-1 text-sm font-semibold">
+                    {cp.move.name} {cp.move.type && <TypeBadge type={cp.move.type} small />}
+                    <span className="text-xs text-amber-300">{cp.move.powerLabel ?? cp.move.power ?? ''}</span>
+                  </span>
+                </span>
+                <MiniGrid move={cp.move} size={7} />
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  if (aim && aim.kind !== 'special') {
     const isTreb = aim.kind === 'treb';
-    const opt = !isTreb ? opts[aim.index] : null;
+    const opt = !isTreb ? aimOpt : null;
     const move = opt?.move;
     const hint = isTreb
       ? 'Pick any Pokémon on the field to bombard.'
@@ -637,7 +721,7 @@ function ActionBar(props: {
       <div className="panel space-y-2 p-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
-            <span className="font-bold">{isTreb ? 'Trebuchet' : move!.name}</span>
+            <span className="font-bold">{isTreb ? 'Trebuchet' : move!.name}{aim.kind === 'move' && aim.copy ? ' (Transform)' : ''}</span>
             {move?.type && <TypeBadge type={move.type} small />}
             <span className="text-sm font-bold text-amber-300">{isTreb ? 40 : move!.powerLabel ?? move!.power ?? ''}</span>
             {move && <MiniGrid move={move} size={9} />}
@@ -702,7 +786,7 @@ function ActionBar(props: {
         </div>
       ) : (
         <div className="grid gap-2 sm:grid-cols-2">
-          {opts.map((o) => (
+          {opts.filter((o) => !o.move.fx.none).map((o) => (
             <button
               key={o.moveIndex}
               type="button"
@@ -744,66 +828,169 @@ function ActionBar(props: {
 function PendingModal({ ctl, view }: { ctl: Controller; view: BoardView }) {
   const s = ctl.state;
   const p = s.pending[0];
-  const [hoverDir, setHoverDir] = useState<Dir | null>(null);
-  if (!p || !ctl.mySides.includes(p.side)) return null;
+  const [hover, setHover] = useState<string | null>(null);
+  if (!p || !ctl.mySides.includes(p.side) || p.kind === 'afterYou') return null;
   const u = s.units.find((x) => x.id === p.unitId)!;
-  if (p.kind === 'emergencyExit') {
+  const choose = (option: string | null) => {
+    setHover(null);
+    ctl.dispatch({ type: 'choose', option });
+  };
+  // Direction labels follow the board as drawn (it is turned a quarter turn on portrait phones).
+  const word: Record<Dir, string> = { N: 'Up', E: 'Right', S: 'Down', W: 'Left' };
+  const dirLabel = (d: Dir): string => {
+    const sd = screenDir(d, view);
+    return `${ARROW[sd]} ${word[sd]}`;
+  };
+  const previewList = (pv: TargetPreview[]) => pv.length > 0 && (
+    <div className="mt-2 space-y-0.5 text-xs text-slate-300">
+      {pv.map((x) => (
+        <div key={x.unitId}>
+          {cardOf(s.units.find((q) => q.id === x.unitId)!).name}: {x.kind === 'damage' ? `${x.min}–${x.max}` : x.kind} {x.notes.join(', ')}
+        </div>
+      ))}
+    </div>
+  );
+
+  if (p.kind === 'emergencyExit' || p.kind === 'imposter') {
+    const exit = p.kind === 'emergencyExit';
     return (
       <Modal>
-        <h3 className="text-lg font-bold">Emergency Exit!</h3>
-        <p className="mb-3 text-sm text-slate-300">{cardOf(u).name} dropped below 100 HP and must switch places with an ally.</p>
+        <h3 className="text-lg font-bold">{exit ? 'Emergency Exit!' : 'Imposter'}</h3>
+        <p className="mb-3 text-sm text-slate-300">
+          {exit ? `${cardOf(u).name} dropped below 100 HP and must switch places with an ally.` : `${cardOf(u).name} may copy the stat changes of a Pokémon beside it.`}
+        </p>
         <div className="grid gap-2">
           {p.options.map((id) => {
             const a = s.units.find((x) => x.id === id)!;
+            const st = (['atk', 'def', 'mov'] as const).filter((k) => a.stages[k]).map((k) => `${k === 'atk' ? 'Atk' : k === 'def' ? 'Def' : 'Mov'} ${a.stages[k] > 0 ? '+' : ''}${a.stages[k]}`);
             return (
-              <button key={id} type="button" className="btn-ghost justify-start" onClick={() => ctl.dispatch({ type: 'choose', option: id })}>
+              <button key={id} type="button" className="btn-ghost justify-start" onClick={() => choose(id)}>
                 <Art id={a.cardId} className="h-8 w-8 rounded-full" />
-                {cardOf(a).name} <span className="text-xs text-slate-400">({a.hp} HP)</span>
+                {cardOf(a).name}
+                <span className="text-xs text-slate-400">{exit ? `(${a.hp} HP)` : st.join(', ') || 'no stat changes'}</span>
               </button>
             );
           })}
         </div>
+        {!exit && <button type="button" className="btn-ghost mt-3 w-full" onClick={() => choose(null)}>Keep its own</button>}
       </Modal>
     );
   }
+
+  if (p.kind === 'metronome') {
+    const card = getCard(p.cardId);
+    const label = (o: string) => {
+      const cut = o.indexOf(':');
+      const m = card.moves[Number(o.slice(0, cut))];
+      const aim = parseAim(o.slice(cut + 1));
+      const where = aim.dir ? dirLabel(aim.dir) : aim.targetId ? `at ${cardOf(s.units.find((x) => x.id === aim.targetId)!).name}` : '';
+      return { m, where, aim };
+    };
+    const hovered = hover ? label(hover) : null;
+    const pv = hovered ? previewAction(s, u.id, 0, { ...hovered.aim, move: hovered.m }) : [];
+    return (
+      <Modal>
+        <h3 className="text-lg font-bold">Metronome drew {card.name}!</h3>
+        <p className="mb-3 text-sm text-slate-300">Choose one of {card.name}’s moves for {cardOf(u).name} to use, and how to aim it.</p>
+        <div className="grid grid-cols-2 gap-2">
+          {p.options.map((o) => {
+            const { m, where } = label(o);
+            return (
+              <button key={o} type="button" className="btn-ghost justify-start text-left" onMouseEnter={() => setHover(o)} onFocus={() => setHover(o)} onClick={() => choose(o)}>
+                <span className="font-semibold">{m.name}</span> <span className="text-xs text-slate-400">{where}</span>
+              </button>
+            );
+          })}
+        </div>
+        {previewList(pv)}
+      </Modal>
+    );
+  }
+
+  // Liquid Voice (optional, as Water) and Dancer (mandatory, as printed): aim a copied move.
   const src = getCard(p.source.cardId).moves[p.source.moveIndex];
-  const pv = hoverDir ? previewAction(s, u.id, 0, { dir: hoverDir, copyOf: src }) : [];
-  // Labels follow the board as drawn (it is turned a quarter turn on portrait phones).
-  const word: Record<Dir, string> = { N: 'Up', E: 'Right', S: 'Down', W: 'Left' };
-  const label = (d: Dir): string => {
-    const sd = screenDir(d, view);
-    return `${ARROW[sd]} ${word[sd]}`;
-  };
+  const dancer = p.kind === 'dancer';
+  const pv = hover ? previewAction(s, u.id, 0, dancer ? { dir: hover as Dir, move: src } : { dir: hover as Dir, copyOf: src }) : [];
   return (
     <Modal>
-      <h3 className="text-lg font-bold">Liquid Voice</h3>
+      <h3 className="text-lg font-bold">{dancer ? 'Dancer' : 'Liquid Voice'}</h3>
       <p className="mb-3 text-sm text-slate-300">
-        {cardOf(u).name} can copy <b>{src.name}</b> as a Water-type move. Choose which way to aim it.
+        {cardOf(u).name} {dancer ? 'copies' : 'can copy'} <b>{src.name}</b>{dancer ? '' : ' as a Water-type move'}. Choose which way to aim it.
       </p>
       <div className="grid grid-cols-2 gap-2">
         {p.options.map((d) => (
-          <button
-            key={d}
-            type="button"
-            className="btn-ghost"
-            onMouseEnter={() => setHoverDir(d)}
-            onFocus={() => setHoverDir(d)}
-            onClick={() => ctl.dispatch({ type: 'choose', option: d })}
-          >
-            {label(d)}
+          <button key={d} type="button" className="btn-ghost" onMouseEnter={() => setHover(d)} onFocus={() => setHover(d)} onClick={() => choose(d)}>
+            {dirLabel(d as Dir)}
           </button>
         ))}
       </div>
-      {pv.length > 0 && (
-        <div className="mt-2 space-y-0.5 text-xs text-slate-300">
-          {pv.map((x) => (
-            <div key={x.unitId}>
-              {cardOf(s.units.find((q) => q.id === x.unitId)!).name}: {x.kind === 'damage' ? `${x.min}–${x.max}` : x.kind} {x.notes.join(', ')}
+      {previewList(pv)}
+      {!dancer && <button type="button" className="btn-ghost mt-3 w-full" onClick={() => choose(null)}>Don’t copy</button>}
+    </Modal>
+  );
+}
+
+// ---------------------------------------------------------------- trainers
+
+/** Both sides' trainers (trainer mode), and the Special Move button for the side to move. */
+function TrainerStrip({ ctl, aiming, onSpecial, onCancel }: {
+  ctl: Controller;
+  aiming: boolean;
+  onSpecial: (needsTarget: boolean) => void;
+  onCancel: () => void;
+}) {
+  const s = ctl.state;
+  const [confirm, setConfirm] = useState(false);
+  const [zoom, setZoom] = useState<string | null>(null);
+  useEffect(() => setConfirm(false), [s.seq]);
+  if (!s.trainers) return null;
+  return (
+    <div className="mb-2 flex flex-wrap items-center gap-2">
+      {(['A', 'D'] as const).map((side) => {
+        const id = trainerOf(s, side);
+        if (!id) return null;
+        const t = getTrainer(id);
+        const used = s.trainers!.used[side];
+        const mine = ctl.mySides.includes(side) && canUseSpecial(s, side);
+        return (
+          <div key={side} className={`flex items-center gap-2 rounded-lg border px-2 py-1 ${side === 'A' ? 'border-rose-500/40' : 'border-sky-500/40'} bg-slate-900/80`}>
+            <button type="button" className="shrink-0" onMouseEnter={() => setZoom(id)} onMouseLeave={() => setZoom(null)} onClick={() => setZoom(zoom === id ? null : id)} title={`${t.name}: ${t.passive}`}>
+              <img src={`${import.meta.env.BASE_URL}trainers/${id}.jpg`} alt={`${t.name} card`} className="h-9 w-7 rounded object-cover object-top" />
+            </button>
+            <div className="min-w-0 text-xs leading-tight">
+              <div className={`font-bold ${SIDE_TEXT[side]}`}>{t.name}</div>
+              <div className="text-slate-400">{used ? 'Special used' : 'Special ready'}</div>
             </div>
-          ))}
+            {mine && (aiming ? (
+              <>
+                <span className="text-xs text-amber-200">Pick one of your Pokémon that hasn’t moved</span>
+                <button type="button" className="btn-ghost" onClick={onCancel}>Cancel</button>
+              </>
+            ) : (
+              <button
+                type="button"
+                className={confirm ? 'btn-danger' : 'btn-primary'}
+                title={t.special}
+                onClick={() => {
+                  if (!confirm) setConfirm(true);
+                  else onSpecial(t.specialTarget === 'ally');
+                }}
+              >
+                {confirm ? `Use ${t.name}’s Special?` : 'Special Move'}
+              </button>
+            ))}
+          </div>
+        );
+      })}
+      {zoom && (
+        <div className="pointer-events-none fixed left-1/2 top-1/2 z-50 w-64 -translate-x-1/2 -translate-y-1/2 space-y-2">
+          <img src={`${import.meta.env.BASE_URL}trainers/${zoom}.jpg`} alt="" className="w-full rounded-lg shadow-2xl ring-2 ring-white/20" />
+          <div className="rounded-lg bg-slate-950/95 p-2 text-xs text-slate-200 ring-1 ring-white/10">
+            <div><b>Passive:</b> {getTrainer(zoom).passive}</div>
+            <div className="mt-1"><b>Special (once per game):</b> {getTrainer(zoom).special}</div>
+          </div>
         </div>
       )}
-      <button type="button" className="btn-ghost mt-3 w-full" onClick={() => ctl.dispatch({ type: 'choose', option: null })}>Don’t copy</button>
-    </Modal>
+    </div>
   );
 }

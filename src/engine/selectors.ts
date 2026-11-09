@@ -1,11 +1,11 @@
 import {
   basePower, computeDamage, grazeApplies, isImmune, makeAttackCtx, neverMisses, secondaryMult, trebuchetCtx, typeEffectLabel,
 } from './damage';
-import { canActNow, cloneState, followMeTiles, movementAllowance } from './engine';
+import { canActNow, cloneState, followMeTiles, moveBlocked, movementAllowance, triageTiles } from './engine';
 import { STATUS_NAME, canHaveStatus, pressureMult } from './mutate';
-import { type Targeting, canTargetFrom, followMeUsers, isSupportOnly, liquidVoiceCopy, targeting } from './moves';
+import { UNCOPYABLE, type Targeting, canTargetFrom, followMeUsers, isSupportOnly, liquidVoiceCopy, pushDistance, targeting } from './moves';
 import {
-  abilityOf, cardOf, getUnit, isTrebuchet, liveUnits, moveOf, onBoard, parseGrid, reachable, type ReachInfo,
+  abilityOf, cardOf, getUnit, isTrebuchet, liveUnits, moveOf, onBoard, parseGrid, reachable, type ReachInfo, terrainBonus,
 } from './query';
 import type { Dir, GameState, MoveDef, PType, StatId, Unit } from './types';
 import { DIRS } from './types';
@@ -42,7 +42,11 @@ export function moveTargets(s: GameState, u: Unit): Map<string, ReachInfo> {
   const budget = movementAllowance(s, u);
   const all = reachable(s, u, budget);
   const fm = followMeTiles(s, u, budget);
-  if (!fm) return all;
+  if (!fm) {
+    // Triage: a few extra tiles, if it heals from there.
+    for (const [k, r] of triageTiles(s, u, budget)) all.set(k, r);
+    return all;
+  }
   return new Map([...all].filter(([k]) => fm.has(k)));
 }
 
@@ -58,6 +62,18 @@ export interface MoveOption {
   move: MoveDef;
   usable: boolean;
   reason?: string;
+  /** 'copy': Transform — pick one of `copies` first, then aim it. */
+  aim: 'dir' | 'unit' | 'none' | 'copy';
+  dirs: DirOption[];
+  units: string[];
+  copies?: CopyOption[];
+}
+
+/** A move Transform could borrow: another Pokémon's move, with the ways Ditto could aim it. */
+export interface CopyOption {
+  unitId: string;
+  moveIndex: 0 | 1;
+  move: MoveDef;
   aim: 'dir' | 'unit' | 'none';
   dirs: DirOption[];
   units: string[];
@@ -90,6 +106,49 @@ export function waitBlock(s: GameState, u: Unit): string | null {
   return fmFilter(s, u) ? `Follow Me: must attack ${followMeUsers(s, u).map((f) => cardOf(f).name).join(' / ')}` : null;
 }
 
+/** How `u` could aim `move` from where it stands (Follow Me applied), and whether it can at all. */
+function aimFor(s: GameState, u: Unit, move: MoveDef): Pick<MoveOption, 'aim' | 'dirs' | 'units' | 'usable' | 'reason'> {
+  const fm = fmFilter(s, u);
+  const fmOk = (tg: Targeting): boolean => {
+    if (!fm) return true;
+    const hits = (move.target.kind === 'grid' || move.target.kind === 'range') && !isSupportOnly(move);
+    return hits && fm(tg.targets.map((t) => t.id));
+  };
+  const t = move.target;
+  if (t.kind === 'grid' || t.kind === 'place') {
+    const dirs = DIRS.map((dir) => ({ dir, tg: targeting(s, u, move, { dir }) }));
+    const okDirs = dirs.filter((d) => d.tg.ok && fmOk(d.tg));
+    return {
+      aim: 'dir', dirs: okDirs, units: [], usable: okDirs.length > 0,
+      reason: okDirs.length ? undefined : fm ? 'Follow Me: must target the decoy' : dirs.find((d) => !d.tg.ok)?.tg.reason ?? 'No valid direction',
+    };
+  }
+  if (t.kind === 'range' || t.kind === 'ally') {
+    const units = liveUnits(s).filter((x) => x.id !== u.id).filter((x) => {
+      const tg = targeting(s, u, move, { targetId: x.id });
+      return tg.ok && fmOk(tg);
+    }).map((x) => x.id);
+    return { aim: 'unit', dirs: [], units, usable: units.length > 0, reason: units.length ? undefined : t.kind === 'ally' ? 'No ally can switch' : 'No target in range' };
+  }
+  if (fm) return { aim: 'none', dirs: [], units: [], usable: false, reason: 'Follow Me: must target the decoy' };
+  return { aim: 'none', dirs: [], units: [], usable: true };
+}
+
+/** Moves Transform could use for `u` right now. */
+export function copyOptions(s: GameState, u: Unit): CopyOption[] {
+  const out: CopyOption[] = [];
+  for (const src of liveUnits(s)) {
+    if (src.id === u.id) continue;
+    for (const moveIndex of [0, 1] as const) {
+      const move = moveOf(src, moveIndex);
+      if (UNCOPYABLE(move) || moveBlocked(s, u, move)) continue;
+      const a = aimFor(s, u, move);
+      if (a.usable && a.aim !== 'copy') out.push({ unitId: src.id, moveIndex, move, aim: a.aim, dirs: a.dirs, units: a.units });
+    }
+  }
+  return out;
+}
+
 export function moveOptions(s: GameState, u: Unit): MoveOption[] {
   const info = unitTurnInfo(s, u);
   return ([0, 1] as const).map((moveIndex) => {
@@ -98,30 +157,13 @@ export function moveOptions(s: GameState, u: Unit): MoveOption[] {
     if (!info.canAct) return { ...base, reason: info.done ? 'Already activated' : info.reasons.join(', ') || 'Cannot act' };
     const block = followMeBlock(s, u);
     if (block) return { ...base, reason: block };
-    const fm = fmFilter(s, u);
-    const fmOk = (tg: Targeting): boolean => {
-      if (!fm) return true;
-      const hits = (move.target.kind === 'grid' || move.target.kind === 'range') && !isSupportOnly(move);
-      return hits && fm(tg.targets.map((t) => t.id));
-    };
-    const t = move.target;
-    if (t.kind === 'grid' || t.kind === 'place') {
-      const dirs = DIRS.map((dir) => ({ dir, tg: targeting(s, u, move, { dir }) }));
-      const okDirs = dirs.filter((d) => d.tg.ok && fmOk(d.tg));
-      return {
-        ...base, aim: 'dir', dirs: okDirs, usable: okDirs.length > 0,
-        reason: okDirs.length ? undefined : fm ? 'Follow Me: must target the decoy' : dirs.find((d) => !d.tg.ok)?.tg.reason ?? 'No valid direction',
-      };
+    const blocked = moveBlocked(s, u, move);
+    if (blocked) return { ...base, reason: blocked };
+    if (move.fx.special === 'transform') {
+      const copies = copyOptions(s, u);
+      return { ...base, aim: 'copy', copies, usable: copies.length > 0, reason: copies.length ? undefined : 'Nothing to copy from here' };
     }
-    if (t.kind === 'range' || t.kind === 'ally') {
-      const units = liveUnits(s).filter((x) => x.id !== u.id).filter((x) => {
-        const tg = targeting(s, u, move, { targetId: x.id });
-        return tg.ok && fmOk(tg);
-      }).map((x) => x.id);
-      return { ...base, aim: 'unit', units, usable: units.length > 0, reason: units.length ? undefined : t.kind === 'ally' ? 'No ally can switch' : 'No target in range' };
-    }
-    if (fm) return { ...base, reason: 'Follow Me: must target the decoy' };
-    return { ...base, usable: true };
+    return { ...base, ...aimFor(s, u, move) };
   });
 }
 
@@ -180,6 +222,8 @@ export interface PreviewOpts {
   targetId?: string;
   /** Liquid Voice: preview a copied move as Water. */
   copyOf?: MoveDef;
+  /** Preview this move as the user's own (Transform, Metronome, Dancer). */
+  move?: MoveDef;
 }
 
 /** Per-target outcome ranges for a move or the trebuchet ('treb'). Pure: does not mutate `s`. */
@@ -199,7 +243,7 @@ export function previewAction(s0: GameState, unitId: string, which: 0 | 1 | 'tre
     const as = cardOf(u).types.length > 1 ? [`as ${ac.moveType}`] : [];
     return [{ unitId: t.id, kind: 'damage', min: r.damage, max: r.damage, expected: r.damage, koChance: koChanceOf(t, [{ p: 1, dmg: r.damage }], ac.ignoreAbilities), notes: [...(eff ? [eff] : []), ...as] }];
   }
-  const move = opts.copyOf ? liquidVoiceCopy(opts.copyOf) : moveOf(u, which);
+  const move = opts.move ?? (opts.copyOf ? liquidVoiceCopy(opts.copyOf) : moveOf(u, which));
   const tg = targeting(s, u, move, { dir: opts.dir, targetId: opts.targetId });
   if (!tg.ok) return [];
   const fx = move.fx;
@@ -214,11 +258,14 @@ export function previewAction(s0: GameState, unitId: string, which: 0 | 1 | 'tre
   if (tg.substitute) return [];
   const moveType = move.type ?? 'Normal';
   const out: TargetPreview[] = [];
-  const knock = move.target.kind === 'grid' ? parseGrid(move.target.grid).knockback : 0;
+  const knock = pushDistance(s, u, move, move.target.kind === 'grid' ? parseGrid(move.target.grid).knockback : 0);
   for (const t of tg.targets) {
     const notes: string[] = [];
     if (move.kind === 'status') {
-      if ((fx.alliesStages || fx.healSelfAndAllies) && t.side !== u.side) continue;
+      const allyOnly = fx.alliesStages || fx.healSelfAndAllies || fx.special === 'helpingHand' || fx.special === 'afterYou';
+      if (allyOnly && t.side !== u.side) continue;
+      if (fx.special === 'helpingHand') notes.push('+30 damage this turn');
+      if (fx.special === 'afterYou') notes.push('Moves again');
       if (fx.status) {
         const ok = canHaveStatus(t, fx.status.id, fx.grassImmune);
         notes.push(ok ? `${STATUS_NAME[fx.status.id]}${fx.hitChance && !neverMisses(s, u) ? ` (${pct(fx.hitChance)})` : ''}` : 'Status won’t stick');
@@ -228,7 +275,7 @@ export function previewAction(s0: GameState, unitId: string, which: 0 | 1 | 'tre
       if (fx.resetTargetStages) notes.push('Reset stats');
       if (fx.invertTargetStages) notes.push('Invert stats');
       if (knock) notes.push(`Knockback ${knock}`);
-      const healAmt = fx.heal ?? fx.healSelfAndAllies ?? 0;
+      const healAmt = (fx.healOnBonusTerrain !== undefined && terrainBonus(s, t) ? fx.healOnBonusTerrain : fx.heal) ?? fx.healSelfAndAllies ?? 0;
       if (healAmt) {
         const h = Math.min(healAmt, t.maxHp - t.hp);
         out.push({ unitId: t.id, kind: 'heal', min: h, max: h, expected: h, koChance: 0, notes });
@@ -252,10 +299,11 @@ function attackPreview(s: GameState, u: Unit, move: MoveDef, moveType: PType, t:
   const fx = move.fx;
   const sm = secondaryMult(s, u);
   const notes: string[] = [];
-  const ac = makeAttackCtx(u, move, { moveType, attackerPos: u.pos!, targetCount });
+  const ac = makeAttackCtx(u, move, { moveType, attackerPos: u.pos!, targetCount, s });
   const imm = isImmune(ac, t);
   if (imm.immune) {
-    return { unitId: t.id, kind: imm.absorbed ? 'absorb' : 'immune', min: 0, max: 0, expected: 0, koChance: 0, notes: [imm.absorbed ? 'Storm Drain' : 'No effect'] };
+    const why = imm.absorbed ? 'Storm Drain' : imm.wonderGuard ? 'Wonder Guard' : 'No effect';
+    return { unitId: t.id, kind: imm.absorbed ? 'absorb' : 'immune', min: 0, max: 0, expected: 0, koChance: 0, notes: [why] };
   }
   if (fx.special === 'endeavor') {
     const d = Math.max(0, t.hp - u.hp);
@@ -289,6 +337,7 @@ function attackPreview(s: GameState, u: Unit, move: MoveDef, moveType: PType, t:
   const expected = outcomes.reduce((a, o) => a + o.p * o.dmg, 0);
   const eff = typeEffectLabel(computeDamage(s, ac, t, 50, null).mult);
   if (eff) notes.push(eff);
+  if (ac.pixilated) notes.push('Pixilate: Fairy');
   if (graze > 0) notes.push(`Graze ${pct(graze)}`);
   if (miss > 0 || missAll > 0) notes.push(`Miss ${pct(1 - pHit)}`);
   if (fx.status && canHaveStatus(t, fx.status.id)) notes.push(`${STATUS_NAME[fx.status.id]} ${pct(Math.min(1, fx.status.chance * sm))}`);
@@ -339,5 +388,7 @@ export function selfEffectNotes(s: GameState, u: Unit, move: MoveDef): string[] 
   if (fx.selfSleepChance) notes.push(`Sleep ${pct(fx.selfSleepChance)}`);
   if (fx.nextTurn) notes.push(fx.nextTurn.noAct ? 'Recharge next turn' : 'Can’t move next turn');
   if (fx.selfHeal) notes.push(`Heals ${fx.selfHeal}`);
+  if (fx.lockUntilFar) notes.push(`Cooldown until ${fx.lockUntilFar}+ tiles from opponents`);
+  if (fx.evenRoundsOnly) notes.push('Even rounds only');
   return notes;
 }

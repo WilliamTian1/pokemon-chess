@@ -8,8 +8,8 @@ import { act, noLuck, park, scriptedRng, setup, unit } from './helpers';
 
 describe('card data', () => {
   it('has the full pages 1–9 roster', () => {
-    expect(CARD_LIST).toHaveLength(74);
-    expect(DRAFTABLE).toHaveLength(72);
+    expect(CARD_LIST).toHaveLength(93);
+    expect(DRAFTABLE).toHaveLength(91);
   });
 
   it('every grid parses with a user tile and at least one target', () => {

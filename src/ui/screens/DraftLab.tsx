@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { type DraftAnalysis, type PickBreakdown, analyzeDraft, teamLogit, winChance } from '../../ai/draft';
-import { draftModelFor } from '../../ai/draftModel';
+import { draftModelFor, modeSuffix } from '../../ai/draftModel';
 import {
   type CardDef, DRAFTABLE, DRAFT_POOL_SIZE, type GameState, MAP_LIST, NO_LEGEND_POOL_SIZE, type Side, applyAction, draftOptions,
   getCard, getMap, isLegendPick, newGame, randomLegendPool, randomPool, randomSeed, seededRng,
 } from '../../engine';
 import { Art, CardImage, SIDE_TEXT } from '../components/bits';
 import { MapPreview, savedLegendaries, savedMapId } from '../components/MapPicker';
+import { useCardFilter } from './DraftView';
 
 const SIDE_LABEL: Record<Side, string> = { A: 'Attacker', D: 'Defender' };
 const pct = (p: number): string => `${(100 * p).toFixed(1)}%`;
@@ -36,7 +37,8 @@ export function DraftLab({ onBack }: { onBack: () => void }) {
   const activeLegends = useMemo(() => (legends ? legendPool : []), [legends, legendPool]);
   const s = useMemo(() => buildDraft(mapId, pool, activeLegends, picks), [mapId, pool, activeLegends, picks]);
   const done = s.phase !== 'draft';
-  const model = draftModelFor(mapId);
+  // The model for this mode (with or without legendaries; the lab drafts without trainers).
+  const model = draftModelFor(mapId, modeSuffix(legends, false));
 
   // The search takes up to a few hundred ms at the first pick; run it after paint.
   const [analysis, setAnalysis] = useState<DraftAnalysis | null>(null);
@@ -290,8 +292,25 @@ function PoolEditor({ pool, legendPool, legends, onChange }: {
   };
   const minPool = legends ? 6 : 8;
   const ok = pool.length >= minPool && (!legends || legendPool.length >= 2);
+  const filter = useCardFilter(DRAFTABLE);
+  const [only, setOnly] = useState<'all' | 'in' | 'out'>('all');
+  const shown = filter.cards.filter((c) => {
+    const inPool = (c.legendary ? legendPool : pool).includes(c.id);
+    return only === 'all' || (only === 'in') === inPool;
+  });
   return (
     <div className="space-y-3">
+      <div className="panel space-y-2 px-3 py-2">
+        {filter.controls}
+        <div className="flex flex-wrap items-center gap-1.5 text-xs">
+          <span className="text-slate-400">Show</span>
+          {(['all', 'in', 'out'] as const).map((k) => (
+            <button key={k} type="button" aria-pressed={only === k} onClick={() => setOnly(k)} className={`chip ${only === k ? 'bg-amber-400 text-slate-900' : 'bg-slate-800 text-slate-300'}`}>
+              {k === 'all' ? 'All cards' : k === 'in' ? 'In the pool' : 'Not in the pool'}
+            </button>
+          ))}
+        </div>
+      </div>
       <div className="panel flex flex-wrap items-center gap-3 px-3 py-2 text-sm">
         <span>Pool: <b className={pool.length >= minPool ? 'text-emerald-300' : 'text-rose-300'}>{pool.length}</b> Pokémon (a normal game has {legends ? 15 : 20}; at least {minPool})</span>
         {legends && <span>Legendaries: <b className={legendPool.length >= 2 ? 'text-emerald-300' : 'text-rose-300'}>{legendPool.length}</b> (a normal game has 4; at least 2)</span>}
@@ -302,7 +321,7 @@ function PoolEditor({ pool, legendPool, legends, onChange }: {
         <div key={group}>
           <h3 className="mb-1.5 text-sm font-bold text-slate-200">{group === 'legend' ? 'Legendaries' : 'Pokémon'}</h3>
           <div className="grid grid-cols-[repeat(auto-fill,minmax(110px,1fr))] gap-2">
-            {DRAFTABLE.filter((c) => c.legendary === (group === 'legend')).map((c) => {
+            {shown.filter((c) => c.legendary === (group === 'legend')).map((c) => {
               const inPool = (c.legendary ? legendPool : pool).includes(c.id);
               return (
                 <button key={c.id} type="button" onClick={() => toggle(c)} aria-pressed={inPool} className={`relative rounded-lg transition ${inPool ? 'ring-2 ring-amber-300 ring-offset-2 ring-offset-slate-950' : 'opacity-40 hover:opacity-80'}`}>

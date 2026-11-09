@@ -1,7 +1,8 @@
 import type { AbilityId, CardDef, MoveDef, MoveFx, PType, TargetSpec } from '../types';
 
-// Transcribed from `Conquest Cards.pdf`, pages 1–9 (v1.0 roster). Moves are listed in the order
-// they appear on the card (top first) — Foul Play reads the target's *first* attack.
+// Transcribed from `Conquest Cards.pdf`, pages 1–9 (v1.0 roster), and the expansion in
+// `Conquest Cards - Google Slides.pdf` (pages 10–13 here). Moves are listed in the order they appear
+// on the card (top first) — Foul Play reads the target's *first* attack.
 
 const grid = (g: string): TargetSpec => ({ kind: 'grid', grid: g });
 const SELF: TargetSpec = { kind: 'self' };
@@ -94,7 +95,18 @@ const A = {
   guts: ['guts', 'Guts', 'The user deals 30 extra damage per attack if they have a status condition. Ignores the attack drop from burns.'],
   contrary: ['contrary', 'Contrary', 'Stat boosts and drops applied to this pokemon are reversed.'],
   infiltrator: ['infiltrator', 'Infiltrator', 'The pokemon ignores opponent’s defense boosts, whether by stat changes or abilities.'],
+  moldBreaker: ['moldBreaker', 'Mold Breaker', 'Opponents’ abilities are ignored when this pokemon attacks them.'],
+  compoundEyes: ['compoundEyes', 'Compound Eyes', 'This pokemon and adjacent allies cannot miss their attacks.'],
+  competitive: ['competitive', 'Competitive', 'If this pokemon has their stats lowered by another pokemon, max out their attack.'],
 } satisfies Record<string, [AbilityId, string, string]>;
+
+// Expansion moves shared by several cards.
+const FAKE_OUT = (g: string) => atk('Fake Out', 'Normal', 20, grid(g),
+  'The target flinches. This attack cannot be used again until this pokemon ends their turn 4+ tiles away from opponents.',
+  { flinch: { chance: 1 }, lockUntilFar: 4 });
+const HELPING_HAND = sts('Helping Hand', grid('.../.O./.G.'), 'The target deals 30 extra damage this turn.', { special: 'helpingHand' });
+/** Fills the second move slot of a card that prints only one move. */
+const NO_MOVE: MoveDef = { name: '—', type: null, power: null, kind: 'status', target: SELF, text: '', fx: { none: true } };
 
 export const CARD_LIST: CardDef[] = [
   // ------------------------------------------------------------ page 1
@@ -731,6 +743,176 @@ export const CARD_LIST: CardDef[] = [
       sts('Hail', GLOBAL, 'Deals a flat 20 damage to all pokemon except ice types. Raises the defense of all ice types.', { special: 'hail' }),
     ],
     ability: ['slushRush', 'Slush Rush', 'This pokemon gets +2 mov while next to another ice type pokemon or while standing on ice.'],
+  }),
+  // ------------------------------------------------------------ expansion page 1
+  card({
+    id: 'flygon', name: 'Flygon', types: ['Dragon', 'Ground'], hp: 145, mov: 3, page: 10,
+    moves: [
+      atk('Earth Power', 'Ground', 55, grid('.O./.O./.O./.G.'), '10% chance to lower the opponent’s defense by one stage.', {
+        targetStages: { stages: { def: -1 }, chance: 0.1 },
+      }),
+      atk('Dragon Tail', 'Dragon', 40, grid('RRR/.../OOO/.G.'), 'Removes all stat changes from the target(s).', { resetTargetStages: true }),
+    ],
+    ability: A.levitate,
+  }),
+  card({
+    id: 'hawlucha', name: 'Hawlucha', types: ['Fighting', 'Flying'], hp: 125, mov: 4, page: 10,
+    moves: [
+      { ...atk('Flying Press', 'Fighting', 55, grid('.O./OBO/.O./.G.'), 'Counts as both Fighting and Flying type.'), extraType: 'Flying' },
+      sts('Coaching', grid('.../.O./.G.'), 'Raises the target’s attack and defense by one stage.', { alliesStages: { atk: 1, def: 1 } }),
+    ],
+    ability: ['unburden', 'Unburden', 'When this pokemon gets hit, its movement speed goes up by one stage.'],
+  }),
+  card({
+    id: 'sylveon', name: 'Sylveon', types: ['Fairy'], hp: 190, mov: 2, page: 10,
+    moves: [
+      atk('Hyper Voice', 'Fairy', 60, grid('OOO/.O./.G.'), ''),
+      atk('Hyper Beam', 'Fairy', 105, grid('.O./.O./.O./.G.'), 'The user cannot move next turn.', { nextTurn: { noMove: true } }),
+    ],
+    ability: ['pixilate', 'Pixilate', 'Normal type moves of adjacent allies become fairy type and deal 30 extra damage.'],
+  }),
+  card({
+    id: 'tinkaton', name: 'Tinkaton', types: ['Steel', 'Fairy'], hp: 165, mov: 3, page: 10,
+    moves: [
+      atk('Gigaton Hammer', 'Steel', 80, grid('OOO/OOO/.O./.G.'), 'This attack can only be used on even numbered turns.', { evenRoundsOnly: true }),
+      FAKE_OUT('.O./.B./.../.G.'),
+    ],
+    ability: A.moldBreaker,
+  }),
+  card({
+    id: 'meganium', name: 'Meganium', types: ['Grass'], hp: 175, mov: 3, page: 10,
+    moves: [
+      atk('Leaf Storm', 'Grass', 65, grid('OOO/O.O/OOO/.G.'), ''),
+      sts('Light Screen', GLOBAL, 'Raises the defense of this pokemon’s entire team, to a maximum of 1 stage.', { special: 'lightScreen' }),
+    ],
+    ability: ['leafGuard', 'Leaf Guard', 'This pokemon gets double the effects of terrain bonuses.'],
+  }),
+  card({
+    id: 'porygonz', name: 'Porygon-Z', types: ['Normal'], hp: 140, mov: 3, page: 10,
+    moves: [
+      atk('Tri Attack', 'Normal', 70, grid('.O./.O./.O./.G.'), '30% chance to randomly either burn, paralyze, or freeze.', { triStatus: 0.3 }),
+      atk('Zap Cannon', 'Electric', 85, grid('.O./.O./.../.G.'), '50% chance to miss completely. Otherwise, paralyzes the target.', {
+        missAll: { chance: 0.5, selfDamage: 0 }, status: { id: 'par', chance: 1 },
+      }),
+    ],
+    ability: ['adaptability', 'Adaptability', 'This pokemon, and adjacent pokemon, deal 30 extra damage when using normal type attacks.'],
+  }),
+  card({
+    id: 'corsola', name: 'Corsola', types: ['Rock', 'Water'], hp: 145, mov: 2, page: 10,
+    moves: [
+      atk('Scald', 'Water', 35, grid('.O./.O./.G.'), '30% chance to burn each target.', { status: { id: 'brn', chance: 0.3 } }),
+      atk('Head Smash', 'Rock', 65, grid('.R./ROR/OBO/.G.'), 'The user takes 35 recoil per target hit.', { recoilPerTarget: 35 }),
+    ],
+    ability: A.regenerator,
+  }),
+  card({
+    id: 'vivillon', name: 'Vivillon', types: ['Bug', 'Flying'], hp: 100, mov: 3, page: 10,
+    moves: [
+      atk('Hurricane', 'Flying', 60, grid('OOO/O.O/OOO/.G.'), '30% chance to confuse the opponent.', { confuse: { chance: 0.3 } }),
+      sts('Sleep Powder', grid('.O./.O./.G.'), '80% chance to hit each target and put them to sleep. Grass types are immune.', {
+        hitChance: 0.8, status: { id: 'slp', chance: 1 }, grassImmune: true,
+      }),
+    ],
+    ability: A.compoundEyes,
+  }),
+  // ------------------------------------------------------------ expansion page 2
+  card({
+    id: 'octillery', name: 'Octillery', types: ['Water'], hp: 130, mov: 3, page: 11,
+    moves: [
+      atk('Octazooka', 'Water', 45, { kind: 'range', range: 6, min: 4 }, 'Targets any single pokemon 4-6 tiles away from the user. 10% chance to miss completely.', {
+        missChance: 0.1,
+      }),
+      HELPING_HAND,
+    ],
+    ability: ['artilleryExpertise', 'Artillery Expertise', 'This pokemon deals 20 extra damage with the trebuchet.'],
+  }),
+  card({
+    id: 'comfey', name: 'Comfey', types: ['Fairy'], hp: 130, mov: 3, page: 11,
+    moves: [
+      sts('After You', grid('.../.O./.G.'), 'The target can move again.', { special: 'afterYou' }),
+      sts('Floral Healing', grid('.O./OOO/.O./.G.'), 'Heals the targets by 40 hp, or 80 hp if they are on terrain with bonuses.', {
+        heal: 40, healOnBonusTerrain: 80,
+      }),
+    ],
+    ability: ['triage', 'Triage', 'This pokemon can move 3 extra tiles when about to use a healing move.'],
+  }),
+  card({
+    id: 'wobbuffet', name: 'Wobbuffet', types: ['Psychic'], hp: 215, mov: 2, page: 11,
+    moves: [
+      sts('Charm', grid('.O./.../.G.'), 'Lowers the target’s attack by two stages.', { targetStages: { stages: { atk: -2 }, chance: 1 } }),
+      sts('Amnesia', SELF, 'Raises the user’s defense by two stages.', { selfStages: { stages: { def: 2 } } }),
+    ],
+    ability: ['decoy', 'Decoy', 'Attacks that hit this pokemon, but do not KO it, do not damage any other pokemon hit by them, and the attacker receives the same amount of damage in return.'],
+  }),
+  card({
+    id: 'ditto', name: 'Ditto', types: ['Normal'], hp: 70, mov: 2, page: 11,
+    moves: [
+      sts('Transform', SELF, 'Uses the attack of any pokemon currently on the field.', { special: 'transform' }),
+      NO_MOVE,
+    ],
+    ability: ['imposter', 'Imposter', 'When ending this pokemon’s turn beside another pokemon, you may choose to copy their stat changes.'],
+    notes: ['Transform copies either move of any other Pokémon on the field (not Transform or Metronome) and aims it as Ditto’s own.'],
+  }),
+  card({
+    id: 'shedinja', name: 'Shedinja', types: ['Ghost', 'Bug'], hp: 1, mov: 2, page: 11,
+    moves: [
+      atk('Phantom Force', 'Ghost', 50, grid('.O./.B./.../.G.'), 'Ignores the target’s defense boosts.', { ignoreDefBoosts: true }),
+      sts('Will-O-Wisp', grid('.O./.../.G.'), '80% chance to hit and burn the target.', { hitChance: 0.8, status: { id: 'brn', chance: 1 } }),
+    ],
+    ability: ['wonderGuard', 'Wonder Guard', 'This pokemon takes no damage from attacks that are not super effective against it, including trebuchet attacks.'],
+  }),
+  card({
+    id: 'ninjask', name: 'Ninjask', types: ['Flying', 'Bug'], hp: 80, mov: 5, page: 11,
+    moves: [
+      atk('Fury Cutter', 'Bug', 25, grid('.../OOO/.G.'), 'This move deals 10 extra damage * the current turn count.', { bonus: [{ when: 'round', amount: 10 }] }),
+      sts('Baton Pass', { kind: 'ally', range: 4 }, 'The user switches position with an ally within 4 spaces, and switches stat boosts with them.', { special: 'batonPass' }),
+    ],
+    ability: ['speedBoost', 'Speed Boost', 'This pokemon’s movement speed rises at the beginning of every even numbered turn.'],
+  }),
+  card({
+    id: 'froslass', name: 'Froslass', types: ['Ice', 'Ghost'], hp: 120, mov: 4, page: 11,
+    moves: [
+      atk('Icy Wind', 'Ice', 30, grid('OOO/OOO/.G.'), 'Lowers the target’s speed by one stage.', { targetStages: { stages: { mov: -1 }, chance: 1 } }),
+      sts('Taunt', GLOBAL, 'On your opponent’s next turn, they cannot use moves with no base power if they can attack an enemy of theirs with a damaging move.', { special: 'taunt' }),
+    ],
+    ability: ['snowCloak', 'Snow Cloak', 'This pokemon gets double the effects of terrain bonuses.'],
+  }),
+  card({
+    id: 'roserade', name: 'Roserade', types: ['Grass', 'Poison'], hp: 125, mov: 3, page: 11,
+    moves: [
+      atk('Giga Drain', 'Grass', 60, grid('.../.O./.G.'), 'Heals the user by 30 hp.', { drain: 30 }),
+      atk('Mortal Spin', 'Poison', 25, grid('OOO/OGO/OOO'), 'Poisons the target. Destroys any spikes or webs that are targeted.', {
+        status: { id: 'psn', chance: 1 }, clearHazards: true,
+      }),
+    ],
+    ability: A.technician,
+  }),
+  // ------------------------------------------------------------ expansion pages 3–4
+  card({
+    id: 'haxorus', name: 'Haxorus', types: ['Dragon'], hp: 140, mov: 3, page: 12,
+    moves: [
+      atk('Dragon Claw', 'Dragon', 75, grid('.R./.O./.G.'), ''),
+      sts('Dragon Dance', SELF, 'Raises the user’s attack and speed by one stage.', { selfStages: { stages: { atk: 1, mov: 1 } } }),
+    ],
+    ability: A.moldBreaker,
+    notes: ['The card has no type icons yet; Haxorus is read as Dragon type.'],
+  }),
+  card({
+    id: 'oricorio', name: 'Oricorio', types: ['Ice', 'Flying'], hp: 95, mov: 3, page: 12,
+    moves: [
+      atk('Revelation Dance', 'Ice', 55, grid('.O./OBO/.O./.G.'), ''),
+      atk('Air Slash', 'Flying', 45, grid('.O./.O./.G.'), '30% chance to make each target flinch.', { flinch: { chance: 0.3 } }),
+    ],
+    ability: ['dancer', 'Dancer', 'When another pokemon uses an attack with “dance” in the name, this pokemon copies that attack.'],
+    notes: ['The card has no type icons yet; Oricorio is read as Ice/Flying (Revelation Dance is printed as Ice, and in the games it takes the user’s type).'],
+  }),
+  card({
+    id: 'wigglytuff', name: 'Wigglytuff', types: ['Fairy'], hp: 130, mov: 2, page: 13,
+    moves: [
+      sts('Metronome', SELF, 'Draw a random unused pokemon, and choose to use one of their moves in any direction if possible.', { special: 'metronome' }),
+      FAKE_OUT('.O./OOO/.O./.G.'),
+    ],
+    ability: A.competitive,
   }),
 ];
 

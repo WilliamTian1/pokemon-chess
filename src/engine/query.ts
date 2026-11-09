@@ -30,6 +30,14 @@ export const adjacentUnits = (s: GameState, u: Unit): Unit[] =>
 /** Live units with this ability anywhere on the field. */
 export const withAbility = (s: GameState, a: AbilityId): Unit[] => liveUnits(s).filter((u) => abilityOf(u) === a);
 
+/** The trainer `side` picked (trainer mode), or null. */
+export const trainerOf = (s: GameState, side: Side): string | null => s.trainers?.picks[side] ?? null;
+/** The trainer Special Move in effect for `side`'s current turn, if any. */
+export const turnEffect = (s: GameState, side: Side): 'sureHit' | 'rally' | 'push2' | null =>
+  s.trainers?.effect?.side === side ? s.trainers.effect.kind : null;
+/** Leaf Guard / Snow Cloak double the effect of berry bushes and flowers. */
+export const terrainMult = (u: Unit): number => (abilityOf(u) === 'leafGuard' || abilityOf(u) === 'snowCloak' ? 2 : 1);
+
 export function moveOf(u: Unit, index: 0 | 1): MoveDef {
   return cardOf(u).moves[index];
 }

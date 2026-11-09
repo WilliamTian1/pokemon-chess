@@ -1,5 +1,8 @@
 import type { ReactNode } from 'react';
-import { type PType, type Side, type StatusId, TYPE_COLORS } from '../../engine';
+import { type PType, type Side, type StatusId, CARDS, TYPE_COLORS } from '../../engine';
+
+/** Expansion cards whose artwork isn't finished yet: their tokens show the name instead. */
+const NO_ART = new Set(['ditto', 'shedinja', 'ninjask', 'froslass', 'roserade', 'wigglytuff']);
 
 export function TypeBadge({ type, small }: { type: PType; small?: boolean }) {
   return (
@@ -27,6 +30,20 @@ export function StatusBadge({ status }: { status: StatusId }) {
 }
 
 export function Art({ id, className = '', alt }: { id: string; className?: string; alt?: string }) {
+  const card = CARDS[id];
+  if (NO_ART.has(id) && card) {
+    const [a, b = a] = card.types;
+    return (
+      <span
+        role="img"
+        aria-label={alt ?? card.name}
+        className={`flex select-none items-center justify-center overflow-hidden font-black text-white ${className}`}
+        style={{ background: `linear-gradient(135deg, ${TYPE_COLORS[a]}, ${TYPE_COLORS[b]})`, textShadow: '0 1px 2px rgba(0,0,0,.6)', containerType: 'inline-size' }}
+      >
+        <span className="text-[38cqw] leading-none">{card.name.slice(0, 2)}</span>
+      </span>
+    );
+  }
   return (
     <img
       src={`${import.meta.env.BASE_URL}art/${id}.jpg`}

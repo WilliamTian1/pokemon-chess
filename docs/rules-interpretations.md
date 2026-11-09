@@ -112,3 +112,50 @@ Only the immunities printed in the rules or on cards apply:
 ## Not used on this map
 
 Cannons, wooden logs and ice sliding are not implemented. Magma and pit tiles exist in the engine's movement rules, but this map has none.
+
+## Expansion cards (Conquest Cards - Google Slides.pdf)
+
+19 Pokémon from the expansion sheet are in the draft pool (pages 10–13 here). Golurk is left out for now: its card is still an unfinished copy of Octillery's (Water type, Octazooka, Helping Hand).
+
+- **Types read from the icons.** Tinkaton is Steel/Fairy, Corsola Rock/Water, Wigglytuff Fairy. Haxorus and Oricorio have no type icons yet: Haxorus is read as Dragon, Oricorio as Ice/Flying (Revelation Dance is printed as Ice, and in the games it takes the user's type).
+- **Flying Press** counts as Fighting and Flying at once: effectiveness multiplies across both, and an immunity to either (Ghost to Fighting) stops it.
+- **Fake Out:** after it is used, it can't be used again until the user ends an activation 4+ tiles (counted like movement) from every opponent.
+- **Gigaton Hammer** only works in even-numbered rounds.
+- **Light Screen:** +1 Defense for the whole team, but no Pokémon goes above +1 from it.
+- **Coaching, Helping Hand, After You** only affect allies in the zone. Helping Hand's +30 lasts until the end of the current turn. After You lets the ally move again (up to its normal movement) right away; the player picks the tile or stays.
+- **Octazooka** targets one Pokémon 4–6 steps away.
+- **Floral Healing** heals 40, or 80 for a Pokémon standing on a berry bush or flowers (Flying and Levitate Pokémon don't count as on them). Like other heals, it heals every Pokémon in its zone.
+- **Taunt:** during the opponent's next turn, a Pokémon that can hit one of its opponents with a damaging move from where it stands can't use status moves.
+- **Baton Pass:** switches places with an ally within 4 steps and swaps their stat changes.
+- **Transform (Ditto):** uses either move of any other Pokémon on the field as its own (not Transform or Metronome). Ditto prints one move; its second slot is empty.
+- **Metronome:** draws a random card that neither side drafted (any card whose moves aren't Transform or Metronome). The player picks one of its moves and how to aim it; if neither can hit anything, nothing happens.
+- **Mortal Spin** also removes spikes and webs in its zone.
+- **Fury Cutter:** +10 power per round number.
+- **Unburden:** +1 Movement each time the Pokémon takes damage from an attack.
+- **Pixilate:** an ally next to Sylveon has its Normal moves turned Fairy, with +30 damage.
+- **Adaptability:** Porygon-Z and any Pokémon next to it deal 30 extra damage with Normal moves.
+- **Leaf Guard / Snow Cloak:** berry bushes reduce damage by 60 and flowers heal 60.
+- **Mold Breaker:** the user's attacks ignore the target's abilities (like Teravolt).
+- **Artillery Expertise:** the trebuchet does 60 before type effectiveness instead of 40.
+- **Triage:** Comfey may walk up to 3 extra tiles, but only to a tile from which it can use a healing move, and it must then use one (the move can be undone).
+- **Decoy (Wobbuffet):** an attack that hits Wobbuffet first resolves on Wobbuffet. If Wobbuffet survives, no other Pokémon in the zone takes damage (other effects still apply), and the attacker takes the damage Wobbuffet took.
+- **Imposter:** when Ditto ends an activation next to a Pokémon whose stat changes differ, its player may copy them.
+- **Wonder Guard:** Shedinja takes no damage from attacks or trebuchet shots that aren't super effective (Tinted Lens only lifts a hit to neutral). Poison, burns, recoil, hazards, weather and Future Sight still hurt it.
+- **Speed Boost:** +1 Movement at the start of each of Ninjask's turns in an even-numbered round.
+- **Dancer:** when another Pokémon (either side) uses a move with "dance" in its name, Oricorio uses it too: self and field moves at once, aimed moves in a direction its player picks.
+
+## Trainers
+
+Trainer mode is chosen at setup. After the draft, four of the six trainers are offered; the Attacker picks one, then the Defender picks from the remaining three. Passives apply to the trainer's own side. The Special Move can be used once per game, at any point of its own turn while no Pokémon is mid-activation, and doesn't use up an action. Effects that last "the rest of your turn" end when the turn ends.
+
+- **Mitsuhide:** weather moves and abilities (Sunny Day, Rain Dance, Sandstorm, Hail, Drizzle, Drought) never hurt its side. Special: every Pokémon's stat changes are removed; until the turn ends, its side's moves can't miss or graze.
+- **N:** its side takes no recoil (Head Smash, Volt Tackle…; crash damage from a missed move still applies). Special: its own Pokémon heal 50 and are cured of status conditions.
+- **Nobunaga:** its Pokémon heal 30 whenever an attack they are immune to targets them; its trebuchet shots do +10. Special: one of its Pokémon that hasn't been activated this turn gets +2 movement, +30 damage and ignores the opponents' Defense boosts for the rest of the turn.
+- **Red:** Pikachu's Thunderbolt deals 45 extra damage. Special: for the rest of the turn its team gets +1 movement and deals 20 extra damage per fainted teammate.
+- **Blue:** its moves that push one tile push two. Special: the same as Red's (as printed).
+- **Lance:** when one of its Pokémon would go on a cooldown (Fake Out's lock, or a "can't move/act next turn" recharge), it takes 40 recoil instead and the cooldown is skipped. Special: for the rest of the turn, every attack its side makes (trebuchet included) pushes the target 2 tiles straight away from the attacker; a target pushed into the board edge or a tile it can't enter takes 60 damage.
+
+## Effect tags
+
+Stat changes and conditions are shown as the tabletop's tags, dropped onto the card at random (but stable) spots with a slight tilt: one tag per stat stage (sword = Attack, shield = Defense, boot = Movement, + or −), the status condition (fire, bubbles, purple bubbles for bad poison, lightning, Zzz; frozen has no printed tag, so a matching snowflake tag is drawn), the sweat drop for flinching and recharging, and “!” for confusion, Taunt, Follow Me, cooldowns, Sturdy and Future Sight. A red number counts the Pokémon's turns the effect still lasts. When a move lands, the affected cards shake and flash with the damage, healing, status or stat change.
+

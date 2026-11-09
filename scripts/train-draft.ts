@@ -2,52 +2,80 @@
  * Fits the Hard bot's draft model from random-draft self-play games (see scripts/arena.ts):
  *
  *   npx tsx scripts/arena.ts --a hard --d hard --draft random --map river --games 6000 --out games.jsonl
- *   npx tsx scripts/train-draft.ts --map river games.jsonl [more.jsonl…]
+ *   npx tsx scripts/train-draft.ts --map river [--mode nlt] games.jsonl [more.jsonl…]
  *
  * Model: logit P(Attacker wins) = bias + Σ attacker-card values + Σ defender-card values
- *        + matchup weight × type-matchup balance + prior weights × heuristic ratings.
+ *        + matchup weight × type-matchup balance + prior weights × heuristic ratings
+ *        (+ in trainer mode, each side's trainer value and a weight on its synergy with the team).
  * Card values are L2-regularised (strength picked by cross-validation), so a card that was rarely
- * seen falls back to the heuristic rating. Writes src/ai/models/<map>.json (one model per map).
+ * seen falls back to the heuristic rating. Writes src/ai/models/<map>[-<mode>].json: one model per map
+ * and mode ('' legendaries, 'nl' without, 't' with trainers, 'nlt' both; see src/ai/draftModel.ts).
  */
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { DRAFTABLE } from '../src/engine';
-import { type DraftModel, matchupBalance, priorFeature } from '../src/ai/draft';
+import { DRAFTABLE, TRAINER_LIST } from '../src/engine';
+import { type DraftModel, matchupBalance, priorFeature, trainerSynergy } from '../src/ai/draft';
 import type { GameRecord } from './arena';
 
-const mapIdx = process.argv.indexOf('--map');
-const mapId = mapIdx > 0 ? process.argv[mapIdx + 1] : 'meadow';
-const files = process.argv.slice(2).filter((a, i, all) => a !== '--map' && all[i - 1] !== '--map');
-if (!files.length) throw new Error('usage: train-draft.ts --map <id> games.jsonl […]');
+const opt = (name: string): string | undefined => {
+  const i = process.argv.indexOf(`--${name}`);
+  return i > 0 ? process.argv[i + 1] : undefined;
+};
+const mapId = opt('map') ?? 'meadow';
+const mode = opt('mode') ?? '';
+const files = process.argv.slice(2).filter((a, i, all) => !a.startsWith('--') && !all[i - 1]?.startsWith('--'));
+if (!files.length) throw new Error('usage: train-draft.ts --map <id> [--mode nl|t|nlt] games.jsonl […]');
 const games: GameRecord[] = files.flatMap((f) =>
   fs.readFileSync(f, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as GameRecord));
 
 const ids = DRAFTABLE.map((c) => c.id);
 const index = new Map(ids.map((id, i) => [id, i]));
 const N = ids.length;
-// Feature layout: [A cards (N), D cards (N), matchup, priorA, priorD]; bias is separate.
-const F = 2 * N + 3;
-const MATCH = 2 * N;
-const PRIOR_A = 2 * N + 1;
-const PRIOR_D = 2 * N + 2;
+const tids = TRAINER_LIST.map((t) => t.id);
+const tindex = new Map(tids.map((id, i) => [id, i]));
+const NT = tids.length;
+const withTrainers = games.some((g) => g.trainers);
+// Feature layout: [A cards (N), D cards (N), A trainer (NT), D trainer (NT), matchup, priorA, priorD,
+// A trainer synergy (NT), D trainer synergy (NT)]; bias is separate. Cards and trainers are one-hot.
+const TA = 2 * N;
+const TD = 2 * N + NT;
+const MATCH = 2 * N + 2 * NT;
+const PRIOR_A = MATCH + 1;
+const PRIOR_D = MATCH + 2;
+const SYN_A = MATCH + 3;
+const SYN_D = SYN_A + NT;
+const F = SYN_D + NT;
+/** One-hot features (cards, trainers) are L2-penalised; the rest are not. */
+const PENALISED = MATCH;
 
 interface Row {
   sparse: number[];
-  dense: [number, number, number];
+  /** Real-valued features: [index, value]. */
+  dense: [number, number][];
   /** Card indices (0…N-1) of each team, for the pairwise terms. */
   a: number[];
   d: number[];
   y: number;
 }
 
-const rows: Row[] = games.map((g) => ({
-  sparse: [...g.teams.A.map((id) => index.get(id)!), ...g.teams.D.map((id) => N + index.get(id)!)],
-  dense: [matchupBalance(g.teams.A, g.teams.D), priorFeature(g.teams.A, 'A'), priorFeature(g.teams.D, 'D')],
-  a: g.teams.A.map((id) => index.get(id)!),
-  d: g.teams.D.map((id) => index.get(id)!),
-  y: g.winner === 'A' ? 1 : 0,
-}));
+const rows: Row[] = games.map((g) => {
+  const sparse = [...g.teams.A.map((id) => index.get(id)!), ...g.teams.D.map((id) => N + index.get(id)!)];
+  const dense: [number, number][] = [
+    [MATCH, matchupBalance(g.teams.A, g.teams.D)], [PRIOR_A, priorFeature(g.teams.A, 'A')], [PRIOR_D, priorFeature(g.teams.D, 'D')],
+  ];
+  const tA = g.trainers?.A;
+  const tD = g.trainers?.D;
+  if (tA) {
+    sparse.push(TA + tindex.get(tA)!);
+    dense.push([SYN_A + tindex.get(tA)!, trainerSynergy(tA, g.teams.A, g.teams.D)]);
+  }
+  if (tD) {
+    sparse.push(TD + tindex.get(tD)!);
+    dense.push([SYN_D + tindex.get(tD)!, trainerSynergy(tD, g.teams.D, g.teams.A)]);
+  }
+  return { sparse, dense, a: g.teams.A.map((id) => index.get(id)!), d: g.teams.D.map((id) => index.get(id)!), y: g.winner === 'A' ? 1 : 0 };
+});
 
 const sigmoid = (z: number): number => 1 / (1 + Math.exp(-z));
 
@@ -69,7 +97,7 @@ function predict(P: Params, r: Row, grad?: { e: number; g: Float64Array }): numb
   const { K, p } = P;
   let z = p[BIAS];
   for (const i of r.sparse) z += p[i];
-  z += p[MATCH] * r.dense[0] + p[PRIOR_A] * r.dense[1] + p[PRIOR_D] * r.dense[2];
+  for (const [i, v] of r.dense) z += p[i] * v;
   if (K > 0) {
     const sum = (table: 0 | 1 | 2 | 3, cards: number[]) => {
       const v = new Float64Array(K);
@@ -113,9 +141,7 @@ function predict(P: Params, r: Row, grad?: { e: number; g: Float64Array }): numb
   if (grad) {
     const { e, g } = grad;
     for (const i of r.sparse) g[i] += e;
-    g[MATCH] += e * r.dense[0];
-    g[PRIOR_A] += e * r.dense[1];
-    g[PRIOR_D] += e * r.dense[2];
+    for (const [i, v] of r.dense) g[i] += e * v;
     g[BIAS] += e;
   }
   return z;
@@ -138,7 +164,7 @@ function fit(train: Row[], lambda: number, K: number, lambdaF: number): Params {
     for (const r of train) predict(P, r, { e: sigmoid(predict(P, r)) - r.y, g });
     for (let i = 0; i < size; i++) {
       g[i] /= train.length;
-      if (i < 2 * N) g[i] += lambda * P.p[i];
+      if (i < PENALISED) g[i] += lambda * P.p[i];
       else if (i > F) g[i] += lambdaF * P.p[i];
       m[i] = 0.9 * m[i] + 0.1 * g[i];
       v[i] = 0.999 * v[i] + 0.001 * g[i] * g[i];
@@ -196,6 +222,11 @@ const model: DraftModel = {
   A: Object.fromEntries(ids.map((id, i) => [id, +w[i].toFixed(4)])),
   D: Object.fromEntries(ids.map((id, i) => [id, +w[N + i].toFixed(4)])),
   ...(best.K > 0 ? { k: best.K, synA: factors(0), synD: factors(1), crossA: factors(2), crossD: factors(3) } : {}),
+  ...(withTrainers ? {
+    trainers: Object.fromEntries(tids.map((id, i) => [id, {
+      A: +w[TA + i].toFixed(4), D: +w[TD + i].toFixed(4), synA: +w[SYN_A + i].toFixed(4), synD: +w[SYN_D + i].toFixed(4),
+    }])),
+  } : {}),
 };
 console.log(`chosen: card λ=${bestLambda}, pair rank ${best.K}${best.K ? `, λf=${best.lambdaF}` : ' (pair terms did not help)'}, held-out log loss ${best.loss.toFixed(4)}`);
 
@@ -206,6 +237,12 @@ for (const side of ['A', 'D'] as const) {
   console.log(`best as ${side}: ${sorted.slice(0, 10).map((id) => `${id} ${total(id, side).toFixed(2)}`).join(', ')}`);
   console.log(`worst as ${side}: ${sorted.slice(-6).map((id) => `${id} ${total(id, side).toFixed(2)}`).join(', ')}`);
 }
-const out = path.resolve(path.dirname(fileURLToPath(import.meta.url)), `../src/ai/models/${mapId}.json`);
+if (model.trainers) {
+  console.log(`trainers (A value / syn, D value / syn): ${tids.map((id) => {
+    const t = model.trainers![id];
+    return `${id} ${t.A.toFixed(2)}/${t.synA.toFixed(2)} ${t.D.toFixed(2)}/${t.synD.toFixed(2)}`;
+  }).join(' · ')}`);
+}
+const out = path.resolve(path.dirname(fileURLToPath(import.meta.url)), `../src/ai/models/${mapId}${mode ? `-${mode}` : ''}.json`);
 fs.writeFileSync(out, `${JSON.stringify(model, null, 2)}\n`);
 console.log(`wrote ${out}`);

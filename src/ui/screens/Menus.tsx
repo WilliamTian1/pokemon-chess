@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { DIFFICULTIES, type Difficulty } from '../../ai/bot';
-import { CARD_LIST, type CardDef, type Side } from '../../engine';
+import { CARD_LIST, type CardDef, type Side, TRAINER_LIST } from '../../engine';
 import { Art, Modal } from '../components/bits';
 import { CardDetail, MiniGrid } from '../components/CardView';
-import { LegendaryToggle, MapPicker, savedLegendaries, savedMapId } from '../components/MapPicker';
+import { LegendaryToggle, MapPicker, TrainerToggle, savedLegendaries, savedMapId, savedTrainers } from '../components/MapPicker';
 import { TypeChartModal } from '../components/Matchups';
 import { CardGrid, useCardFilter } from './DraftView';
 
@@ -58,9 +58,10 @@ function MenuButton({ title, sub, onClick, primary }: { title: string; sub: stri
   );
 }
 
-export function LocalSetup({ onStart, onBack }: { onStart: (mapId: string, legendaries: boolean) => void; onBack: () => void }) {
+export function LocalSetup({ onStart, onBack }: { onStart: (mapId: string, legendaries: boolean, trainers: boolean) => void; onBack: () => void }) {
   const [mapId, setMapId] = useState(savedMapId);
   const [legendaries, setLegendaries] = useState(savedLegendaries);
+  const [trainers, setTrainers] = useState(savedTrainers);
   return (
     <div className="mx-auto max-w-2xl px-4 py-10">
       <button type="button" className="btn-ghost mb-4" onClick={onBack}>← Back</button>
@@ -68,16 +69,18 @@ export function LocalSetup({ onStart, onBack }: { onStart: (mapId: string, legen
         <h2 className="text-2xl font-bold">Hot-seat: choose a map</h2>
         <MapPicker value={mapId} onChange={setMapId} />
         <LegendaryToggle value={legendaries} onChange={setLegendaries} />
-        <button type="button" className="btn-primary w-full py-3 text-base" onClick={() => onStart(mapId, legendaries)}>Start draft</button>
+        <TrainerToggle value={trainers} onChange={setTrainers} />
+        <button type="button" className="btn-primary w-full py-3 text-base" onClick={() => onStart(mapId, legendaries, trainers)}>Start draft</button>
       </div>
     </div>
   );
 }
 
-export function BotSetup({ onStart, onBack }: { onStart: (human: Side, level: Difficulty, mapId: string, legendaries: boolean) => void; onBack: () => void }) {
+export function BotSetup({ onStart, onBack }: { onStart: (human: Side, level: Difficulty, mapId: string, legendaries: boolean, trainers: boolean) => void; onBack: () => void }) {
   const [level, setLevel] = useState<Difficulty>('medium');
   const [mapId, setMapId] = useState(savedMapId);
   const [legendaries, setLegendaries] = useState(savedLegendaries);
+  const [trainers, setTrainers] = useState(savedTrainers);
   const [role, setRole] = useState<Side | 'R'>('A');
   const desc: Record<Difficulty, string> = {
     easy: 'Plays loosely and often picks something random. Good for learning the rules.',
@@ -118,10 +121,11 @@ export function BotSetup({ onStart, onBack }: { onStart: (human: Side, level: Di
           <MapPicker value={mapId} onChange={setMapId} />
         </div>
         <LegendaryToggle value={legendaries} onChange={setLegendaries} />
+        <TrainerToggle value={trainers} onChange={setTrainers} />
         <button
           type="button"
           className="btn-primary w-full py-3 text-base"
-          onClick={() => onStart(role === 'R' ? (Math.random() < 0.5 ? 'A' : 'D') : role, level, mapId, legendaries)}
+          onClick={() => onStart(role === 'R' ? (Math.random() < 0.5 ? 'A' : 'D') : role, level, mapId, legendaries, trainers)}
         >
           Start draft
         </button>
@@ -143,6 +147,16 @@ export function CardGallery({ onBack }: { onBack: () => void }) {
       </div>
       {controls}
       <CardGrid cards={cards} onOpen={setDetail} />
+      <h3 className="pt-3 text-lg font-bold">Trainers <span className="text-sm font-medium text-slate-400">(trainer mode)</span></h3>
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,220px),1fr))] gap-3">
+        {TRAINER_LIST.map((t) => (
+          <div key={t.id} className="space-y-1.5">
+            <img src={`${import.meta.env.BASE_URL}trainers/${t.id}.jpg`} alt={`${t.name} card`} loading="lazy" className="w-full rounded-lg shadow-md shadow-black/40" />
+            <p className="text-xs text-slate-300"><b>Passive:</b> {t.passive}</p>
+            <p className="text-xs text-slate-300"><b>Special (once per game):</b> {t.special}</p>
+          </div>
+        ))}
+      </div>
       {detail && (
         <Modal onClose={() => setDetail(null)}>
           <CardDetail card={detail} />
@@ -173,6 +187,7 @@ export function HowToPlay({ onBack }: { onBack: () => void }) {
         <h3 className="font-bold text-white">Match flow</h3>
         <ol className="list-decimal space-y-1 pl-5">
           <li><b>Draft:</b> each match deals 15 random Pokémon and 4 random legendaries. The Attacker and Defender alternate picking 3 Pokémon each, then each picks one legendary. With <b>No legendaries</b> chosen at setup, the pool is 20 Pokémon and both players pick all 4 from it.</li>
+          <li><b>Trainers</b> (if <b>With trainers</b> was chosen at setup): after the draft, 4 random trainers are shown. The Attacker takes one, then the Defender picks from the other three. A trainer's passive always applies to its own side, and its <b>Special Move</b> can be used once per game at any point of your own turn (between Pokémon) without using up an action.</li>
           <li><b>Placement:</b> the Attacker places first, then players alternate placing Pokémon on their spawn tiles. Like a chessboard, the board is turned so your own side is at the bottom.</li>
           <li><b>Battle:</b> up to 10 rounds. Each round the Attacker takes a full team turn, then the Defender. Both sides can move and attack from round 1.</li>
         </ol>
@@ -183,6 +198,7 @@ export function HowToPlay({ onBack }: { onBack: () => void }) {
         <p>Activate each of your Pokémon once, in any order: <b>move</b> up to its Mov (orthogonal steps, through allies but not enemies), then take <b>one action</b> — use a move, fire the trebuchet, or wait. Then press <b>End turn</b>.</p>
         <p>Select a Pokémon, tap a blue tile to move, pick a move and aim it in one of four directions (or just click the Pokémon you want to hit). Previews show the damage range and KO chance on every Pokémon hit — allies included!</p>
         <p><b>Reach:</b> click an opposing Pokémon to see every tile it can attack on its next turn, after moving. Its first move's range is filled red, its second move's is outlined in yellow. Click it again or press Esc to hide it.</p>
+        <p><b>Tags:</b> like tokens on a real table, stat changes and conditions are tags dropped onto the Pokémon's card: sword = Attack, shield = Defense, boot = Movement (one tag per stage, + or −), fire = burn, bubbles = poison (purple: badly poisoned), lightning = paralysis, Zzz = sleep, snowflake = frozen, sweat drop = flinched or recharging, and “!” for other effects (confusion, Taunt, Follow Me, cooldowns). A red number on a tag is how many of the Pokémon's turns the effect still lasts. Hover a tag for details.</p>
       </section>
       <section className="panel space-y-2 p-4">
         <h3 className="font-bold text-white">Reading the move grids</h3>

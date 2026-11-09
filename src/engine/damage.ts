@@ -1,7 +1,7 @@
 import { typeMultiplier } from './data/typechart';
 import {
   abilityOf, adjacentToType, alliesOf, cardOf, effectiveMov, isNormalTerrain, liveUnits,
-  terrainAt, terrainBonus, withAbility,
+  terrainAt, terrainBonus, terrainMult, trainerOf, turnEffect, withAbility,
 } from './query';
 import type { GameState, MoveDef, PType, Pos, Unit } from './types';
 import { cheb, clamp, roundUp5 } from './util';
@@ -13,6 +13,10 @@ export interface AttackCtx {
   move: MoveDef | null;
   /** The hit's type: the move's, or for the trebuchet whichever of the user's types it fires as. */
   moveType: PType;
+  /** Every type the hit carries: `moveType`, plus a dual-type move's second type (Flying Press). */
+  types: PType[];
+  /** A Normal move turned Fairy by an adjacent ally's Pixilate (+30 damage). */
+  pixilated: boolean;
   moveName: string;
   isTrebuchet: boolean;
   /** Moongeist Beam, Teravolt, Turboblaze. */
@@ -21,21 +25,34 @@ export interface AttackCtx {
   targetCount: number;
 }
 
+/** Whether `u`'s Normal moves from `at` are turned Fairy by an adjacent ally's Pixilate. */
+export function pixilateAt(s: GameState, u: Unit, at: Pos | null): boolean {
+  return !!at && alliesOf(s, u).some((x) => abilityOf(x) === 'pixilate' && cheb(x.pos!, at) === 1);
+}
+
 export function makeAttackCtx(attacker: Unit, move: MoveDef | null, opts: {
   moveType?: PType;
   attackerPos?: Pos;
   targetCount?: number;
+  /** Pass the state so Pixilate can turn a Normal move Fairy. */
+  s?: GameState;
 } = {}): AttackCtx {
   const ab = abilityOf(attacker);
-  const moveType = opts.moveType ?? (move ? move.type ?? 'Normal' : cardOf(attacker).types[0]);
+  const attackerPos = opts.attackerPos ?? attacker.pos!;
+  let moveType = opts.moveType ?? (move ? move.type ?? 'Normal' : cardOf(attacker).types[0]);
+  const pixilated = !!move && !!opts.s && moveType === 'Normal' && pixilateAt(opts.s, attacker, attackerPos);
+  if (pixilated) moveType = 'Fairy';
+  const extra = move?.extraType && move.extraType !== moveType ? [move.extraType] : [];
   return {
     attacker,
-    attackerPos: opts.attackerPos ?? attacker.pos!,
+    attackerPos,
     move,
     moveType,
+    types: [moveType, ...extra],
+    pixilated,
     moveName: move?.name ?? 'Trebuchet',
     isTrebuchet: move === null,
-    ignoreAbilities: !!move?.fx.ignoreAbilities || ab === 'teravolt' || ab === 'turboblaze',
+    ignoreAbilities: !!move?.fx.ignoreAbilities || ab === 'teravolt' || ab === 'turboblaze' || ab === 'moldBreaker',
     targetCount: opts.targetCount ?? 1,
   };
 }
@@ -95,6 +112,9 @@ export function basePower(s: GameState, ac: AttackCtx, target: Unit, dice: numbe
       case 'chance':
         if (chanceBonus) p += b.amount;
         break;
+      case 'round':
+        p += b.amount * s.round;
+        break;
     }
   }
   return p;
@@ -108,11 +128,19 @@ export interface DamageResult {
   absorbed: boolean;
 }
 
-export function isImmune(ac: AttackCtx, target: Unit): { immune: boolean; absorbed: boolean } {
+/** Type effectiveness of the hit: the product over every type it carries. */
+export function hitTypeMultiplier(ac: AttackCtx, target: Unit): number {
+  return ac.types.reduce((m, t) => m * typeMultiplier(t, cardOf(target).types), 1);
+}
+
+export function isImmune(ac: AttackCtx, target: Unit): { immune: boolean; absorbed: boolean; wonderGuard?: boolean } {
   const dAb = ac.ignoreAbilities ? null : abilityOf(target);
-  if (dAb === 'stormDrain' && ac.moveType === 'Water') return { immune: true, absorbed: true };
-  if (dAb === 'levitate' && ac.moveType === 'Ground') return { immune: true, absorbed: false };
-  if (typeMultiplier(ac.moveType, cardOf(target).types) === 0) return { immune: true, absorbed: false };
+  if (dAb === 'stormDrain' && ac.types.includes('Water')) return { immune: true, absorbed: true };
+  if (dAb === 'levitate' && ac.types.includes('Ground')) return { immune: true, absorbed: false };
+  const mult = hitTypeMultiplier(ac, target);
+  if (mult === 0) return { immune: true, absorbed: false };
+  // Wonder Guard: only super-effective hits get through (Tinted Lens only lifts a hit to neutral).
+  if (dAb === 'wonderGuard' && mult <= 1) return { immune: true, absorbed: false, wonderGuard: true };
   return { immune: false, absorbed: false };
 }
 
@@ -150,13 +178,16 @@ export function computeDamage(s: GameState, ac: AttackCtx, target: Unit, base: n
   const grazed = grazePower !== null;
   const dist = cheb(ac.attackerPos, target.pos!);
 
-  let mult = typeMultiplier(ac.moveType, cardOf(target).types);
+  let mult = hitTypeMultiplier(ac, target);
   if (aAb === 'tintedLens' && mult < 1) mult = 1;
+  const thickFat = dAb === 'thickFat' && (ac.types.includes('Fire') || ac.types.includes('Ice'));
 
-  // The trebuchet is a flat 40 before type effectiveness: no stages, ability, terrain or burn modifiers.
+  // The trebuchet is a flat 40 before type effectiveness: no stages, ability, terrain or burn
+  // modifiers, except the ones that are about the trebuchet itself.
   if (ac.isTrebuchet) {
-    let raw = 40 * mult;
-    if (dAb === 'thickFat' && (ac.moveType === 'Fire' || ac.moveType === 'Ice')) raw *= 0.5;
+    const extra = (aAb === 'artilleryExpertise' ? 20 : 0) + (trainerOf(s, A.side) === 'nobunaga' ? 10 : 0);
+    let raw = (40 + extra) * mult;
+    if (thickFat) raw *= 0.5;
     return { damage: roundUp5(raw), mult, immune: false, absorbed: false };
   }
 
@@ -167,6 +198,7 @@ export function computeDamage(s: GameState, ac: AttackCtx, target: Unit, base: n
     atkStage = Math.min(0, atkStage);
     defStage = Math.max(0, defStage);
   }
+  if (A.ignoreDefBoosts) defStage = Math.min(0, defStage);
   if (aAb === 'unaware') defStage = 0;
   if (dAb === 'unaware') atkStage = 0;
   if (aAb === 'airLock') defStage = Math.min(0, defStage);
@@ -188,7 +220,14 @@ export function computeDamage(s: GameState, ac: AttackCtx, target: Unit, base: n
     if (/punch|mash|fist/i.test(ac.moveName) && (aAb === 'ironFist' ||
       liveUnits(s).some((x) => x.id !== A.id && abilityOf(x) === 'ironFist' && cheb(x.pos!, ac.attackerPos) === 1))) mod += 20;
     if (ac.moveType === 'Dark' && withAbility(s, 'darkAura').length > 0) mod += 20;
+    if (ac.moveType === 'Normal' && (aAb === 'adaptability' ||
+      liveUnits(s).some((x) => x.id !== A.id && abilityOf(x) === 'adaptability' && cheb(x.pos!, ac.attackerPos) === 1))) mod += 30;
+    if (ac.pixilated) mod += 30;
   }
+  // Helping Hand / Nobunaga, Red and Blue's specials, and Red's Pikachu.
+  mod += A.dmgBonus;
+  if (turnEffect(s, A.side) === 'rally') mod += 20 * s.units.filter((x) => x.side === A.side && x.fainted).length;
+  if (ac.moveName === 'Thunderbolt' && cardOf(A).id === 'pikachu' && trainerOf(s, A.side) === 'red') mod += 45;
   if (aAb === 'defeatist' && A.maxHp - A.hp >= 60) mod -= 40;
   // Intimidate: each adjacent opposing Intimidate holder.
   mod -= 30 * liveUnits(s).filter((x) => x.side !== A.side && abilityOf(x) === 'intimidate' && cheb(x.pos!, ac.attackerPos) === 1).length;
@@ -202,14 +241,14 @@ export function computeDamage(s: GameState, ac: AttackCtx, target: Unit, base: n
   }
   if (dAb === 'resistance' && dist <= 1) mod += 20;
   if (!ac.ignoreAbilities && !defBoostsIgnored && flowerGiftAdjacent(s, target)) mod -= 30;
-  if (aAb !== 'airLock' && terrainBonus(s, target) === 'bush') mod -= 30;
+  if (aAb !== 'airLock' && terrainBonus(s, target) === 'bush') mod -= 30 * terrainMult(target);
 
   // ---- status
   if (A.status === 'brn' && aAb !== 'guts') mod -= 30;
 
   const pre = Math.max(10, (grazed ? grazePower! : base) + dStages + mod);
   let raw = pre * mult;
-  if (dAb === 'thickFat' && !defBoostsIgnored && (ac.moveType === 'Fire' || ac.moveType === 'Ice')) raw *= 0.5;
+  if (thickFat && !defBoostsIgnored) raw *= 0.5;
   return { damage: roundUp5(raw), mult, immune: false, absorbed: false };
 }
 
@@ -224,8 +263,9 @@ export function grazeApplies(s: GameState, ac: AttackCtx): boolean {
   return true;
 }
 
-/** Compound Eyes: the user or an adjacent ally of Galvantula never misses or grazes. */
+/** Compound Eyes (the user or an adjacent ally of its holder) and Mitsuhide's special: no misses or grazes. */
 export function neverMisses(s: GameState, u: Unit, at?: Pos): boolean {
+  if (turnEffect(s, u.side) === 'sureHit') return true;
   const p = at ?? u.pos;
   if (abilityOf(u) === 'compoundEyes') return true;
   return !!p && alliesOf(s, u).some((a) => abilityOf(a) === 'compoundEyes' && cheb(a.pos!, p) === 1);

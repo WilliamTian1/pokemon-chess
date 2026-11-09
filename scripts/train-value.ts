@@ -190,9 +190,14 @@ function evaluate(set: ValueRecord[]): { loss: number; mse: number; corr: number
 }
 
 // Baseline: the hand-written evaluation alone (both points of view + clock), fitted logistically.
+const gi = ['evalA', 'evalD', 'clockT', 'aToMove'].map((n) => GLOBAL_FEATURES.indexOf(n as (typeof GLOBAL_FEATURES)[number]));
+const w = new Float64Array(gi.length + 1);
+const basePred = (r: ValueRecord): number => {
+  let z = w[gi.length];
+  gi.forEach((k, i) => (z += w[i] * r.f.global[k]));
+  return 1 / (1 + Math.exp(-z));
+};
 {
-  const gi = ['evalA', 'evalD', 'clockT', 'aToMove'].map((n) => GLOBAL_FEATURES.indexOf(n as (typeof GLOBAL_FEATURES)[number]));
-  const w = new Float64Array(gi.length + 1);
   for (let it = 0; it < 300; it++) {
     const g = new Float64Array(w.length);
     for (const r of train) {
@@ -205,11 +210,7 @@ function evaluate(set: ValueRecord[]): { loss: number; mse: number; corr: number
     for (let i = 0; i < w.length; i++) w[i] -= (0.5 * g[i]) / train.length;
   }
   let loss = 0;
-  for (const r of val) {
-    let z = w[gi.length];
-    gi.forEach((k, i) => (z += w[i] * r.f.global[k]));
-    loss += logLoss(1 / (1 + Math.exp(-z)), target(r));
-  }
+  for (const r of val) loss += logLoss(basePred(r), target(r));
   const base = val.reduce((a, r) => a + target(r), 0) / val.length;
   const constLoss = val.reduce((a, r) => a + logLoss(base, target(r)), 0) / val.length;
   console.log(`held-out log loss: constant ${constLoss.toFixed(4)}, hand evaluation (logistic) ${(loss / val.length).toFixed(4)}`);
@@ -219,7 +220,7 @@ if (process.argv.includes('--gradcheck')) {
   // Compare backprop with finite differences on a few weights of every tensor.
   const r = train[0];
   const y = 0.3;
-  for (const k of keys) for (const g of Object.values(G)) g.fill(0);
+  for (const g of Object.values(G)) g.fill(0);
   step(r, y);
   const lossAt = () => logLoss(predictValue(model(), r.f), y);
   let worst = 0;
@@ -267,6 +268,17 @@ for (let ep = 1; ep <= epochs; ep++) {
     bestModel = model();
   }
   console.log(`epoch ${ep}: train ${(trainLoss / order.length).toFixed(4)} · held-out log loss ${v.loss.toFixed(4)}, MSE ${v.mse.toFixed(4)}, corr ${v.corr.toFixed(3)}${mark}`);
+}
+// Where the network helps: held-out log loss by round, network vs the hand evaluation.
+{
+  const rounds = [...new Set(val.map((r) => r.r))].sort((a, b) => a - b);
+  const line = rounds.map((rd) => {
+    const set = val.filter((r) => r.r === rd);
+    const net = set.reduce((a, r) => a + logLoss(predictValue(bestModel, r.f), target(r)), 0) / set.length;
+    const hand = set.reduce((a, r) => a + logLoss(basePred(r), target(r)), 0) / set.length;
+    return `r${rd} ${net.toFixed(3)}/${hand.toFixed(3)} (${set.length})`;
+  });
+  console.log(`held-out log loss by round, network/hand: ${line.join(' · ')}`);
 }
 const round = (a: number[]) => a.map((x) => +x.toFixed(5));
 const m = bestModel;

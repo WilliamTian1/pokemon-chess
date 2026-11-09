@@ -10,11 +10,14 @@
  * reversed, which cancels out the side's own advantage. `--draft random` replaces both drafts
  * with uniform random picks from the pool, which is what scripts/train-draft.ts learns from.
  * `--map river` plays on another map (default meadow). `--legends off` drafts without legendaries, and
- * `--legends mix` alternates (training data for both modes). `--usage` records how often each move is chosen
- * when it is usable (in --out records).
+ * `--legends mix` alternates (training data for both modes); `--trainers on|off|mix` does the same for
+ * trainer mode (random drafts pick trainers at random too). `--usage` records how often each move is
+ * chosen when it is usable (in --out records).
  * `--tune '{"weights":{"clock":0},"search":{"beam":3},"eval":{"ko":1.2}}'` overrides the repo bot's Hard
  * settings, and `--tune-other` the --other bot's (if it exports them). `--value model.json` gives the repo
- * bot a value network (scripts/train-value.ts) to score its search leaves with.
+ * bot a value network (scripts/train-value.ts) to score its search leaves with. `--positions file.jsonl`
+ * also writes the position at the start of every team turn, labelled with the result, as training data for
+ * the value network (the format of scripts/gen-values.ts).
  */
 import fs from 'node:fs';
 import os from 'node:os';
@@ -22,9 +25,11 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { Worker, isMainThread, parentPort, workerData } from 'node:worker_threads';
 import {
-  type Action, type GameState, type Rng, type Side, RuleError, applyAction, cardOf, decider, draftOptions, moveOptions, newGame,
+  type Action, type GameState, type Rng, type Side, RuleError, applyAction, cardOf, decider, draftOptions, liveUnits, moveOptions, newGame,
   seededRng, trebuchetOption,
 } from '../src/engine';
+import { positionFeatures } from '../src/ai/bot';
+import type { ValueRecord } from './gen-values';
 
 type Decide = (s: GameState, side: Side, level: string, rng: Rng) => Action[];
 
@@ -34,7 +39,9 @@ interface Job {
   draft: 'bot' | 'random';
   mapId: string;
   legends: boolean;
+  trainers: boolean;
   usage: boolean;
+  positions: boolean;
 }
 
 export interface GameRecord {
@@ -44,6 +51,9 @@ export interface GameRecord {
   round: number;
   teams: Record<Side, string[]>;
   pool: string[];
+  /** Game mode, and each side's trainer in trainer mode. */
+  legends?: boolean;
+  trainers?: Record<Side, string | null>;
   /** Fainted Pokémon per side and remaining HP fraction per side at the end. */
   fainted: Record<Side, number>;
   hpFrac: Record<Side, number>;
@@ -55,6 +65,8 @@ export interface GameRecord {
    * when that card acted, and how often it was chosen.
    */
   usage?: Record<string, { avail: number; used: number }>;
+  /** With --positions: the start of every team turn (written to that file, not to --out). */
+  positions?: ValueRecord[];
 }
 
 const here = fileURLToPath(import.meta.url);
@@ -96,12 +108,13 @@ async function playGame(job: Job, other: string | undefined): Promise<GameRecord
   const players = { A: await loadDecide(job.players.A, other), D: await loadDecide(job.players.D, other) };
   const rng = seededRng(job.seed);
   const botRng = seededRng(job.seed * 7919 + 13);
-  let s = newGame({ rng, mapId: job.mapId, legendaries: job.legends });
+  let s = newGame({ rng, mapId: job.mapId, legendaries: job.legends, trainers: job.trainers });
   const ms = { A: 0, D: 0 };
   const decisions = { A: 0, D: 0 };
   let replans = 0;
   let steps = 0;
   const usage: Record<string, { avail: number; used: number }> = {};
+  const turns: GameState[] = [];
   const note = (key: string, field: 'avail' | 'used') => {
     usage[key] ??= { avail: 0, used: 0 };
     usage[key][field] += 1;
@@ -114,6 +127,7 @@ async function playGame(job: Job, other: string | undefined): Promise<GameRecord
       s = applyAction(s, { type: 'draftPick', cardId: free[botRng.int(free.length)] }, rng).state;
       continue;
     }
+    if (job.positions && s.phase === 'battle' && !s.active && !s.pending.length && liveUnits(s, side).every((u) => !u.activated)) turns.push(s);
     const p = players[side];
     const t0 = performance.now();
     const plan = p.decide(s, side, p.level, botRng);
@@ -152,10 +166,12 @@ async function playGame(job: Job, other: string | undefined): Promise<GameRecord
   };
   const a = stat('A');
   const d = stat('D');
+  const z = s.winner === 'A' ? 1 : 0;
   return {
     seed: job.seed, players: job.players, winner: s.winner!, round: s.round, teams: { A: s.draft.picks.A, D: s.draft.picks.D },
-    pool: s.draft.pool, fainted: { A: a.fainted, D: d.fainted }, hpFrac: { A: a.hpFrac, D: d.hpFrac }, ms, decisions, replans,
+    pool: s.draft.pool, legends: job.legends, ...(s.trainers ? { trainers: { ...s.trainers.picks } } : {}), fainted: { A: a.fainted, D: d.fainted }, hpFrac: { A: a.hpFrac, D: d.hpFrac }, ms, decisions, replans,
     ...(job.usage ? { usage } : {}),
+    ...(job.positions ? { positions: turns.map((t): ValueRecord => ({ g: job.seed, k: 'turn', r: t.round, y: z, n: 0, z, f: positionFeatures(t) })) } : {}),
   };
 }
 
@@ -177,19 +193,26 @@ if (!isMainThread) {
   const mapId = arg('map', 'meadow')!;
   const usage = arg('usage') === 'true';
   const legendMode = arg('legends', 'on')!;
+  const trainerMode = arg('trainers', 'off')!;
   const other = arg('other');
   const out = arg('out');
+  const positionsOut = arg('positions');
   const threads = Math.max(1, Math.min(Number(arg('threads', String(os.cpus().length - 2))), games * (swap ? 2 : 1)));
 
   const jobs: Job[] = [];
   for (let i = 0; i < games; i++) {
     const legends = legendMode === 'mix' ? i % 2 === 0 : legendMode !== 'off';
-    jobs.push({ seed: start + i, players: { A: a, D: d }, draft, mapId, legends, usage });
-    if (swap) jobs.push({ seed: start + i, players: { A: d, D: a }, draft, mapId, legends, usage });
+    const trainers = trainerMode === 'mix' ? Math.floor(i / 2) % 2 === 0 : trainerMode === 'on';
+    const positions = positionsOut !== undefined;
+    jobs.push({ seed: start + i, players: { A: a, D: d }, draft, mapId, legends, trainers, usage, positions });
+    if (swap) jobs.push({ seed: start + i, players: { A: d, D: a }, draft, mapId, legends, trainers, usage, positions });
   }
   const buckets: Job[][] = Array.from({ length: threads }, () => []);
   jobs.forEach((j, i) => buckets[i % threads].push(j));
   const sink = out ? fs.createWriteStream(out) : null;
+  const posSink = positionsOut ? fs.createWriteStream(positionsOut) : null;
+  // Four decimals are plenty for features and keep the files small.
+  const round4 = (_k: string, v: unknown): unknown => (typeof v === 'number' && !Number.isInteger(v) ? Math.round(v * 1e4) / 1e4 : v);
   const records: GameRecord[] = [];
   const t0 = Date.now();
   await Promise.all(buckets.map((bucket) => new Promise<void>((resolve, reject) => {
@@ -197,6 +220,8 @@ if (!isMainThread) {
     const boot = `import('tsx/esm/api').then((m) => { m.register(); return import(${JSON.stringify(pathToFileURL(here).href)}); })`;
     const w = new Worker(boot, { eval: true, workerData: { jobs: bucket, other, tuneJson: arg('tune'), tuneOtherJson: arg('tune-other'), value: arg('value') } });
     w.on('message', (r: GameRecord) => {
+      for (const v of r.positions ?? []) posSink?.write(`${JSON.stringify(v, round4)}\n`);
+      delete r.positions;
       records.push(r);
       sink?.write(`${JSON.stringify(r)}\n`);
       if (records.length % 50 === 0) process.stderr.write(`  ${records.length}/${jobs.length} games\n`);
@@ -205,6 +230,7 @@ if (!isMainThread) {
     w.on('exit', (code) => (code === 0 ? resolve() : reject(new Error(`worker exited ${code}`))));
   })));
   sink?.end();
+  posSink?.end();
 
   // Results per player (a player's wins across both roles when --swap).
   const byPlayer = new Map<string, { games: number; wins: number; asA: [number, number]; asD: [number, number]; ms: number; dec: number }>();

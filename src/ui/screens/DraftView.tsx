@@ -1,6 +1,6 @@
 import { type ReactNode, useMemo, useState } from 'react';
 import {
-  type CardDef, type PType, type Side, TYPES, bestHit, decider, draftOptions, getCard, isLegendPick, otherSide,
+  type CardDef, type PType, type Side, TYPES, bestHit, decider, draftOptions, getCard, getTrainer, isLegendPick, isTrainerPick, otherSide,
 } from '../../engine';
 import { Art, CardImage, Modal, SIDE_TEXT, TypeBadge } from '../components/bits';
 import { CardDetail } from '../components/CardView';
@@ -8,7 +8,10 @@ import { CounterLists, MultChip, TypeChartModal, matchupTitle } from '../compone
 import type { Controller } from '../controller';
 import { type FitGrid, useFitGrid, useTouch, useWideLayout } from '../hooks';
 
-type Sort = 'page' | 'name' | 'hp' | 'mov';
+type Sort = 'page' | 'name' | 'hp' | 'mov' | 'type' | 'power';
+
+/** The card's strongest printed move power (0 for cards with only status moves). */
+const topPower = (c: CardDef): number => Math.max(0, ...c.moves.map((m) => m.power ?? 0));
 
 /** Cards fill as many columns as fit, so zooming in or out changes how many sit in a row. */
 const CARD_COLUMNS = 'grid grid-cols-[repeat(auto-fill,minmax(min(100%,220px),1fr))] gap-3';
@@ -99,6 +102,8 @@ export function useCardFilter(all: CardDef[]) {
     if (sort === 'name') list.sort((a, b) => a.name.localeCompare(b.name));
     if (sort === 'hp') list.sort((a, b) => b.hp - a.hp);
     if (sort === 'mov') list.sort((a, b) => b.mov - a.mov);
+    if (sort === 'type') list.sort((a, b) => a.types[0].localeCompare(b.types[0]) || a.name.localeCompare(b.name));
+    if (sort === 'power') list.sort((a, b) => topPower(b) - topPower(a));
     return list;
   }, [all, q, type, sort]);
   const controls = (
@@ -109,11 +114,13 @@ export function useCardFilter(all: CardDef[]) {
         placeholder="Search name, move or ability…"
         className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm outline-none focus:border-amber-300 sm:w-64"
       />
-      <select value={sort} onChange={(e) => setSort(e.target.value as Sort)} className="rounded-lg border border-slate-700 bg-slate-900 px-2 py-2 text-sm">
+      <select value={sort} onChange={(e) => setSort(e.target.value as Sort)} className="rounded-lg border border-slate-700 bg-slate-900 px-2 py-2 text-sm" aria-label="Sort cards">
         <option value="page">Card order</option>
         <option value="name">Name</option>
-        <option value="hp">HP</option>
-        <option value="mov">Movement</option>
+        <option value="type">Type</option>
+        <option value="hp">HP (high first)</option>
+        <option value="mov">Movement (high first)</option>
+        <option value="power">Strongest move</option>
       </select>
       <div className="no-scrollbar flex min-w-0 max-w-full gap-1 overflow-x-auto">
         <button type="button" onClick={() => setType(null)} className={`chip ${type === null ? 'bg-amber-400 text-slate-900' : 'bg-slate-800 text-slate-300'}`}>All</button>
@@ -125,7 +132,8 @@ export function useCardFilter(all: CardDef[]) {
       </div>
     </div>
   );
-  return { cards, controls };
+  const active = q.trim() !== '' || type !== null;
+  return { cards, controls, active, clear: () => { setQ(''); setType(null); } };
 }
 
 export function DraftView({ ctl }: { ctl: Controller }) {
@@ -146,6 +154,7 @@ export function DraftView({ ctl }: { ctl: Controller }) {
   const pool = useMemo(() => [...normals, ...legends], [normals, legends]);
   const pickNo = s.draft.index + 1;
   const legendTurn = isLegendPick(s);
+  const trainerTurn = isTrainerPick(s);
   const pickable = new Set(draftOptions(s));
 
   // Matchups are shown against the hovered or pinned card, or else against the opposing team.
@@ -177,11 +186,13 @@ export function DraftView({ ctl }: { ctl: Controller }) {
       </>
     );
   };
-  const ordered = legendTurn ? [...legends, ...normals] : [...normals, ...legends];
+  const byOrder = legendTurn ? [...legends, ...normals] : [...normals, ...legends];
+  const filter = useCardFilter(byOrder);
+  const ordered = filter.cards;
   const wide = useWideLayout();
   const touch = useTouch();
   const [gridBox, setGridBox] = useState<HTMLDivElement | null>(null);
-  const fit = useFitGrid(gridBox, ordered.length, { aspect: 265 / 204, gap: 8, extra: DRAFT_LINE });
+  const fit = useFitGrid(gridBox, Math.max(1, ordered.length), { aspect: 265 / 204, gap: 8, extra: DRAFT_LINE });
   // The reading pane keeps the last card hovered, so the pointer can leave it without losing it.
   const [reading, setReading] = useState<string | null>(null);
   const onHover = (id: string | null) => {
@@ -197,7 +208,7 @@ export function DraftView({ ctl }: { ctl: Controller }) {
       <div className="panel sticky top-0 z-20 flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 bg-slate-900/95 px-3 py-2 wide:static">
         <div className="min-w-0">
           <div className="text-[11px] uppercase tracking-wide text-slate-400">
-            Pick {pickNo} of 8 · {legendTurn ? <span className="font-bold text-amber-300">legendary pick</span> : s.draft.legendPool.length ? '3 each from the pool, then 1 legendary each' : '4 each from the pool, no legendaries'}
+            Pick {pickNo} of {s.draft.order.length} · {trainerTurn ? <span className="font-bold text-amber-300">trainer pick</span> : legendTurn ? <span className="font-bold text-amber-300">legendary pick</span> : s.draft.legendPool.length ? '3 each from the pool, then 1 legendary each' : '4 each from the pool, no legendaries'}{s.trainers && !trainerTurn ? ', then a trainer each' : ''}
           </div>
           <div className={`font-bold ${SIDE_TEXT[turn]}`}>
             {mine ? 'Your pick' : ctl.thinking ? `${ctl.names[turn]} is thinking…` : `${ctl.names[turn]} is picking…`}
@@ -240,9 +251,18 @@ export function DraftView({ ctl }: { ctl: Controller }) {
           )}
         </p>
         <button type="button" className="btn-ghost shrink-0" onClick={() => setChart(true)}>Type chart</button>
+        {!trainerTurn && <div className="w-full">{filter.controls}</div>}
       </div>
+      {trainerTurn ? (
+        <TrainerPick ctl={ctl} turn={turn} mine={mine} />
+      ) : (
       <div className="flex gap-3 wide:min-h-0 wide:flex-1">
       <div ref={setGridBox} className="min-w-0 flex-1">
+        {ordered.length === 0 && (
+          <div className="panel p-4 text-sm text-slate-300">
+            No card in this pool matches. <button type="button" className="btn-ghost ml-2" onClick={filter.clear}>Clear search</button>
+          </div>
+        )}
         <DraftCards
           cards={ordered}
           fit={wide && fit.width > 0 ? fit : null}
@@ -278,6 +298,7 @@ export function DraftView({ ctl }: { ctl: Controller }) {
         </aside>
       )}
       </div>
+      )}
       {detail && (
         <Modal onClose={() => setDetail(null)}>
           <CardDetail card={detail} extra={<CounterLists card={detail} pool={pool.filter((c) => !takenBy.has(c.id))} onOpen={setDetail} />} />
@@ -312,3 +333,37 @@ export function DraftView({ ctl }: { ctl: Controller }) {
     </div>
   );
 }
+
+/** Trainer mode, after the draft: the four trainers on offer; the Attacker picks first. */
+function TrainerPick({ ctl, turn, mine }: { ctl: Controller; turn: Side; mine: boolean }) {
+  const s = ctl.state;
+  const t = s.trainers!;
+  const open = new Set(draftOptions(s));
+  return (
+    <div className="panel space-y-3 p-3 wide:min-h-0 wide:flex-1 wide:overflow-y-auto">
+      <p className="text-sm text-slate-300">
+        Each side takes one of these trainers: a passive that always applies, and a Special Move that can be used once per game, at any point of your own turn.
+        {mine ? ' Choose yours.' : ` Waiting for ${ctl.names[turn]}…`}
+      </p>
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        {t.pool.map((id) => {
+          const tr = getTrainer(id);
+          const takenBy = t.picks.A === id ? 'A' : t.picks.D === id ? 'D' : null;
+          return (
+            <div key={id} className={`flex flex-col gap-2 rounded-xl border bg-slate-900/80 p-2 ${takenBy ? 'opacity-50' : ''} ${takenBy === 'A' ? 'border-rose-500' : takenBy === 'D' ? 'border-sky-500' : 'border-slate-700'}`}>
+              <img src={`${import.meta.env.BASE_URL}trainers/${id}.jpg`} alt={`${tr.name} card`} className="w-full rounded-lg" />
+              <div className="text-xs text-slate-300"><b>Passive:</b> {tr.passive}</div>
+              <div className="text-xs text-slate-300"><b>Special:</b> {tr.special}</div>
+              {takenBy ? (
+                <span className={`chip self-start ${takenBy === 'A' ? 'bg-rose-500' : 'bg-sky-500'} text-white`}>{takenBy === 'A' ? 'Attacker' : 'Defender'}</span>
+              ) : mine && open.has(id) ? (
+                <button type="button" className="btn-primary" onClick={() => ctl.dispatch({ type: 'draftPick', cardId: id })}>Choose {tr.name}</button>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+

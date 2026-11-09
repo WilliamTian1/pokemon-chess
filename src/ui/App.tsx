@@ -34,9 +34,25 @@ type Screen =
   | { name: 'online' }
   | { name: 'game'; cfg: LocalConfig; key: number };
 
+/**
+ * Development only: `?scenario=<teamA>;<teamD>[;<trainerA>,<trainerD>][;river]` (card ids, comma-separated)
+ * starts a hot-seat battle with those teams already placed, for trying out specific cards.
+ */
+function devScenario(): Screen | null {
+  if (!import.meta.env.DEV) return null;
+  const q = new URLSearchParams(location.search).get('scenario');
+  if (!q) return null;
+  const [a = '', d = '', t = '', map = 'meadow'] = q.split(';');
+  const [tA, tD] = t ? t.split(',') : [];
+  return {
+    name: 'game', key: Date.now(),
+    cfg: { mode: 'local', mapId: map, legendaries: true, trainers: !!t, scenario: { A: a.split(','), D: d.split(','), trainers: t ? { A: tA, D: tD } : undefined } },
+  };
+}
+
 export function App() {
   const [screen, setScreen] = useState<Screen>(() =>
-    new URLSearchParams(location.search).has('room') ? { name: 'online' } : { name: 'home' },
+    devScenario() ?? (new URLSearchParams(location.search).has('room') ? { name: 'online' } : { name: 'home' }),
   );
   const lab = useLabAccess();
   // /lab?key=… redirects to /?lab once the cookie is set: open the lab straight away.
@@ -64,11 +80,11 @@ export function App() {
       return (
         <BotSetup
           onBack={home}
-          onStart={(human: Side, level: Difficulty, mapId: string, legendaries: boolean) => setScreen({ name: 'game', cfg: { mode: 'bot', human, level, mapId, legendaries }, key: Date.now() })}
+          onStart={(human: Side, level: Difficulty, mapId: string, legendaries: boolean, trainers: boolean) => setScreen({ name: 'game', cfg: { mode: 'bot', human, level, mapId, legendaries, trainers }, key: Date.now() })}
         />
       );
     case 'localSetup':
-      return <LocalSetup onBack={home} onStart={(mapId, legendaries) => setScreen({ name: 'game', cfg: { mode: 'local', mapId, legendaries }, key: Date.now() })} />;
+      return <LocalSetup onBack={home} onStart={(mapId, legendaries, trainers) => setScreen({ name: 'game', cfg: { mode: 'local', mapId, legendaries, trainers }, key: Date.now() })} />;
     case 'cards':
       return <CardGallery onBack={home} />;
     case 'lab':

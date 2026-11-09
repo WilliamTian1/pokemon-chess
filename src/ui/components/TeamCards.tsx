@@ -4,7 +4,8 @@ import { useFitGrid, useTouch } from '../hooks';
 import { CardImage, HpBar, Modal, SIDE_TEXT } from './bits';
 import { CardDetail, UnitChips, VsList, vsTable } from './CardView';
 import { CardMagnifier, type Region } from './CardMagnifier';
-import { CardStatusOverlay } from './StatusIcons';
+import type { EventBatch } from '../controller';
+import { CardFx, CardTags, shakeClass, useCardFx } from './StatusIcons';
 
 /** Height of the live strip under each card (HP, status, stat changes), gap included. */
 const STRIP = 24;
@@ -13,8 +14,10 @@ const STRIP = 24;
  * One team's printed cards beside the board. With `fill`, the cards are sized so all of them fit
  * the column's height and width at once; hovering one shows it enlarged with its live details.
  */
-export function TeamCards({ state, side, name, mine, fill, magnifyRegion, selectedId, focusId, onPick, onHover }: {
+export function TeamCards({ state, events, side, name, mine, fill, magnifyRegion, selectedId, focusId, onPick, onHover }: {
   state: GameState;
+  /** Latest game events, for the hit effects played on the cards. */
+  events: EventBatch;
   side: Side;
   name: string;
   mine: boolean;
@@ -35,6 +38,7 @@ export function TeamCards({ state, side, name, mine, fill, magnifyRegion, select
   const [mag, setMag] = useState<{ id: string; region: Region } | null>(null);
   const [detail, setDetail] = useState<Unit | null>(null);
   const magUnit = mag ? units.find((u) => u.id === mag.id) : undefined;
+  const fx = useCardFx(events);
 
   return (
     <div className={`panel flex flex-col gap-2 p-2 ${fill ? 'h-full min-h-0' : ''} ${active ? (side === 'A' ? 'ring-1 ring-rose-500/60' : 'ring-1 ring-sky-500/60') : ''}`}>
@@ -81,9 +85,10 @@ export function TeamCards({ state, side, name, mine, fill, magnifyRegion, select
                   u.id === selectedId ? 'ring-2 ring-amber-300 ring-offset-2 ring-offset-slate-900' : u.id === focusId ? 'ring-1 ring-white/70 ring-offset-2 ring-offset-slate-900' : ''
                 } ${u.fainted ? 'opacity-35 grayscale' : done || !u.pos ? 'opacity-60' : ''}`}
               >
-                <div className="relative [container-type:inline-size]">
+                <div className={`relative [container-type:inline-size] ${shakeClass(fx[u.id])}`}>
                   <CardImage id={c.id} name={c.name} />
-                  <CardStatusOverlay unit={u} />
+                  <CardTags state={state} unit={u} />
+                  <CardFx list={fx[u.id]} />
                 </div>
                 <LiveStrip unit={u} />
                 {touch && (
@@ -105,7 +110,7 @@ export function TeamCards({ state, side, name, mine, fill, magnifyRegion, select
         </div>
       </div>
       {magUnit && mag && !touch && (
-        <CardMagnifier cardId={cardOf(magUnit).id} name={cardOf(magUnit).name} region={mag.region} overlay={<CardStatusOverlay unit={magUnit} />}>
+        <CardMagnifier cardId={cardOf(magUnit).id} name={cardOf(magUnit).name} region={mag.region} overlay={<CardTags state={state} unit={magUnit} />}>
           <UnitDetails state={state} unit={magUnit} active={active} />
         </CardMagnifier>
       )}

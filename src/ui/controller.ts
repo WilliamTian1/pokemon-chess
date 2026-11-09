@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Difficulty } from '../ai/bot';
 import { requestBotActions } from '../ai/client';
 import {
-  type Action, type GameEvent, type GameState, type Side, RuleError, applyAction, decider, newGame, randomSeed, seededRng,
+  type Action, type GameEvent, type GameState, type Side, RuleError, applyAction, decider, newGame, quickGame, randomSeed, seededRng,
 } from '../engine';
 import type { NetClient, NetSnapshot } from '../net/client';
 
@@ -28,8 +28,33 @@ export interface Controller {
 }
 
 export type LocalConfig =
-  | { mode: 'local'; mapId: string; legendaries: boolean }
-  | { mode: 'bot'; human: Side; level: Difficulty; mapId: string; legendaries: boolean };
+  | { mode: 'local'; mapId: string; legendaries: boolean; trainers: boolean; scenario?: Scenario }
+  | { mode: 'bot'; human: Side; level: Difficulty; mapId: string; legendaries: boolean; trainers: boolean };
+
+/** Development only: a battle that starts with these teams already placed (see App's ?scenario=). */
+export interface Scenario {
+  A: string[];
+  D: string[];
+  trainers?: Record<Side, string>;
+}
+
+function scenarioGame(sc: Scenario, mapId: string, rng: ReturnType<typeof seededRng>): GameState {
+  // Entries are card ids, optionally "id@x.y" to start on that tile.
+  const parse = (e: string) => {
+    const [id, at] = e.split('@');
+    const [x, y] = at ? at.split('.').map(Number) : [NaN, NaN];
+    return { id, pos: at ? { x, y } : null };
+  };
+  const A = sc.A.map(parse);
+  const D = sc.D.map(parse);
+  const s = quickGame(A.map((e) => e.id), D.map((e) => e.id), { rng, mapId });
+  [...A.map((e, i) => [`A${i}`, e.pos] as const), ...D.map((e, i) => [`D${i}`, e.pos] as const)].forEach(([id, pos]) => {
+    const u = s.units.find((x) => x.id === id);
+    if (u && pos) u.pos = pos;
+  });
+  if (sc.trainers) s.trainers = { pool: [sc.trainers.A, sc.trainers.D], picks: { ...sc.trainers }, used: { A: false, D: false }, effect: null };
+  return s;
+}
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -38,7 +63,9 @@ const LEVEL_NAME: Record<Difficulty, string> = { easy: 'Easy', medium: 'Medium',
 /** Hot-seat and vs-bot games: the engine runs in the browser. */
 export function useLocalGame(cfg: LocalConfig): Controller {
   const rng = useRef(seededRng(randomSeed()));
-  const [state, setState] = useState<GameState>(() => newGame({ rng: rng.current, mapId: cfg.mapId, legendaries: cfg.legendaries }));
+  const [state, setState] = useState<GameState>(() => (cfg.mode === 'local' && cfg.scenario
+    ? scenarioGame(cfg.scenario, cfg.mapId, rng.current)
+    : newGame({ rng: rng.current, mapId: cfg.mapId, legendaries: cfg.legendaries, trainers: cfg.trainers })));
   const [events, setEvents] = useState<EventBatch>({ seq: 0, list: [] });
   const [error, setError] = useState<string | null>(null);
   const [thinking, setThinking] = useState(false);
@@ -91,7 +118,7 @@ export function useLocalGame(cfg: LocalConfig): Controller {
           botFailures.current = 0;
           const cur = stateRef.current;
           const fallbacks: Action[] = cur.pending.length
-            ? [{ type: 'choose', option: cur.pending[0].kind === 'liquidVoice' ? null : cur.pending[0].options[0] }]
+            ? [{ type: 'choose', option: cur.pending[0].options[0] ?? null }, { type: 'choose', option: null }]
             : cur.active
               ? [{ type: 'skipPostMove', unitId: cur.active.unitId }, { type: 'wait', unitId: cur.active.unitId }, { type: 'endTurn' }]
               : [{ type: 'endTurn' }, { type: 'concede', side: botSide }];
@@ -107,12 +134,12 @@ export function useLocalGame(cfg: LocalConfig): Controller {
 
   const rematch = useCallback(() => {
     generation.current += 1;
-    const s = newGame({ rng: rng.current, mapId: cfg.mapId, legendaries: cfg.legendaries });
+    const s = newGame({ rng: rng.current, mapId: cfg.mapId, legendaries: cfg.legendaries, trainers: cfg.trainers });
     stateRef.current = s;
     setState(s);
     setEvents((e) => ({ seq: e.seq + 1, list: [] }));
     setError(null);
-  }, [cfg.mapId, cfg.legendaries]);
+  }, [cfg.mapId, cfg.legendaries, cfg.trainers]);
 
   const names = useMemo<Record<Side, string>>(() => {
     if (cfg.mode === 'local') return { A: 'Player 1', D: 'Player 2' };

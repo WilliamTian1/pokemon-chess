@@ -114,16 +114,22 @@ export function dangerZone(s: GameState, side: Side, onlyId?: string): DangerZon
     if (budget === null) continue;
     const origins: Pos[] = [e.pos!, ...[...reachable(s, e, budget).values()].map((r) => r.pos)];
     if (origins.some((p) => isTrebuchet(s, p))) trebuchet.push(e.id);
+    // Its next activation's round (Gigaton Hammer only works in even rounds).
+    const round = s.phase !== 'battle' ? 1 : e.side === s.side ? s.round : e.side === 'D' ? s.round : s.round + 1;
     for (const moveIndex of [0, 1] as const) {
       const mv = moveOf(e, moveIndex);
-      if (!isThreatMove(mv)) continue;
+      if (!isThreatMove(mv) || e.locked.includes(mv.name) || (mv.fx.evenRoundsOnly && round % 2 !== 0)) continue;
       const src = { unitId: e.id, moveIndex };
       const seen = new Set<string>();
       if (mv.target.kind === 'range') {
         const r = mv.target.range;
+        const min = Math.max(1, mv.target.min ?? 1);
         for (let y = 0; y < m.height; y++) {
           for (let x = 0; x < m.width; x++) {
-            if (origins.some((o) => Math.abs(o.x - x) + Math.abs(o.y - y) <= r && (o.x !== x || o.y !== y))) add({ x, y }, src, seen);
+            if (origins.some((o) => {
+              const d = Math.abs(o.x - x) + Math.abs(o.y - y);
+              return d <= r && d >= min;
+            })) add({ x, y }, src, seen);
           }
         }
         continue;

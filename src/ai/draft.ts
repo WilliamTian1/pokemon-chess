@@ -1,5 +1,7 @@
-import { type CardDef, type GameState, type Side, bestHit, getCard, isLegendPick } from '../engine';
-import { draftModelFor } from './draftModel';
+import {
+  type CardDef, type GameState, type Side, TEAM_SIZE, bestHit, draftOptions, getCard, isLegendPick, parseGrid, typeMultiplier,
+} from '../engine';
+import { draftModelFor, modeOf } from './draftModel';
 import { rateCard } from './rating';
 
 /**
@@ -25,6 +27,72 @@ export interface DraftModel {
   synD?: Record<string, number[]>;
   crossA?: Record<string, number[]>;
   crossD?: Record<string, number[]>;
+  /**
+   * Trainer mode: each trainer's value for the Attacker (A) and the Defender (D), plus a weight on
+   * how well it suits the team that picks it (synA / synD × trainerSynergy).
+   */
+  trainers?: Record<string, { A: number; D: number; synA: number; synD: number }>;
+}
+
+/**
+ * How much a trainer's passive has to work with in `team` (against `opp`): recoil moves for N,
+ * one-tile pushes for Blue, cooldown moves for Lance, Pikachu for Red, weather that would hurt the
+ * team for Mitsuhide, attacks the team is immune to (plus Artillery Expertise) for Nobunaga.
+ */
+export function trainerSynergy(trainer: string, team: string[], opp: string[]): number {
+  const cards = team.map(getCard);
+  const moves = cards.flatMap((c) => c.moves);
+  switch (trainer) {
+    case 'n':
+      return moves.filter((m) => m.fx.recoil || m.fx.recoilPerTarget).length / 2;
+    case 'blue':
+      return moves.filter((m) => m.target.kind === 'grid' && parseGrid(m.target.grid).knockback === 1).length / 2;
+    case 'lance':
+      return moves.filter((m) => m.fx.nextTurn || m.fx.lockUntilFar).length / 2;
+    case 'red':
+      return team.includes('pikachu') ? 1 : 0;
+    case 'mitsuhide': {
+      const all = [...team, ...opp].map(getCard);
+      const has = (sp: string, ab?: string) => all.some((c) => c.ability === ab || c.moves.some((m) => m.fx.special === sp));
+      let hurt = 0;
+      for (const c of cards) {
+        if ((has('sunnyDay', 'drought') && c.types.includes('Water')) || (has('rainDance', 'drizzle') && c.types.includes('Fire'))) hurt += 1;
+        if (has('sandstorm') && !c.types.some((t) => t === 'Rock' || t === 'Ground' || t === 'Steel')) hurt += 1;
+        if (has('hail') && !c.types.includes('Ice')) hurt += 1;
+      }
+      return hurt / 2;
+    }
+    case 'nobunaga': {
+      const attacks = opp.map(getCard).flatMap((c) => c.moves.filter((m) => m.kind === 'attack' && m.type));
+      const immune = cards.reduce((a, c) => a + attacks.filter((m) => typeMultiplier(m.type!, c.types) === 0).length, 0);
+      return immune / 2 + cards.filter((c) => c.ability === 'artilleryExpertise').length;
+    }
+    default:
+      return 0;
+  }
+}
+
+/** Untrained trainer terms: no preference beyond a small pull towards trainers that suit the team. */
+const TRAINER_PRIOR = { A: 0, D: 0, synA: 0.15, synD: -0.15 };
+
+/** Logit change from `side` having `trainer` (teams complete). */
+export function trainerGain(m: DraftModel, trainer: string, side: Side, team: string[], opp: string[]): number {
+  const t = m.trainers?.[trainer] ?? TRAINER_PRIOR;
+  return side === 'A' ? t.A + t.synA * trainerSynergy(trainer, team, opp) : t.D + t.synD * trainerSynergy(trainer, team, opp);
+}
+
+/**
+ * The trainer pick: exact minimax over the offered trainers (the Attacker picks first, then the
+ * Defender from the rest), scoring each pairing with the model's trainer terms.
+ */
+export function bestTrainerPick(s: GameState, side: Side, m: DraftModel = draftModelFor(s.mapId, modeOf(s))): string {
+  const options = draftOptions(s);
+  const { A, D } = s.draft.picks;
+  const gA = (t: string) => trainerGain(m, t, 'A', A, D);
+  const gD = (t: string) => trainerGain(m, t, 'D', D, A);
+  if (side === 'D') return [...options].sort((x, y) => gD(x) - gD(y))[0];
+  const value = (t: string) => gA(t) + Math.min(...options.filter((o) => o !== t).map(gD), 0);
+  return [...options].sort((x, y) => value(y) - value(x))[0];
 }
 
 const hitCache = new Map<string, number>();
@@ -181,13 +249,14 @@ function compile(m: DraftModel, ids: string[]) {
  * another order are searched once. `width` limits the options per pick; `all` scores every first
  * pick in full (analysis), otherwise the line found is enough (play).
  */
-export function analyzeDraft(s: GameState, m: DraftModel = draftModelFor(s.mapId), opts: { width?: number; all?: boolean } = {}): DraftAnalysis {
+export function analyzeDraft(s: GameState, m: DraftModel = draftModelFor(s.mapId, modeOf(s)), opts: { width?: number; all?: boolean } = {}): DraftAnalysis {
   const width = opts.width ?? Infinity;
   const ids = [...new Set([...s.draft.pool, ...s.draft.legendPool, ...s.draft.picks.A, ...s.draft.picks.D])];
   const idx = new Map(ids.map((id, i) => [id, i]));
   const M = compile(m, ids);
   const taken = new Set([...s.draft.picks.A, ...s.draft.picks.D]);
-  const order = s.draft.order.slice(s.draft.index);
+  // The Pokémon picks still to come (a trainer pick afterwards is chosen separately).
+  const order = s.draft.order.slice(s.draft.index, 2 * TEAM_SIZE);
   const teams: Record<Side, number[]> = { A: s.draft.picks.A.map((id) => idx.get(id)!), D: s.draft.picks.D.map((id) => idx.get(id)!) };
   // The normal pool and the legendary pool are drafted separately (legendaries last).
   const free = {
@@ -265,6 +334,6 @@ export function analyzeDraft(s: GameState, m: DraftModel = draftModelFor(s.mapId
 }
 
 /** The pick the Hard bot makes: the top line of the draft search. */
-export function bestDraftPick(s: GameState, _side: Side, m: DraftModel = draftModelFor(s.mapId)): string {
+export function bestDraftPick(s: GameState, _side: Side, m: DraftModel = draftModelFor(s.mapId, modeOf(s))): string {
   return analyzeDraft(s, m).lines[0].id;
 }

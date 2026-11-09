@@ -5,7 +5,7 @@ export type ClientMsg =
   | { t: 'create' }
   | { t: 'join'; code: string }
   | { t: 'seat'; side: Side | null }
-  | { t: 'start'; randomRoles: boolean; mapId?: string; legendaries?: boolean }
+  | { t: 'start'; randomRoles: boolean; mapId?: string; legendaries?: boolean; trainers?: boolean }
   | { t: 'action'; action: Action }
   | { t: 'rematch'; swapRoles: boolean }
   | { t: 'leave' };
@@ -26,6 +26,8 @@ export interface RoomView {
   mapId: string;
   /** Whether the next match drafts legendaries (the host's choice). */
   legendaries: boolean;
+  /** Whether the next match is played with trainers (the host's choice). */
+  trainers?: boolean;
   events: GameEvent[];
   eventSeq: number;
 }

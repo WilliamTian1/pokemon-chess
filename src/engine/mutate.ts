@@ -149,6 +149,7 @@ export function applyStage(ctx: Ctx, u: Unit, stat: StatId, delta: number, opts:
   u.stages[stat] = after;
   const change = after - before;
   if (change !== 0) {
+    emit(ctx, { t: 'stage', unitId: u.id, stat, delta: change });
     const how = change > 0 ? (change > 1 ? 'rose sharply' : 'rose') : change < -1 ? 'fell harshly' : 'fell';
     log(ctx, `${nameOf(u)}'s ${STAT_NAME[stat]} ${how}${opts.label ? ` (${opts.label})` : ''}.`, change > 0 ? 'good' : 'bad', u.side);
   } else {
@@ -213,6 +214,7 @@ export function applyStatus(ctx: Ctx, u: Unit, status: StatusId, opts: StatusOpt
   }
   u.status = status;
   u.toxicN = 0;
+  emit(ctx, { t: 'status', unitId: u.id, status });
   log(ctx, `${nameOf(u)} is ${STATUS_NAME[status]}!`, 'bad', u.side);
   const src = opts.source;
   if (!opts.fromSynchronize && !opts.ignoreAbilities && abilityOf(u) === 'synchronize' && src && src.side !== u.side && !src.fainted) {

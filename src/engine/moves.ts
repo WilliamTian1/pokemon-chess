@@ -1,9 +1,10 @@
 import {
   basePower, computeDamage, grazeApplies, isImmune, makeAttackCtx, neverMisses, secondaryMult, trebuchetCtx, typeEffectLabel,
 } from './damage';
+import { DRAFTABLE, getCard } from './data/cards';
 import {
-  abilityOf, adjacentToType, alliesOf, canPlaceOn, canStand, gridTile, hasType, inBounds,
-  liveUnits, moveOf, onBoard, parseGrid, substituteAt, terrainAt, unitAt, withAbility, zoneTiles,
+  abilityOf, adjacentToType, alliesOf, canPlaceOn, canStand, effectiveMov, gridTile, hasType, inBounds, liveUnits, moveOf,
+  onBoard, parseGrid, reachable, substituteAt, terrainAt, terrainBonus, trainerOf, turnEffect, unitAt, withAbility, zoneTiles,
 } from './query';
 import {
   type Ctx, RuleError, applySelfStages, applyStage, applyStatus, dealDamage, emit, enterTile, faint, heal, log,
@@ -11,7 +12,7 @@ import {
 } from './mutate';
 import type { Dir, GameState, MoveDef, PType, Pos, StatId, StatusId, Unit } from './types';
 import { DIRS, otherSide } from './types';
-import { DIR_VEC, addPos, cheb, steps } from './util';
+import { DIR_VEC, addPos, cheb, posKey, steps } from './util';
 
 export interface Targeting {
   ok: boolean;
@@ -32,9 +33,16 @@ export interface TargetOpts {
   origin?: Pos;
 }
 
+/** Moves that help one ally in the zone (and do nothing to opponents). */
+const ALLY_ONLY = (m: MoveDef): boolean => m.fx.alliesStages !== undefined || m.fx.special === 'helpingHand' || m.fx.special === 'afterYou';
+
 /** Moves that only help (stat boosts for allies, healing) never count as "targeting" an opponent. */
 export const isSupportOnly = (m: MoveDef): boolean =>
-  m.fx.alliesStages !== undefined || m.fx.healSelfAndAllies !== undefined || (m.kind === 'status' && m.fx.heal !== undefined);
+  ALLY_ONLY(m) || m.fx.healSelfAndAllies !== undefined || (m.kind === 'status' && m.fx.heal !== undefined);
+
+/** Moves that restore HP (Triage lets its holder walk farther before one). */
+export const isHealingMove = (m: MoveDef): boolean =>
+  m.fx.heal !== undefined || m.fx.healSelfAndAllies !== undefined || m.fx.selfHeal !== undefined || m.fx.allyHeal !== undefined;
 
 /** Resolves where a move would land and validates the "must target at least one Pokémon" rule. */
 export function targeting(s: GameState, u: Unit, move: MoveDef, opts: TargetOpts): Targeting {
@@ -48,12 +56,14 @@ export function targeting(s: GameState, u: Unit, move: MoveDef, opts: TargetOpts
     case 'range': {
       const tgt = opts.targetId ? s.units.find((x) => x.id === opts.targetId) : undefined;
       if (!tgt || !onBoard(tgt) || tgt.id === u.id) return fail('Choose a Pokémon to hit');
-      if (steps(origin, tgt.pos) > t.range) return fail(`Target must be within ${t.range} tiles`);
+      const d = steps(origin, tgt.pos);
+      if (d > t.range || d < (t.min ?? 0)) return fail(t.min ? `Target must be ${t.min}–${t.range} tiles away` : `Target must be within ${t.range} tiles`);
       return { ok: true, zone: [tgt.pos], dashTo: null, targets: [tgt], substitute: false };
     }
     case 'ally': {
       const tgt = opts.targetId ? s.units.find((x) => x.id === opts.targetId) : undefined;
       if (!tgt || !onBoard(tgt) || tgt.side !== u.side || tgt.id === u.id) return fail('Choose an ally to switch with');
+      if (t.range !== undefined && steps(origin, tgt.pos) > t.range) return fail(`The ally must be within ${t.range} tiles`);
       if (!canStand(u, terrainAt(s, tgt.pos)) || !canStand(tgt, terrainAt(s, origin))) return fail('Neither can stand on the other’s tile');
       return { ok: true, zone: [tgt.pos], dashTo: null, targets: [tgt], substitute: false };
     }
@@ -88,7 +98,7 @@ export function targeting(s: GameState, u: Unit, move: MoveDef, opts: TargetOpts
       const targets = zone.map((p) => unitAt(s, p)).filter((x): x is Unit => !!x && x.id !== u.id);
       const substitute = zone.some((p) => substituteAt(s, p));
       if (move.fx.healSelfAndAllies !== undefined) return { ok: true, zone, dashTo, targets, substitute };
-      if (move.fx.alliesStages) {
+      if (ALLY_ONLY(move)) {
         if (!targets.some((x) => x.side === u.side)) return fail('No allies in range');
         return { ok: true, zone, dashTo, targets, substitute };
       }
@@ -109,14 +119,26 @@ export function followMeUsers(s: GameState, u: Unit): Unit[] {
   );
 }
 
+/**
+ * Why `move` can't be used by `u` this turn whatever the aim (an empty slot, Gigaton Hammer in an odd
+ * round, a move on cooldown), or null.
+ */
+export function moveOffline(s: GameState, u: Unit, move: MoveDef): string | null {
+  if (move.fx.none) return 'No second move';
+  if (move.fx.evenRoundsOnly && s.round % 2 !== 0) return 'Only on even-numbered rounds';
+  if (u.locked.includes(move.name)) return 'Cooldown: end a turn 4+ tiles from every opponent';
+  return null;
+}
+
 /** Whether `u`, standing at `origin`, has a move that would include `target`. */
 export function canTargetFrom(s: GameState, u: Unit, origin: Pos, target: Unit): boolean {
   if (!target.pos) return false;
   for (const idx of [0, 1] as const) {
     const m = moveOf(u, idx);
-    if (isSupportOnly(m)) continue;
+    if (isSupportOnly(m) || moveOffline(s, u, m)) continue;
     if (m.target.kind === 'range') {
-      if (steps(origin, target.pos) <= m.target.range) return true;
+      const d = steps(origin, target.pos);
+      if (d <= m.target.range && d >= (m.target.min ?? 0)) return true;
     } else if (m.target.kind === 'grid') {
       for (const d of DIRS) {
         const tg = targeting(s, u, m, { dir: d, origin });
@@ -131,7 +153,10 @@ export function canTargetFrom(s: GameState, u: Unit, origin: Pos, target: Unit):
 
 export interface ExecOpts extends TargetOpts {
   moveType?: PType;
-  copied?: boolean;
+  /** How the move was borrowed (Liquid Voice, Transform, Metronome, Dancer), for the log. */
+  copied?: string;
+  /** A copy made by Liquid Voice or Dancer doesn't set off Liquid Voice or Dancer again. */
+  noEcho?: boolean;
   moveIndex?: 0 | 1;
 }
 
@@ -145,7 +170,7 @@ export function executeMove(ctx: Ctx, u: Unit, move: MoveDef, opts: ExecOpts): E
   const tg = targeting(s, u, move, opts);
   if (!tg.ok) throw new RuleError(tg.reason ?? 'Invalid target');
   const moveType = opts.moveType ?? move.type;
-  log(ctx, `${nameOf(u)} used ${move.name}${opts.copied ? ' (Liquid Voice copy)' : ''}!`, 'info', u.side);
+  log(ctx, `${nameOf(u)} used ${move.name}${opts.copied ? ` (${opts.copied})` : ''}!`, 'info', u.side);
   emit(ctx, { t: 'attack', unitId: u.id, name: move.name, tiles: tg.zone });
   const res: ExecResult = { hits: 0, kos: 0 };
 
@@ -166,6 +191,10 @@ export function executeMove(ctx: Ctx, u: Unit, move: MoveDef, opts: ExecOpts): E
       emit(ctx, { t: 'move', unitId: u.id, path: [b] });
       emit(ctx, { t: 'move', unitId: other.id, path: [a] });
       log(ctx, `${nameOf(u)} switched places with ${nameOf(other)}.`, 'info', u.side);
+      if (move.fx.special === 'batonPass') {
+        [u.stages, other.stages] = [other.stages, u.stages];
+        log(ctx, `${nameOf(u)} and ${nameOf(other)} swapped their stat changes.`, 'info', u.side);
+      }
       break;
     }
     case 'place': {
@@ -188,8 +217,23 @@ export function executeMove(ctx: Ctx, u: Unit, move: MoveDef, opts: ExecOpts): E
       break;
   }
 
-  if (!opts.copied && opts.moveIndex !== undefined) queueLiquidVoice(ctx, u, move, opts.moveIndex);
+  if (!opts.noEcho) {
+    const src = opts.moveIndex !== undefined ? { cardId: u.cardId, moveIndex: opts.moveIndex } : findSource(move);
+    if (src) {
+      queueLiquidVoice(ctx, u, move, src);
+      queueDancer(ctx, u, move, src);
+    }
+  }
   return res;
+}
+
+/** The printed card and slot of a move, for copies of copies (Transform, Metronome). */
+function findSource(move: MoveDef): { cardId: string; moveIndex: 0 | 1 } | null {
+  for (const c of DRAFTABLE) {
+    const i = c.moves.findIndex((m) => m.name === move.name && m.text === move.text);
+    if (i >= 0) return { cardId: c.id, moveIndex: i as 0 | 1 };
+  }
+  return null;
 }
 
 function selfMove(ctx: Ctx, u: Unit, move: MoveDef): void {
@@ -208,6 +252,7 @@ function selfMove(ctx: Ctx, u: Unit, move: MoveDef): void {
     ctx.s.futureSight.push({ userId: u.id, side: u.side });
     log(ctx, `${nameOf(u)} foresaw an attack! It lands at the start of its next turn.`, 'info', u.side);
   }
+  if (fx.special === 'metronome') queueMetronome(ctx, u);
 }
 
 function stageAll(ctx: Ctx, target: Unit, stages: Partial<Record<StatId, number>>, source: Unit, ignoreAbilities = false): void {
@@ -217,14 +262,18 @@ function stageAll(ctx: Ctx, target: Unit, stages: Partial<Record<StatId, number>
   }
 }
 
+/** Mitsuhide's passive: weather moves and abilities never hurt its side. */
+export const weatherProof = (s: GameState, x: Unit): boolean => trainerOf(s, x.side) === 'mitsuhide';
+
 function globalMove(ctx: Ctx, u: Unit, move: MoveDef): void {
   const s = ctx.s;
   const all = liveUnits(s);
+  const hurt = all.filter((x) => !weatherProof(s, x));
   switch (move.fx.special) {
     case 'sunnyDay':
       for (const x of all) {
         if (hasType(x, 'Fire')) applyStage(ctx, x, 'atk', 1, { source: u, label: 'Sunny Day' });
-        if (hasType(x, 'Water')) applyStage(ctx, x, 'atk', -1, { source: u, label: 'Sunny Day' });
+        if (hasType(x, 'Water') && hurt.includes(x)) applyStage(ctx, x, 'atk', -1, { source: u, label: 'Sunny Day' });
       }
       for (const c of withAbility(s, 'flowerGiftOvercast')) {
         transform(ctx, c, 'cherrim-sunshine', false);
@@ -234,23 +283,31 @@ function globalMove(ctx: Ctx, u: Unit, move: MoveDef): void {
     case 'rainDance':
       for (const x of all) {
         if (hasType(x, 'Water')) applyStage(ctx, x, 'atk', 1, { source: u, label: 'Rain Dance' });
-        if (hasType(x, 'Fire')) applyStage(ctx, x, 'atk', -1, { source: u, label: 'Rain Dance' });
+        if (hasType(x, 'Fire') && hurt.includes(x)) applyStage(ctx, x, 'atk', -1, { source: u, label: 'Rain Dance' });
       }
       break;
     case 'sandstorm':
       for (const x of all) {
         if (hasType(x, 'Rock')) applyStage(ctx, x, 'def', 1, { source: u, label: 'Sandstorm' });
-        if (!hasType(x, 'Rock') && !hasType(x, 'Ground') && !hasType(x, 'Steel')) dealDamage(ctx, x, 20, { source: u, label: 'Sandstorm' });
+        if (!hasType(x, 'Rock') && !hasType(x, 'Ground') && !hasType(x, 'Steel') && hurt.includes(x)) dealDamage(ctx, x, 20, { source: u, label: 'Sandstorm' });
       }
       break;
     case 'hail':
       for (const x of all) {
         if (hasType(x, 'Ice')) applyStage(ctx, x, 'def', 1, { source: u, label: 'Hail' });
-        else dealDamage(ctx, x, 20, { source: u, label: 'Hail' });
+        else if (hurt.includes(x)) dealDamage(ctx, x, 20, { source: u, label: 'Hail' });
       }
       break;
     case 'flowerShield':
       for (const x of all) if (hasType(x, 'Grass')) applyStage(ctx, x, 'def', 1, { source: u, label: 'Flower Shield' });
+      break;
+    case 'lightScreen':
+      // +1 Defense for the whole team, but never above +1.
+      for (const x of liveUnits(s, u.side)) if (x.stages.def < 1) applyStage(ctx, x, 'def', 1, { source: u, label: 'Light Screen' });
+      break;
+    case 'taunt':
+      s.taunted = otherSide(u.side);
+      log(ctx, `${nameOf(u)} taunted the opposing team! Next turn they must attack if they can.`, 'info', u.side);
       break;
   }
 }
@@ -285,13 +342,19 @@ function zoneMove(ctx: Ctx, u: Unit, move: MoveDef, moveType: PType | null, tg: 
     return;
   }
 
-  const ac = makeAttackCtx(u, move, { moveType: moveType ?? 'Normal', attackerPos, targetCount: tg.targets.length });
+  const ac = makeAttackCtx(u, move, { moveType: moveType ?? 'Normal', attackerPos, targetCount: tg.targets.length, s });
+  if (ac.pixilated) log(ctx, `Pixilate turned ${move.name} Fairy type!`, 'info', u.side);
   const dice = fx.dice ? rng.d6() : null;
   if (dice !== null) log(ctx, `${nameOf(u)} rolled a ${dice}! (+${dice * 10} power)`, 'info', u.side);
   const sm = secondaryMult(s, u);
   const chance = (p: number): boolean => rng.chance(Math.min(1, p * sm));
 
-  const targets = [...tg.targets].sort((a, b) => cheb(b.pos!, attackerPos) - cheb(a.pos!, attackerPos));
+  // Decoy: Wobbuffet is hit first. If it survives, nobody else in the zone takes damage and the
+  // attacker takes the same damage in return.
+  const isDecoy = (x: Unit): boolean => move.kind === 'attack' && !ac.ignoreAbilities && abilityOf(x) === 'decoy';
+  const targets = [...tg.targets].sort((a, b) => Number(isDecoy(b)) - Number(isDecoy(a)));
+  let decoyed = false;
+  let returned = 0;
   for (const t of targets) {
     if (t.fainted || !t.pos) continue;
     if (move.kind === 'attack') {
@@ -303,10 +366,12 @@ function zoneMove(ctx: Ctx, u: Unit, move: MoveDef, moveType: PType | null, tg: 
       if (imm.absorbed) {
         log(ctx, `${nameOf(t)}'s Storm Drain absorbed the attack!`, 'info', t.side);
         applyStage(ctx, t, 'atk', 1, { source: t, label: 'Storm Drain' });
+        immuneHeal(ctx, t);
         continue;
       }
       if (imm.immune) {
-        log(ctx, `It doesn't affect ${nameOf(t)}…`, 'info', t.side);
+        log(ctx, imm.wonderGuard ? `${nameOf(t)}'s Wonder Guard blocked the attack!` : `It doesn't affect ${nameOf(t)}…`, 'info', t.side);
+        immuneHeal(ctx, t);
         continue;
       }
       if (fx.missChance && !neverMisses(s, u) && rng.chance(fx.missChance)) {
@@ -329,11 +394,16 @@ function zoneMove(ctx: Ctx, u: Unit, move: MoveDef, moveType: PType | null, tg: 
         if (grazed) log(ctx, `The attack only grazed ${nameOf(t)}.`, 'info', t.side);
         if (chanceBonus) log(ctx, `A critical blow! (+${bonus!.amount} power)`, 'good', u.side);
         const eff = typeEffectLabel(dmg.mult);
-        const dealt = dealDamage(ctx, t, dmg.damage, { source: u, attack: true, ignoreAbilities: ac.ignoreAbilities, label: eff ?? undefined });
+        if (decoyed) log(ctx, `${nameOf(t)} was hit but took no damage (Decoy).`, 'info', t.side);
+        const dealt = decoyed ? 0 : dealDamage(ctx, t, dmg.damage, { source: u, attack: true, ignoreAbilities: ac.ignoreAbilities, label: eff ?? undefined });
         hits.push(t);
         triggerLeech(ctx, u, posBefore, t.id, dealt);
-        if (!ac.ignoreAbilities) reactiveAbilities(ctx, u, t, attackerPos, posBefore, moveType);
+        if (!ac.ignoreAbilities) reactiveAbilities(ctx, u, t, attackerPos, posBefore, ac.moveType, dealt > 0);
         if (!t.fainted) secondary(ctx, u, t, move, grazed, chance, ac.ignoreAbilities);
+        if (isDecoy(t) && !decoyed && !t.fainted && dealt > 0) {
+          decoyed = true;
+          returned = dealt;
+        }
       }
       if (t.fainted) {
         res.kos += 1;
@@ -346,7 +416,7 @@ function zoneMove(ctx: Ctx, u: Unit, move: MoveDef, moveType: PType | null, tg: 
         applyStage(ctx, t, 'atk', 1, { source: t, label: 'Storm Drain' });
         continue;
       }
-      if (fx.alliesStages || fx.healSelfAndAllies !== undefined) {
+      if (ALLY_ONLY(move) || fx.healSelfAndAllies !== undefined) {
         if (t.side !== u.side) continue;
       } else if (fx.hitChance !== undefined && !neverMisses(s, u) && !rng.chance(fx.hitChance)) {
         log(ctx, `${move.name} missed ${nameOf(t)}!`, 'info', t.side);
@@ -358,17 +428,47 @@ function zoneMove(ctx: Ctx, u: Unit, move: MoveDef, moveType: PType | null, tg: 
     }
   }
   if (fx.healSelfAndAllies !== undefined) heal(ctx, u, fx.healSelfAndAllies, move.name);
+  if (returned > 0 && !u.fainted) dealDamage(ctx, u, returned, { label: 'Decoy' });
+  if (fx.clearHazards) {
+    const zone = new Set(tg.zone.map(posKey));
+    const before = s.hazards.length;
+    s.hazards = s.hazards.filter((h) => !zone.has(posKey(h.pos)));
+    if (s.hazards.length < before) log(ctx, `${nameOf(u)} cleared away ${before - s.hazards.length} hazard${before - s.hazards.length > 1 ? 's' : ''}.`, 'info', u.side);
+  }
 
   // Knockback, farthest target first so pushed Pokémon don't collide with each other.
-  const k = move.target.kind === 'grid' ? parseGrid(move.target.grid).knockback : 0;
-  if (k > 0 && opts.dir) {
-    for (const t of hits) if (!t.fainted && t.pos) knockback(ctx, t, opts.dir, k);
+  const printed = move.target.kind === 'grid' ? parseGrid(move.target.grid).knockback : 0;
+  const k = pushDistance(s, u, move, printed);
+  if (k > 0) {
+    const far = [...hits].sort((a, b) => cheb(b.pos ?? attackerPos, attackerPos) - cheb(a.pos ?? attackerPos, attackerPos));
+    for (const t of far) if (!t.fainted && t.pos) knockback(ctx, t, opts.dir ?? awayFrom(attackerPos, t.pos), k, turnEffect(s, u.side) === 'push2');
   }
   finish();
 }
 
-function reactiveAbilities(ctx: Ctx, u: Unit, t: Unit, attackerPos: Pos, targetPos: Pos, moveType: PType | null): void {
+/** Blue's passive turns a one-tile push into two; Lance's special makes every attack push two. */
+export function pushDistance(s: GameState, u: Unit, move: MoveDef | null, printed: number): number {
+  if ((!move || move.kind === 'attack') && turnEffect(s, u.side) === 'push2') return 2;
+  if (printed === 1 && trainerOf(s, u.side) === 'blue') return 2;
+  return printed;
+}
+
+/** The direction straight away from `from` (vertical on a tie), for pushes by ranged attacks. */
+function awayFrom(from: Pos, to: Pos): Dir {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  if (Math.abs(dx) > Math.abs(dy)) return dx > 0 ? 'E' : 'W';
+  return dy > 0 ? 'S' : 'N';
+}
+
+/** Nobunaga's passive: its side's Pokémon heal 30 when an attack they're immune to targets them. */
+function immuneHeal(ctx: Ctx, t: Unit): void {
+  if (trainerOf(ctx.s, t.side) === 'nobunaga') heal(ctx, t, 30, 'Nobunaga');
+}
+
+function reactiveAbilities(ctx: Ctx, u: Unit, t: Unit, attackerPos: Pos, targetPos: Pos, moveType: PType | null, hit: boolean): void {
   const ab = abilityOf(t);
+  if (ab === 'unburden' && hit && !t.fainted) applyStage(ctx, t, 'mov', 1, { source: t, label: 'Unburden' });
   const upClose = cheb(attackerPos, targetPos) <= 1;
   if (ab === 'static' && upClose && !u.fainted && ctx.rng.chance(0.3)) {
     log(ctx, `${nameOf(t)}'s Static zapped ${nameOf(u)}!`, 'info', t.side);
@@ -390,10 +490,12 @@ function secondary(ctx: Ctx, u: Unit, t: Unit, move: MoveDef, grazed: boolean, c
   }
   if (fx.confuse && ok(fx.confuse) && chance(fx.confuse.chance)) {
     t.confused = true;
+    emit(ctx, { t: 'status', unitId: t.id, status: 'confused' });
     log(ctx, `${nameOf(t)} became confused!`, 'bad', t.side);
   }
   if (fx.flinch && ok(fx.flinch) && chance(fx.flinch.chance)) {
     t.flinched = true;
+    emit(ctx, { t: 'status', unitId: t.id, status: 'flinched' });
     log(ctx, `${nameOf(t)} flinched! It will lose its next activation.`, 'bad', t.side);
   }
   if (fx.targetStages && chance(fx.targetStages.chance)) stageAll(ctx, t, fx.targetStages.stages, u, ignoreAbilities);
@@ -413,18 +515,45 @@ function statusEffects(ctx: Ctx, u: Unit, t: Unit, move: MoveDef): void {
     t.stages = { atk: -t.stages.atk, def: -t.stages.def, mov: -t.stages.mov };
     log(ctx, `${nameOf(t)}'s stat changes were turned upside down!`, 'info', t.side);
   }
-  if (fx.heal) heal(ctx, t, fx.heal, move.name);
+  if (fx.heal) heal(ctx, t, fx.healOnBonusTerrain !== undefined && terrainBonus(ctx.s, t) ? fx.healOnBonusTerrain : fx.heal, move.name);
   if (fx.alliesStages) stageAll(ctx, t, fx.alliesStages, u);
   if (fx.healSelfAndAllies) heal(ctx, t, fx.healSelfAndAllies, move.name);
+  if (fx.special === 'helpingHand') {
+    t.dmgBonus += 30;
+    log(ctx, `${nameOf(t)} deals 30 extra damage for the rest of this turn (Helping Hand).`, 'good', t.side);
+  }
+  if (fx.special === 'afterYou') queueAfterYou(ctx, t);
 }
 
-function knockback(ctx: Ctx, t: Unit, dir: Dir, k: number): void {
+/** After You: the target may move again (the player picks where, or stays). */
+function queueAfterYou(ctx: Ctx, t: Unit): void {
+  const s = ctx.s;
+  const options = [...reachable(s, t, afterYouBudget(s, t)).keys()];
+  if (!options.length) {
+    log(ctx, `${nameOf(t)} has nowhere to move.`, 'info', t.side);
+    return;
+  }
+  log(ctx, `${nameOf(t)} can move again (After You).`, 'good', t.side);
+  s.pending.push({ kind: 'afterYou', side: t.side, unitId: t.id, options });
+}
+
+export function afterYouBudget(s: GameState, t: Unit): number {
+  if (t.turn.noMove || t.status === 'slp' || t.status === 'frz') return 0;
+  return effectiveMov(s, t) + t.movBonus + (turnEffect(s, t.side) === 'rally' ? 1 : 0);
+}
+
+function knockback(ctx: Ctx, t: Unit, dir: Dir, k: number, collide = false): void {
   const s = ctx.s;
   const path: Pos[] = [];
+  let crashed = false;
   for (let i = 0; i < k; i++) {
     const np = addPos(t.pos!, DIR_VEC[dir]);
-    const blocked = !inBounds(s, np) || !canStand(t, terrainAt(s, np)) || !!unitAt(s, np) || substituteAt(s, np);
-    if (blocked) break;
+    // Lance's special: hitting the edge of the board or ground the target can't enter hurts.
+    if (!inBounds(s, np) || !canStand(t, terrainAt(s, np))) {
+      crashed = collide;
+      break;
+    }
+    if (unitAt(s, np) || substituteAt(s, np)) break;
     path.push(np);
     enterTile(ctx, t, np);
     if (t.fainted) break;
@@ -433,6 +562,7 @@ function knockback(ctx: Ctx, t: Unit, dir: Dir, k: number): void {
     emit(ctx, { t: 'move', unitId: t.id, path });
     log(ctx, `${nameOf(t)} was knocked back ${path.length} tile${path.length > 1 ? 's' : ''}.`, 'info', t.side);
   }
+  if (crashed && !t.fainted) dealDamage(ctx, t, 60, { label: 'collision' });
 }
 
 function afterEffects(ctx: Ctx, u: Unit, move: MoveDef, hits: Unit[], res: ExecResult): void {
@@ -441,8 +571,9 @@ function afterEffects(ctx: Ctx, u: Unit, move: MoveDef, hits: Unit[], res: ExecR
   const n = hits.length;
   res.hits = n;
   if (u.fainted) return;
-  if (fx.recoil && n > 0) dealDamage(ctx, u, fx.recoil, { label: 'recoil' });
-  if (fx.recoilPerTarget && n > 0) dealDamage(ctx, u, fx.recoilPerTarget * n, { label: 'recoil' });
+  // N's passive: no recoil for its side.
+  const recoil = trainerOf(s, u.side) === 'n' ? 0 : (n > 0 ? (fx.recoil ?? 0) + (fx.recoilPerTarget ?? 0) * n : 0);
+  if (recoil > 0) dealDamage(ctx, u, recoil, { label: 'recoil' });
   if (u.fainted) return;
   if (fx.drain && n > 0) heal(ctx, u, fx.drain, move.name);
   if (fx.drainPerTarget && n > 0) heal(ctx, u, fx.drainPerTarget * n, move.name);
@@ -459,16 +590,30 @@ function afterEffects(ctx: Ctx, u: Unit, move: MoveDef, hits: Unit[], res: ExecR
     const skip = (nt.unlessAdjFire && adjacentToType(s, u, 'Fire')) || (nt.droughtSkips && withAbility(s, 'drought').length > 0);
     if (skip) {
       log(ctx, `${nameOf(u)} doesn't need to recharge.`, 'good', u.side);
+    } else if (lanceCooldown(ctx, u)) {
+      // Lance took the recharge as recoil instead.
     } else {
       if (nt.noMove) u.nextTurn.noMove = true;
       if (nt.noAct) u.nextTurn.noAct = true;
       log(ctx, `${nameOf(u)} must recharge: it can't ${nt.noAct ? 'move or act' : 'move'} next turn.`, 'info', u.side);
     }
   }
+  if (fx.lockUntilFar && !u.fainted && !u.locked.includes(move.name) && !lanceCooldown(ctx, u)) {
+    u.locked.push(move.name);
+    log(ctx, `${move.name} is on cooldown until ${nameOf(u)} ends its turn ${fx.lockUntilFar}+ tiles from every opponent.`, 'info', u.side);
+  }
   if (fx.selfFaint) {
     log(ctx, `${nameOf(u)} is spent from the blast.`, 'info', u.side);
     faint(ctx, u, null);
   }
+}
+
+/** Lance's passive: a cooldown becomes 40 recoil instead. True when it applied. */
+function lanceCooldown(ctx: Ctx, u: Unit): boolean {
+  if (trainerOf(ctx.s, u.side) !== 'lance') return false;
+  log(ctx, `${nameOf(u)} skips the cooldown and takes 40 recoil instead (Lance).`, 'info', u.side);
+  dealDamage(ctx, u, 40, { label: 'recoil' });
+  return true;
 }
 
 function queueEmergencyExit(ctx: Ctx, t: Unit): void {
@@ -499,7 +644,7 @@ export function liquidVoiceOptions(s: GameState, p: Unit, move: MoveDef): Dir[] 
   return DIRS.filter((d) => targeting(s, p, copy, { dir: d }).ok);
 }
 
-function queueLiquidVoice(ctx: Ctx, u: Unit, move: MoveDef, moveIndex: 0 | 1): void {
+function queueLiquidVoice(ctx: Ctx, u: Unit, move: MoveDef, source: { cardId: string; moveIndex: 0 | 1 }): void {
   if (!LIQUID_VOICE_RE.test(move.name)) return;
   const s = ctx.s;
   for (const p of withAbility(s, 'liquidVoice')) {
@@ -507,8 +652,78 @@ function queueLiquidVoice(ctx: Ctx, u: Unit, move: MoveDef, moveIndex: 0 | 1): v
     const options = liquidVoiceOptions(s, p, move);
     if (options.length === 0) continue;
     log(ctx, `${nameOf(p)}'s Liquid Voice can copy ${move.name}!`, 'info', p.side);
-    s.pending.push({ kind: 'liquidVoice', side: p.side, unitId: p.id, source: { cardId: u.cardId, moveIndex }, options });
+    s.pending.push({ kind: 'liquidVoice', side: p.side, unitId: p.id, source, options });
   }
+}
+
+export const DANCE_RE = /dance/i;
+
+/** Directions Dancer can aim a copied dance move (self and field moves are copied on the spot). */
+export function dancerOptions(s: GameState, d: Unit, move: MoveDef): Dir[] {
+  if (!onBoard(d) || d.status === 'slp' || d.status === 'frz') return [];
+  if (move.target.kind !== 'grid' && move.target.kind !== 'place') return [];
+  return DIRS.filter((dir) => targeting(s, d, move, { dir }).ok);
+}
+
+/** Dancer: Oricorio copies any other Pokémon's dance move. */
+function queueDancer(ctx: Ctx, u: Unit, move: MoveDef, source: { cardId: string; moveIndex: 0 | 1 }): void {
+  if (!DANCE_RE.test(move.name)) return;
+  const s = ctx.s;
+  for (const d of withAbility(s, 'dancer')) {
+    if (d.id === u.id || d.status === 'slp' || d.status === 'frz') continue;
+    if (move.target.kind === 'self' || move.target.kind === 'global') {
+      executeMove(ctx, d, move, { copied: 'Dancer', noEcho: true });
+      continue;
+    }
+    const options = dancerOptions(s, d, move);
+    if (!options.length) continue;
+    log(ctx, `${nameOf(d)}'s Dancer copies ${move.name}!`, 'info', d.side);
+    s.pending.push({ kind: 'dancer', side: d.side, unitId: d.id, source, options });
+  }
+}
+
+/** Moves Transform and Metronome can't borrow. */
+export const UNCOPYABLE = (m: MoveDef): boolean => !!m.fx.none || m.fx.special === 'transform' || m.fx.special === 'metronome';
+
+/** Ways `u` could use `move` right now: "dir", "@unitId", or "" for self and field moves. */
+export function aimOptions(s: GameState, u: Unit, move: MoveDef): string[] {
+  switch (move.target.kind) {
+    case 'self':
+    case 'global':
+      return [''];
+    case 'grid':
+    case 'place':
+      return DIRS.filter((d) => targeting(s, u, move, { dir: d }).ok);
+    case 'range':
+    case 'ally':
+      return liveUnits(s).filter((x) => x.id !== u.id && targeting(s, u, move, { targetId: x.id }).ok).map((x) => `@${x.id}`);
+  }
+}
+
+/** Splits an aim option back into targeting options. */
+export function parseAim(aim: string): TargetOpts {
+  if (!aim) return {};
+  return aim.startsWith('@') ? { targetId: aim.slice(1) } : { dir: aim as Dir };
+}
+
+/** Metronome's choices for the drawn card: "moveIndex:aim". */
+export function metronomeOptions(s: GameState, u: Unit, cardId: string): string[] {
+  return getCard(cardId).moves.flatMap((m, i) => (UNCOPYABLE(m) ? [] : aimOptions(s, u, m).map((a) => `${i}:${a}`)));
+}
+
+/** Metronome: draw a random card nobody drafted, then pick one of its moves and how to aim it. */
+function queueMetronome(ctx: Ctx, u: Unit): void {
+  const s = ctx.s;
+  const used = new Set([...s.draft.picks.A, ...s.draft.picks.D]);
+  const pool = DRAFTABLE.filter((c) => !used.has(c.id) && !c.moves.some(UNCOPYABLE));
+  const c = pool[ctx.rng.int(pool.length)];
+  log(ctx, `${nameOf(u)} waved its finger… and drew ${c.name}!`, 'info', u.side);
+  const options = metronomeOptions(s, u, c.id);
+  if (!options.length) {
+    log(ctx, `…but neither of ${c.name}'s moves can be used from here.`, 'info', u.side);
+    return;
+  }
+  s.pending.push({ kind: 'metronome', side: u.side, unitId: u.id, cardId: c.id, options });
 }
 
 /**
@@ -524,10 +739,12 @@ export function trebuchetAttack(ctx: Ctx, u: Unit, t: Unit): ExecResult {
   if (imm.absorbed) {
     log(ctx, `${nameOf(t)}'s Storm Drain absorbed the shot!`, 'info', t.side);
     applyStage(ctx, t, 'atk', 1, { source: t, label: 'Storm Drain' });
+    immuneHeal(ctx, t);
     return { hits: 0, kos: 0 };
   }
   if (imm.immune) {
-    log(ctx, `It doesn't affect ${nameOf(t)}…`, 'info', t.side);
+    log(ctx, imm.wonderGuard ? `${nameOf(t)}'s Wonder Guard blocked the shot!` : `It doesn't affect ${nameOf(t)}…`, 'info', t.side);
+    immuneHeal(ctx, t);
     return { hits: 0, kos: 0 };
   }
   const hpBefore = t.hp;
@@ -535,7 +752,10 @@ export function trebuchetAttack(ctx: Ctx, u: Unit, t: Unit): ExecResult {
   const dmg = computeDamage(s, ac, t, 40, null);
   const dealt = dealDamage(ctx, t, dmg.damage, { source: u, attack: true, ignoreAbilities: ac.ignoreAbilities, label: typeEffectLabel(dmg.mult) ?? undefined });
   triggerLeech(ctx, u, posBefore, t.id, dealt);
-  if (!ac.ignoreAbilities) reactiveAbilities(ctx, u, t, u.pos!, posBefore, ac.moveType);
+  if (!ac.ignoreAbilities) reactiveAbilities(ctx, u, t, u.pos!, posBefore, ac.moveType, dealt > 0);
+  if (!ac.ignoreAbilities && abilityOf(t) === 'decoy' && !t.fainted && dealt > 0 && !u.fainted) dealDamage(ctx, u, dealt, { label: 'Decoy' });
+  const k = pushDistance(s, u, null, 0);
+  if (k > 0 && !t.fainted && t.pos && u.pos) knockback(ctx, t, awayFrom(u.pos, t.pos), k, true);
   if (!t.fainted && abilityOf(t) === 'emergencyExit' && hpBefore >= 100 && t.hp < 100) queueEmergencyExit(ctx, t);
   return { hits: 1, kos: t.fainted ? 1 : 0 };
 }

@@ -63,6 +63,46 @@ export function LegendaryToggle({ value, onChange }: { value: boolean; onChange:
   );
 }
 
+const TRAINERS_KEY = 'pcc-trainers';
+
+/** Whether trainer mode was last chosen on this device (off by default). */
+export function savedTrainers(): boolean {
+  try {
+    return localStorage.getItem(TRAINERS_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+/** Trainer mode on (each side picks one of four trainers after the draft) or off. */
+export function TrainerToggle({ value, onChange }: { value: boolean; onChange: (on: boolean) => void }) {
+  const choose = (on: boolean) => {
+    try {
+      localStorage.setItem(TRAINERS_KEY, on ? '1' : '0');
+    } catch {
+      // Storage can be unavailable; the choice still applies to this game.
+    }
+    onChange(on);
+  };
+  return (
+    <div>
+      <div className="mb-2 text-sm font-semibold text-slate-300">Trainers</div>
+      <div className="grid grid-cols-2 gap-2">
+        {([false, true] as const).map((on) => (
+          <button key={String(on)} type="button" aria-pressed={value === on} onClick={() => choose(on)} className={`btn ${value === on ? 'bg-amber-400 text-slate-950' : 'bg-slate-800 hover:bg-slate-700'}`}>
+            {on ? 'With trainers' : 'No trainers'}
+          </button>
+        ))}
+      </div>
+      <p className="mt-2 text-xs text-slate-400">
+        {value
+          ? 'After the draft, 4 random trainers are offered: the Attacker picks one, then the Defender. Each has a passive and a once-per-game Special Move.'
+          : 'Play without trainer cards.'}
+      </p>
+    </div>
+  );
+}
+
 /** A small drawing of a map: terrain, flowers, bushes, the trebuchet and both sides' spawns. */
 export function MapPreview({ map, className = '' }: { map: MapDef; className?: string }) {
   const spawn = (x: number, y: number) =>
