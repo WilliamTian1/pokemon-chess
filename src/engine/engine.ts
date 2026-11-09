@@ -369,12 +369,15 @@ function draftPick(ctx: Ctx, cardId: string, who?: Side): void {
 export function hiddenView(s: GameState, viewer: Side | null): GameState {
   const d = s.draft;
   if (draftStyle(s) === 'auction' && d.auction && s.phase === 'draft') {
-    return { ...s, draft: { ...d, pool: [], legendPool: [], auction: { ...d.auction, deck: d.auction.deck.map(() => '?') } } };
+    // The deck's order and contents stay hidden; the legendary pool keeps its size ('?' each), which
+    // says whether legendaries are on and how many the deck holds (the Hard bot's bidding needs both).
+    return { ...s, draft: { ...d, pool: [], legendPool: d.legendPool.map(() => '?'), auction: { ...d.auction, deck: d.auction.deck.map(() => '?') } } };
   }
   if (!isSimultaneous(s) || !d.secret) return s;
   const see = (x: Side) => viewer === x;
   const pools = { A: see('A') ? d.secret.pools.A : [], D: see('D') ? d.secret.pools.D : [] };
-  const legendPools = { A: see('A') ? d.secret.legendPools.A : [], D: see('D') ? d.secret.legendPools.D : [] };
+  // Hidden legendary options keep their count ('?' each): it tells how many picks a side has.
+  const legendPools = { A: see('A') ? d.secret.legendPools.A : d.secret.legendPools.A.map(() => '?'), D: see('D') ? d.secret.legendPools.D : d.secret.legendPools.D.map(() => '?') };
   const trainerPools = d.secret.trainerPools && { A: see('A') ? d.secret.trainerPools.A : [], D: see('D') ? d.secret.trainerPools.D : [] };
   const picks = { A: see('A') ? d.picks.A : d.picks.A.map(() => '?'), D: see('D') ? d.picks.D : d.picks.D.map(() => '?') };
   return {

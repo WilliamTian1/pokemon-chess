@@ -44,6 +44,24 @@ const legendary = (id: string): boolean => CARDS[id].legendary;
  * then its next card. No denial: the opponent never picks from the same pool.
  */
 export function bestSecretPick(s: GameState, side: Side, m: DraftModel = draftModelFor(s.mapId, modeOf(s))): string {
+  return analyzeSecretPick(s, side, m).lines[0]?.id ?? draftOptions(s, side)[0];
+}
+
+/** One option of a Secret pick: the best full team that includes it, and how it fares on average. */
+export interface SecretLine {
+  id: string;
+  /** Average logit P(Attacker wins) of `team` against the sampled opponent teams. */
+  value: number;
+  /** The rest of that team (the predicted remaining picks, this one first). */
+  team: string[];
+}
+
+/**
+ * Secret draft: every option for `side`'s next Pokémon pick, valued by the best whole team that includes
+ * it against likely opponents (what bestSecretPick plays: the first line). The opponent's pool and picks
+ * aren't used, as the bot can't see them.
+ */
+export function analyzeSecretPick(s: GameState, side: Side, m: DraftModel = draftModelFor(s.mapId, modeOf(s))): { side: Side; lines: SecretLine[] } {
   const sp = s.draft.secret!;
   const have = s.draft.picks[side];
   const pool = sp.pools[side].filter((id) => !have.includes(id));
@@ -52,18 +70,46 @@ export function bestSecretPick(s: GameState, side: Side, m: DraftModel = draftMo
   const normalsNeeded = TEAM_SIZE - have.length - (needLegend ? 1 : 0);
   const rng = seededRng(hash(`${s.mapId}|${side}|${have.join(',')}|${pool.join(',')}`));
   const opponents = sampleOpponents(s, side, m, rng, 40);
-  let best: { team: string[]; v: number } | null = null;
+  const options = new Set(draftOptions(s, side));
+  const best = new Map<string, { v: number; team: string[] }>();
   for (const combo of combinations(pool, Math.max(0, normalsNeeded))) {
     for (const l of needLegend ? legends : [null]) {
-      const team = [...have, ...combo, ...(l ? [l] : [])];
+      const rest = [...combo, ...(l ? [l] : [])];
+      const team = [...have, ...rest];
       let v = 0;
       for (const opp of opponents) v += forSide(m, side, team, opp);
-      if (!best || v > best.v) best = { team, v };
+      for (const id of rest) {
+        if (!options.has(id)) continue;
+        const b = best.get(id);
+        if (!b || v > b.v) best.set(id, { v, team: [id, ...rest.filter((x) => x !== id)] });
+      }
     }
   }
-  const options = draftOptions(s, side);
-  const next = best!.team.slice(have.length).find((id) => options.includes(id));
-  return next ?? options[0];
+  const n = opponents.length || 1;
+  // forSide is `side`'s view; lines carry the Attacker's logit like the classic analysis.
+  // Cards of the same best team tie; the stronger card on its own goes first.
+  const lines = [...best].map(([id, b]) => ({ id, value: side === 'A' ? b.v / n : -b.v / n, team: b.team }))
+    .sort((x, y) => (side === 'A' ? y.value - x.value : x.value - y.value) || gain(m, y.id, side) - gain(m, x.id, side));
+  return { side, lines };
+}
+
+/**
+ * Secret draft, trainer mode: every trainer option for `side` with its complete team, valued against the
+ * same likely opponents (the trainer's value and the part of its synergy that doesn't depend on them).
+ */
+export function analyzeSecretTrainer(s: GameState, side: Side, m: DraftModel = draftModelFor(s.mapId, modeOf(s))): { side: Side; lines: SecretLine[] } {
+  const team = s.draft.picks[side];
+  const rng = seededRng(hash(`${s.mapId}|${side}|${team.join(',')}|trainer`));
+  const opponents = sampleOpponents(s, side, m, rng, 40);
+  const base = opponents.reduce((a, opp) => a + (side === 'A' ? teamLogit(m, team, opp) : teamLogit(m, opp, team)), 0) / (opponents.length || 1);
+  const term = (id: string) => {
+    const t = m.trainers?.[id];
+    if (!t) return 0;
+    return side === 'A' ? t.A + t.synA * trainerSynergy(id, team, []) : t.D + t.synD * trainerSynergy(id, team, []);
+  };
+  const lines = draftOptions(s, side).map((id) => ({ id, value: base + term(id), team: [] as string[] }))
+    .sort((x, y) => (side === 'A' ? y.value - x.value : x.value - y.value));
+  return { side, lines };
 }
 
 /**
@@ -174,6 +220,16 @@ interface Sim {
  * seen; both sides bidding by card value) and scoring the final teams with the win model.
  */
 function hardReserve(s: GameState, side: Side, m: DraftModel = draftModelFor(s.mapId, modeOf(s))): number {
+  return lotOutlook(s, side, m).reserve;
+}
+
+/**
+ * Rollouts of the rest of the auction from the lot on offer, as `side` sees it: `ev(winner, price)` is
+ * the average final logit for `side` (higher = better for it) if `winner` takes the lot at `price`
+ * (null: nobody), and `reserve` the highest price at which taking it beats letting the opponent have
+ * it (-1: not worth a bid).
+ */
+function lotOutlook(s: GameState, side: Side, m: DraftModel): { reserve: number; ev: (winner: Side | null, price: number) => number } {
   const a = s.draft.auction!;
   const lot = a.lot!;
   const opp = otherSide(side);
@@ -188,7 +244,11 @@ function hardReserve(s: GameState, side: Side, m: DraftModel = draftModelFor(s.m
     decks.push(shuffle([...l, ...n], rng));
   }
   const values = valueTables(m, unseen.map((c) => c.id).concat(lot));
+  const memo = new Map<string, number>();
   const ev = (winner: Side | null, price: number): number => {
+    const key = `${winner}|${price}`;
+    const hit = memo.get(key);
+    if (hit !== undefined) return hit;
     let t = 0;
     decks.forEach((deck, i) => {
       const sim: Sim = { teams: { A: [...s.draft.picks.A], D: [...s.draft.picks.D] }, coins: { ...a.coins } };
@@ -199,10 +259,12 @@ function hardReserve(s: GameState, side: Side, m: DraftModel = draftModelFor(s.m
       rollout(sim, deck, values, seededRng(i * 7919 + 1), otherSide(a.opener));
       t += forSide(m, side, sim.teams[side], sim.teams[opp]);
     });
+    memo.set(key, t / decks.length);
     return t / decks.length;
   };
+  if (!canBidFor(s, side, lot)) return { reserve: -1, ev };
   const none = ev(null, 0);
-  if (ev(side, 0) <= none) return -1;
+  if (ev(side, 0) <= none) return { reserve: -1, ev };
   const oppCan = canBidFor(s, opp, lot);
   let reserve = 0;
   for (let p = 1; p <= a.coins[side]; p++) {
@@ -210,7 +272,35 @@ function hardReserve(s: GameState, side: Side, m: DraftModel = draftModelFor(s.m
     if (ev(side, p) >= alt) reserve = p;
     else break;
   }
-  return reserve;
+  return { reserve, ev };
+}
+
+/** The Auction as the Hard bot reads the lot on offer (draft analysis). */
+export interface AuctionAnalysis {
+  /** The most each side would bid for the lot (-1: it wouldn't bid). */
+  reserve: Record<Side, number>;
+  /** Logit P(Attacker wins) after the rest of the auction if this side takes the lot for nothing, or nobody does. */
+  ifTaken: Record<Side, number>;
+  ifNobody: number;
+  /** Where open bidding between the two reserves ends: the higher bidder pays one more than the other's limit. */
+  predicted: { winner: Side | null; price: number; value: number };
+}
+
+export function analyzeAuction(s: GameState, m: DraftModel = draftModelFor(s.mapId, modeOf(s))): AuctionAnalysis {
+  const a = s.draft.auction!;
+  const look = { A: lotOutlook(s, 'A', m), D: lotOutlook(s, 'D', m) };
+  const reserve = { A: Math.min(look.A.reserve, a.coins.A), D: Math.min(look.D.reserve, a.coins.D) };
+  // Attacker's logit, from the Attacker's rollouts.
+  const ev = (winner: Side | null, price: number) => look.A.ev(winner, price);
+  let winner: Side | null = null;
+  if (reserve.A >= 0 || reserve.D >= 0) winner = reserve.A === reserve.D ? a.opener : reserve.A > reserve.D ? 'A' : 'D';
+  const price = winner ? Math.min(reserve[winner], Math.max(0, reserve[otherSide(winner)] + 1)) : 0;
+  return {
+    reserve,
+    ifTaken: { A: ev('A', 0), D: ev('D', 0) },
+    ifNobody: ev(null, 0),
+    predicted: { winner, price, value: ev(winner, price) },
+  };
 }
 
 interface Values {

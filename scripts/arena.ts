@@ -25,7 +25,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { Worker, isMainThread, parentPort, workerData } from 'node:worker_threads';
 import {
-  type Action, DRAFTABLE, type GameState, type Rng, type Side, RuleError, applyAction, cardOf, decider, draftOptions, gameFromTeams, liveUnits,
+  type Action, DRAFTABLE, type GameState, type Rng, type Side, RuleError, applyAction, cardOf, decider, draftOptions, gameFromTeams, hiddenView, liveUnits,
   moveOptions, newGame,
   seededRng, trebuchetOption,
 } from '../src/engine';
@@ -165,7 +165,9 @@ async function playGame(job: Job, other: string | undefined): Promise<GameRecord
     if (job.positions && s.phase === 'battle' && !s.active && !s.pending.length && liveUnits(s, side).every((u) => !u.activated)) turns.push(s);
     const p = players[side];
     const t0 = performance.now();
-    const plan = p.decide(s, side, p.level, botRng);
+    // Bots see what a player would: in Secret not the other side's pool, picks or placement, in an
+    // Auction not the deck (the same hidden view the server gives its bots).
+    const plan = p.decide(hiddenView(s, side), side, p.level, botRng);
     ms[side] += performance.now() - t0;
     decisions[side] += 1;
     if (!plan.length) throw new Error(`seed ${job.seed}: ${job.players[side]} returned no action in ${s.phase}`);

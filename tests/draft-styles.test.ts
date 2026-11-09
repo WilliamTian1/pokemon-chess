@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { analyzeAuction, analyzeSecretPick, bestSecretPick } from '../src/ai/styles';
 import {
   AUCTION_COINS, type GameState, CARDS, applyAction, auctionOpen, decider, deciders, draftOptions, getMap, hiddenView, newGame, seededRng,
 } from '../src/engine';
@@ -71,6 +72,16 @@ describe('Secret draft', () => {
 });
 
 describe('Auction', () => {
+  it('hides the deck but not whether legendaries are on or how many it holds', () => {
+    const s = newGame({ rng: seededRng(4), style: 'auction' });
+    const seen = hiddenView(s, 'A');
+    expect(seen.draft.auction!.deck.every((id) => id === '?')).toBe(true);
+    expect(seen.draft.pool).toEqual([]);
+    expect(seen.draft.legendPool).toHaveLength(s.draft.legendPool.length);
+    expect(seen.draft.legendPool.length).toBeGreaterThan(0);
+    expect(seen.draft.legendPool.every((id) => id === '?')).toBe(true);
+  });
+
   it('reveals one lot at a time; a raise passes the call, a pass gives the lot to the high bidder', () => {
     let s = newGame({ rng: seededRng(5), style: 'auction' });
     const a = s.draft.auction!;
@@ -123,5 +134,26 @@ describe('Auction', () => {
     s = step(s, { type: 'draftPick', cardId: draftOptions(s)[0] });
     s = step(s, { type: 'draftPick', cardId: draftOptions(s)[0] });
     expect(s.phase).toBe('placement');
+  });
+});
+
+describe('draft analysis for Secret and Auction', () => {
+  it('ranks every Secret option, and the bot plays the first', () => {
+    const s = newGame({ rng: seededRng(11), style: 'secret' });
+    for (const side of ['A', 'D'] as const) {
+      const r = analyzeSecretPick(s, side);
+      expect(r.lines.map((l) => l.id).sort()).toEqual([...draftOptions(s, side)].sort());
+      expect(bestSecretPick(s, side)).toBe(r.lines[0].id);
+      // Each line's team is a whole team: this pick and the rest.
+      expect(r.lines[0].team).toHaveLength(4);
+    }
+  });
+
+  it('reads an auction lot: limits within the coins, and nobody wins only if neither would bid', () => {
+    const s = newGame({ rng: seededRng(12), style: 'auction' });
+    const a = analyzeAuction(s);
+    for (const side of ['A', 'D'] as const) expect(a.reserve[side]).toBeLessThanOrEqual(s.draft.auction!.coins[side]);
+    expect(a.predicted.winner === null).toBe(a.reserve.A < 0 && a.reserve.D < 0);
+    if (a.predicted.winner) expect(a.predicted.price).toBeLessThanOrEqual(a.reserve[a.predicted.winner]);
   });
 });

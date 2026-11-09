@@ -164,8 +164,9 @@ export function DraftView({ ctl }: { ctl: Controller }) {
     for (const side of ['A', 'D'] as const) for (const id of s.draft.picks[side]) m.set(id, side);
     return m;
   }, [s.draft.picks]);
-  const normals = useMemo(() => (secret ? s.draft.secret!.pools[turn] : auction ? [] : s.draft.pool).map(getCard), [s.draft.pool, secret, auction, turn]); // eslint-disable-line react-hooks/exhaustive-deps
-  const legends = useMemo(() => (secret ? s.draft.secret!.legendPools[turn] : auction ? [] : s.draft.legendPool).map(getCard), [s.draft.legendPool, secret, auction, turn]); // eslint-disable-line react-hooks/exhaustive-deps
+  // '?': a card hidden from this viewer (a spectator in a Secret draft sees neither side's pool).
+  const normals = useMemo(() => (secret ? s.draft.secret!.pools[turn] : auction ? [] : s.draft.pool).filter((id) => id !== '?').map(getCard), [s.draft.pool, secret, auction, turn]); // eslint-disable-line react-hooks/exhaustive-deps
+  const legends = useMemo(() => (secret ? s.draft.secret!.legendPools[turn] : auction ? [] : s.draft.legendPool).filter((id) => id !== '?').map(getCard), [s.draft.legendPool, secret, auction, turn]); // eslint-disable-line react-hooks/exhaustive-deps
   const pool = useMemo(() => [...normals, ...legends], [normals, legends]);
   const secretTotal = TEAM_SIZE + (s.trainers ? 1 : 0);
   const pickNo = secret
