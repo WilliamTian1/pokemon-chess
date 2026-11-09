@@ -269,6 +269,9 @@ function globalMove(ctx: Ctx, u: Unit, move: MoveDef): void {
   const s = ctx.s;
   const all = liveUnits(s);
   const hurt = all.filter((x) => !weatherProof(s, x));
+  const FIELD = { sunnyDay: 'sun', rainDance: 'rain', sandstorm: 'sand', hail: 'hail', lightScreen: 'screen', taunt: 'taunt', flowerShield: 'flowers' } as const;
+  const kind = move.fx.special && move.fx.special in FIELD ? FIELD[move.fx.special as keyof typeof FIELD] : null;
+  if (kind) emit(ctx, { t: 'field', kind, side: u.side });
   switch (move.fx.special) {
     case 'sunnyDay':
       for (const x of all) {

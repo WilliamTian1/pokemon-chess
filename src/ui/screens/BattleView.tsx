@@ -10,8 +10,9 @@ import { ARROW, Board, type BoardView, MOVE_RANGE, type Overlay, screenDir } fro
 import { MiniGrid } from '../components/CardView';
 import { MatchupMatrix, TypeChartModal } from '../components/Matchups';
 import { LogPanel } from '../components/Panels';
+import { FieldFx, SpecialCutIn, TurnSweep, useEventSounds } from '../components/Effects';
 import { TeamCards } from '../components/TeamCards';
-import { TrainerZoom, trainerImg } from '../components/Trainers';
+import { sfx } from '../audio';
 import type { Controller } from '../controller';
 import { useBoxSize, usePortraitBoard, useTouch, useWideLayout } from '../hooks';
 
@@ -62,6 +63,12 @@ export function BattleView({ ctl }: { ctl: Controller }) {
   const [chart, setChart] = useState(false);
 
 
+
+  useEventSounds(ctl.events);
+  const placed = s.units.filter((u) => u.pos).length;
+  useEffect(() => {
+    if (s.phase === 'placement' && placed > 0) sfx('place');
+  }, [placed]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const cancelAim = useCallback(() => {
     setAim(null);
@@ -333,6 +340,21 @@ export function BattleView({ ctl }: { ctl: Controller }) {
           <TeamCards
             state={s}
             events={ctl.events}
+            trainer={trainerOf(s, side) ? {
+              id: trainerOf(s, side)!,
+              used: s.trainers!.used[side],
+              canUse: myBattleTurn && ctl.mySides.includes(side) && canUseSpecial(s, side),
+              aiming: aim?.kind === 'special' && s.side === side,
+              onUse: () => {
+                if (getTrainer(trainerOf(s, side)!).specialTarget === 'ally') {
+                  setSel(null);
+                  setAim({ kind: 'special' });
+                } else {
+                  send({ type: 'trainerSpecial' });
+                }
+              },
+              onCancel: cancelAim,
+            } : null}
             side={side}
             name={ctl.names[side]}
             mine={ctl.mySides.length === 1 && ctl.mySides[0] === side}
@@ -394,15 +416,11 @@ export function BattleView({ ctl }: { ctl: Controller }) {
         </div>
         {/* On phones the controls stay pinned to the bottom of the screen while the board scrolls. */}
         <div className="sticky bottom-0 z-20 -mx-1 rounded-xl bg-slate-950/90 p-1 backdrop-blur wide:static wide:m-0 wide:bg-transparent wide:p-0 wide:backdrop-blur-none">
-        {s.trainers && s.phase !== 'placement' && (
-          <TrainerStrip ctl={ctl} aiming={aim?.kind === 'special'} onSpecial={(needsTarget) => {
-            if (needsTarget) {
-              setSel(null);
-              setAim({ kind: 'special' });
-            } else {
-              send({ type: 'trainerSpecial' });
-            }
-          }} onCancel={cancelAim} />
+        {aim?.kind === 'special' && (
+          <div className="panel mb-2 flex flex-wrap items-center justify-between gap-2 p-3">
+            <span className="text-sm text-amber-200">{getTrainer(trainerOf(s, s.side)!).name}’s Special Move: pick one of your Pokémon that hasn’t moved yet (board or card).</span>
+            <button type="button" className="btn-ghost" onClick={cancelAim}>Cancel</button>
+          </div>
         )}
         {afterYou ? (
           <div className="panel flex flex-wrap items-center justify-between gap-2 p-3">
@@ -455,6 +473,9 @@ export function BattleView({ ctl }: { ctl: Controller }) {
       )}
 
       <PendingModal ctl={ctl} view={view} />
+      <SpecialCutIn events={ctl.events} names={ctl.names} />
+      <FieldFx events={ctl.events} />
+      <TurnSweep state={s} names={ctl.names} mySides={ctl.mySides} />
       {chart && <TypeChartModal onClose={() => setChart(false)} cards={s.units.map((u) => cardOf(u))} />}
     </div>
   );
@@ -928,62 +949,5 @@ function PendingModal({ ctl, view }: { ctl: Controller; view: BoardView }) {
       {previewList(pv)}
       {!dancer && <button type="button" className="btn-ghost mt-3 w-full" onClick={() => choose(null)}>Don’t copy</button>}
     </Modal>
-  );
-}
-
-// ---------------------------------------------------------------- trainers
-
-/** Both sides' trainers (trainer mode), and the Special Move button for the side to move. */
-function TrainerStrip({ ctl, aiming, onSpecial, onCancel }: {
-  ctl: Controller;
-  aiming: boolean;
-  onSpecial: (needsTarget: boolean) => void;
-  onCancel: () => void;
-}) {
-  const s = ctl.state;
-  const [confirm, setConfirm] = useState(false);
-  const [zoom, setZoom] = useState<string | null>(null);
-  useEffect(() => setConfirm(false), [s.seq]);
-  if (!s.trainers) return null;
-  return (
-    <div className="mb-2 flex flex-wrap items-center gap-2">
-      {(['A', 'D'] as const).map((side) => {
-        const id = trainerOf(s, side);
-        if (!id) return null;
-        const t = getTrainer(id);
-        const used = s.trainers!.used[side];
-        const mine = ctl.mySides.includes(side) && canUseSpecial(s, side);
-        return (
-          <div key={side} className={`flex items-center gap-2 rounded-lg border px-2 py-1 ${side === 'A' ? 'border-rose-500/40' : 'border-sky-500/40'} bg-slate-900/80`}>
-            <button type="button" className="shrink-0" onMouseEnter={() => setZoom(id)} onMouseLeave={() => setZoom(null)} onClick={() => setZoom(zoom === id ? null : id)} title={`${t.name}: ${t.passive}`}>
-              <img src={trainerImg(id)} alt={`${t.name} card`} className="h-9 w-7 rounded object-cover object-top" />
-            </button>
-            <div className="min-w-0 text-xs leading-tight">
-              <div className={`font-bold ${SIDE_TEXT[side]}`}>{t.name}</div>
-              <div className="text-slate-400">{used ? 'Special used' : 'Special ready'}</div>
-            </div>
-            {mine && (aiming ? (
-              <>
-                <span className="text-xs text-amber-200">Pick one of your Pokémon that hasn’t moved</span>
-                <button type="button" className="btn-ghost" onClick={onCancel}>Cancel</button>
-              </>
-            ) : (
-              <button
-                type="button"
-                className={confirm ? 'btn-danger' : 'btn-primary'}
-                title={t.special}
-                onClick={() => {
-                  if (!confirm) setConfirm(true);
-                  else onSpecial(t.specialTarget === 'ally');
-                }}
-              >
-                {confirm ? `Use ${t.name}’s Special?` : 'Special Move'}
-              </button>
-            ))}
-          </div>
-        );
-      })}
-      {zoom && <TrainerZoom id={zoom} />}
-    </div>
   );
 }

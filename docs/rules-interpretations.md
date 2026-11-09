@@ -149,7 +149,7 @@ Cannons, wooden logs and ice sliding are not implemented. Magma and pit tiles ex
 Trainer mode is chosen at setup. After the draft, four of the six trainers are offered; the Attacker picks one, then the Defender picks from the remaining three. Passives apply to the trainer's own side. The Special Move can be used once per game, at any point of its own turn while no Pokémon is mid-activation, and doesn't use up an action. Effects that last "the rest of your turn" end when the turn ends.
 
 - **Mitsuhide:** weather moves and abilities (Sunny Day, Rain Dance, Sandstorm, Hail, Drizzle, Drought) never hurt its side. Special: every Pokémon's stat changes are removed; until the turn ends, its side's moves can't miss or graze.
-- **N:** its side takes no recoil (Head Smash, Volt Tackle…; crash damage from a missed move still applies). Special: its own Pokémon heal 50 and are cured of status conditions.
+- **N:** its side takes no recoil (Head Smash, Volt Tackle…; crash damage from a missed move still applies). Special: all allied Pokémon heal 50 and are cured of status conditions (the card was updated to say “allied”).
 - **Nobunaga:** its Pokémon heal 30 whenever an attack they are immune to targets them; its trebuchet shots do +10. Special: one of its Pokémon that hasn't been activated this turn gets +2 movement, +30 damage and ignores the opponents' Defense boosts for the rest of the turn.
 - **Red:** Pikachu's Thunderbolt deals 45 extra damage. Special: for the rest of the turn its team gets +1 movement and deals 20 extra damage per fainted teammate.
 - **Blue:** its moves that push one tile push two. Special: the same as Red's (as printed).

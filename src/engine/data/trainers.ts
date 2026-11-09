@@ -22,7 +22,7 @@ export const TRAINER_LIST: TrainerDef[] = [
     id: 'n',
     name: 'N',
     passive: 'Your Pokémon do not take recoil damage.',
-    special: 'Heals all of your Pokémon by 50 HP and removes their status conditions.',
+    special: 'Heals all allied Pokémon by 50 HP and removes any status conditions.',
   },
   {
     id: 'nobunaga',

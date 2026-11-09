@@ -334,6 +334,10 @@ export type GameEvent =
   | { t: 'miss'; unitId: string }
   | { t: 'status'; unitId: string; status: StatusId | 'confused' | 'flinched' }
   | { t: 'stage'; unitId: string; stat: StatId; delta: number }
+  /** A trainer's Special Move. */
+  | { t: 'special'; side: Side; trainer: string }
+  /** A move or ability that affects the whole field (weather, Light Screen, Taunt…). */
+  | { t: 'field'; kind: 'sun' | 'rain' | 'sand' | 'hail' | 'screen' | 'taunt' | 'flowers'; side: Side }
   | { t: 'text'; text: string };
 
 export interface Rng {

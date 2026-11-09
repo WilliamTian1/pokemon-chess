@@ -1,4 +1,4 @@
-import { type ReactNode, useMemo, useState } from 'react';
+import { type ReactNode, useEffect, useMemo, useState } from 'react';
 import {
   type CardDef, type PType, type Side, TRAINERS, TYPES, bestHit, decider, draftOptions, getCard, getTrainer, isLegendPick, isTrainerPick, otherSide,
 } from '../../engine';
@@ -6,6 +6,7 @@ import { Art, CardImage, Modal, SIDE_TEXT, TypeBadge } from '../components/bits'
 import { CardDetail } from '../components/CardView';
 import { CounterLists, MultChip, TypeChartModal, matchupTitle } from '../components/Matchups';
 import { trainerImg } from '../components/Trainers';
+import { sfx } from '../audio';
 import type { Controller } from '../controller';
 import { type FitGrid, useFitGrid, useTouch, useWideLayout } from '../hooks';
 
@@ -204,6 +205,10 @@ export function DraftView({ ctl }: { ctl: Controller }) {
   };
   const readId = reading ?? pinned;
   const draft = (c: CardDef) => ctl.dispatch({ type: 'draftPick', cardId: c.id });
+  // A chime for every pick, whoever makes it.
+  useEffect(() => {
+    if (s.draft.index > 0) sfx('pick');
+  }, [s.draft.index]);
 
   return (
     <div className="flex flex-col gap-2 wide:h-full wide:min-h-0">

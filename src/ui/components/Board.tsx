@@ -1,4 +1,4 @@
-import { type CSSProperties, memo, useEffect, useLayoutEffect, useMemo, useState } from 'react';
+import { type CSSProperties, memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   type Dir, type GameState, type Pos, type TargetPreview, type Terrain, type Unit, cardOf, getMap, multLabel, onBoard, posKey,
 } from '../../engine';
@@ -99,12 +99,26 @@ function BoardImpl({ state, view, overlay, previews, selectedId, hoverId, events
   // Floating numbers and attack flashes from the latest event batch.
   const [floaters, setFloaters] = useState<Floater[]>([]);
   const [flash, setFlash] = useState<{ key: string; tiles: Pos[] } | null>(null);
+  // A fainted Pokémon's puff of smoke, and the trebuchet's boulder in flight.
+  const [poofs, setPoofs] = useState<{ key: string; pos: Pos }[]>([]);
+  const [boulder, setBoulder] = useState<{ key: string; from: Pos; to: Pos } | null>(null);
   useEffect(() => {
     const out: Floater[] = [];
+    const puffs: { key: string; pos: Pos }[] = [];
+    let shot: { key: string; from: Pos; to: Pos } | null = null;
     let lastAttack: Pos[] | null = null;
     const lastPos = new Map<string, Pos>();
+    const prev = prevPos.current;
     for (const u of state.units) if (u.pos) lastPos.set(u.id, u.pos);
     events.list.forEach((e, i) => {
+      if (e.t === 'attack' && e.name === 'Trebuchet' && e.tiles.length) {
+        const from = state.units.find((u) => u.id === e.unitId)?.pos ?? prev.get(e.unitId);
+        if (from) shot = { key: `${events.seq}-${i}`, from, to: e.tiles[0] };
+      }
+      if (e.t === 'faint') {
+        const pos = prev.get(e.unitId) ?? lastPos.get(e.unitId);
+        if (pos) puffs.push({ key: `${events.seq}-${i}`, pos });
+      }
       if (e.t === 'attack' && e.tiles.length) lastAttack = e.tiles;
       if (e.t === 'move' && e.path.length) lastPos.set(e.unitId, e.path[e.path.length - 1]);
       if (e.t === 'damage' || e.t === 'heal' || e.t === 'miss') {
@@ -118,7 +132,14 @@ function BoardImpl({ state, view, overlay, previews, selectedId, hoverId, events
     });
     setFloaters(out);
     setFlash(lastAttack ? { key: `f${events.seq}`, tiles: lastAttack } : null);
+    setPoofs(puffs);
+    setBoulder(shot);
   }, [events.seq]);
+  // Where every Pokémon stood before the latest action (a fainted one has no position any more).
+  const prevPos = useRef(new Map<string, Pos>());
+  useEffect(() => {
+    prevPos.current = new Map(state.units.flatMap((u) => (u.pos ? [[u.id, u.pos] as const] : [])));
+  }, [state]);
 
   // Moving Pokémon walk their path tile by tile, so it's clear they went around whatever blocked them.
   const [walk, setWalk] = useState<{ at: Map<string, Pos>; stepMs: number } | null>(null);
@@ -274,6 +295,31 @@ function BoardImpl({ state, view, overlay, previews, selectedId, hoverId, events
             foresight={fsUsers.has(u.id)}
           />
         ))}
+        {poofs.map((p) => {
+          const d = disp(p.pos);
+          return (
+            <span
+              key={p.key}
+              className="pointer-events-none absolute z-20 aspect-square animate-poof rounded-full bg-[radial-gradient(circle,rgba(226,232,240,.9),rgba(148,163,184,.5)_45%,transparent_70%)]"
+              style={{ left: `${(d.x / cols) * 100}%`, top: `${(d.y / rows) * 100}%`, width: `${100 / cols}%` }}
+            />
+          );
+        })}
+        {boulder && (() => {
+          const a = disp(boulder.from);
+          const b = disp(boulder.to);
+          const pct = (v: number, n: number) => `${((v + 0.5) / n) * 100}%`;
+          // The outer box flies across (left); the boulder inside it arcs up and down (top).
+          return (
+            <span
+              key={boulder.key}
+              className="pointer-events-none absolute top-0 z-30 h-full w-0 animate-boulderX"
+              style={{ ['--x0' as string]: pct(a.x, cols), ['--x1' as string]: pct(b.x, cols), ['--y0' as string]: pct(a.y, rows), ['--y1' as string]: pct(b.y, rows) }}
+            >
+              <span className="absolute aspect-square h-[7%] -translate-x-1/2 -translate-y-1/2 animate-boulderY rounded-full bg-gradient-to-br from-stone-300 to-stone-700 shadow-lg ring-1 ring-black/40" />
+            </span>
+          );
+        })()}
         {floaters.map((f) => {
           const d = disp(f.pos);
           return (

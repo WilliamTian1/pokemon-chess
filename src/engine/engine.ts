@@ -280,10 +280,12 @@ function startBattle(ctx: Ctx): void {
   log(ctx, 'The battle begins!', 'system');
   const all = liveUnits(s);
   for (const src of withAbility(s, 'sandStream')) {
+    emit(ctx, { t: 'field', kind: 'sand', side: src.side });
     log(ctx, `${nameOf(src)}'s Sand Stream whips up a sandstorm.`, 'info', src.side);
     for (const x of all) if (hasType(x, 'Rock')) applyStage(ctx, x, 'def', 1, { source: src, label: 'Sand Stream' });
   }
   for (const src of withAbility(s, 'drizzle')) {
+    emit(ctx, { t: 'field', kind: 'rain', side: src.side });
     log(ctx, `${nameOf(src)}'s Drizzle makes it rain.`, 'info', src.side);
     for (const x of all) {
       if (hasType(x, 'Water')) applyStage(ctx, x, 'atk', 1, { source: src, label: 'Drizzle' });
@@ -291,6 +293,7 @@ function startBattle(ctx: Ctx): void {
     }
   }
   for (const src of withAbility(s, 'drought')) {
+    emit(ctx, { t: 'field', kind: 'sun', side: src.side });
     log(ctx, `${nameOf(src)}'s Drought intensifies the sun.`, 'info', src.side);
     for (const x of all) {
       if (hasType(x, 'Fire')) applyStage(ctx, x, 'atk', 1, { source: src, label: 'Drought' });
@@ -871,6 +874,7 @@ function trainerSpecial(ctx: Ctx, unitId?: string): void {
     boosted = (unitId && s.units.find((x) => x.id === unitId)) || null;
     if (!boosted || !specialTargets(s, side).includes(boosted.id)) throw new RuleError(`${name}: choose one of your Pokémon that hasn't been activated this turn.`);
   }
+  emit(ctx, { t: 'special', side, trainer: id });
   log(ctx, `${SIDE_NAME[side]}'s trainer ${name} used their Special Move!`, 'system', side);
   s.trainers.used[side] = true;
   switch (id) {

@@ -1,11 +1,24 @@
-import { useState } from 'react';
-import { type GameState, type Side, type Unit, cardOf } from '../../engine';
+import { useEffect, useState } from 'react';
+import { type GameState, type Side, type Unit, cardOf, getTrainer } from '../../engine';
 import { useFitGrid, useTouch } from '../hooks';
 import { CardImage, HpBar, Modal, SIDE_TEXT } from './bits';
 import { CardDetail, UnitChips, VsList, vsTable } from './CardView';
 import { CardMagnifier, type Region } from './CardMagnifier';
 import type { EventBatch } from '../controller';
 import { CardFx, CardTags, shakeClass, useCardFx } from './StatusIcons';
+import { TrainerZoom, trainerImg } from './Trainers';
+
+/** A side's trainer card in its team column (trainer mode). */
+export interface TrainerSlot {
+  id: string;
+  used: boolean;
+  /** This screen's player can use the Special Move right now. */
+  canUse: boolean;
+  /** Picking the Pokémon for Nobunaga's special. */
+  aiming: boolean;
+  onUse: () => void;
+  onCancel: () => void;
+}
 
 /** Height of the live strip under each card (HP, status, stat changes), gap included. */
 const STRIP = 24;
@@ -14,10 +27,12 @@ const STRIP = 24;
  * One team's printed cards beside the board. With `fill`, the cards are sized so all of them fit
  * the column's height and width at once; hovering one shows it enlarged with its live details.
  */
-export function TeamCards({ state, events, side, name, mine, fill, magnifyRegion, selectedId, focusId, onPick, onHover }: {
+export function TeamCards({ state, events, side, name, mine, fill, magnifyRegion, selectedId, focusId, onPick, onHover, trainer }: {
   state: GameState;
   /** Latest game events, for the hit effects played on the cards. */
   events: EventBatch;
+  /** The side's trainer (trainer mode), shown under its Pokémon. */
+  trainer?: TrainerSlot | null;
   side: Side;
   name: string;
   mine: boolean;
@@ -34,7 +49,7 @@ export function TeamCards({ state, events, side, name, mine, fill, magnifyRegion
   const active = state.phase === 'battle' && state.side === side;
   const touch = useTouch();
   const [box, setBox] = useState<HTMLDivElement | null>(null);
-  const fit = useFitGrid(box, units.length, { aspect: 265 / 204, gap: 8, extra: STRIP });
+  const fit = useFitGrid(box, units.length, { aspect: 265 / 204, gap: 8, extra: STRIP, below: trainer ? 1 : 0 });
   const [mag, setMag] = useState<{ id: string; region: Region } | null>(null);
   const [detail, setDetail] = useState<Unit | null>(null);
   const magUnit = mag ? units.find((u) => u.id === mag.id) : undefined;
@@ -107,6 +122,9 @@ export function TeamCards({ state, events, side, name, mine, fill, magnifyRegion
               </div>
             );
           })}
+          {trainer && (
+            <TrainerCard slot={trainer} side={side} style={fill && fit.width > 0 ? { gridColumn: '1 / -1', justifySelf: 'center', width: fit.width } : undefined} />
+          )}
         </div>
       </div>
       {magUnit && mag && !touch && (
@@ -168,3 +186,51 @@ function UnitDetails({ state, unit, active }: { state: GameState; unit: Unit; ac
     </div>
   );
 }
+
+/** The trainer's card under its team: hover to read it; the Special Move button sits underneath. */
+function TrainerCard({ slot, side, style }: { slot: TrainerSlot; side: Side; style?: React.CSSProperties }) {
+  const t = getTrainer(slot.id);
+  const [zoom, setZoom] = useState(false);
+  const [confirm, setConfirm] = useState(false);
+  useEffect(() => setConfirm(false), [slot.canUse, slot.used]);
+  return (
+    <div className="flex flex-col gap-1" style={style}>
+      <button
+        type="button"
+        className="relative [container-type:inline-size]"
+        onMouseEnter={() => setZoom(true)}
+        onMouseLeave={() => setZoom(false)}
+        onClick={() => setZoom((z) => !z)}
+        aria-label={`${t.name}: ${t.passive} Special Move: ${t.special}`}
+      >
+        <img src={trainerImg(slot.id)} alt="" className={`block aspect-[204/265] w-full rounded-lg object-cover shadow-md shadow-black/40 ring-2 ${side === 'A' ? 'ring-rose-500/70' : 'ring-sky-500/70'} ${slot.used ? 'grayscale-[60%]' : ''}`} />
+        {slot.used && (
+          <span className="absolute left-1/2 top-[42%] -translate-x-1/2 -translate-y-1/2 -rotate-12 rounded border-2 border-rose-400 bg-slate-950/70 px-[3cqw] py-[1cqw] text-[9cqw] font-black uppercase tracking-wider text-rose-300">
+            Special used
+          </span>
+        )}
+      </button>
+      <div className="flex h-5 items-center justify-center gap-1.5 text-xs">
+        {slot.aiming ? (
+          <>
+            <span className="truncate text-amber-200">Pick a Pokémon</span>
+            <button type="button" className="chip bg-slate-700 normal-case text-slate-100" onClick={slot.onCancel}>Cancel</button>
+          </>
+        ) : slot.canUse ? (
+          <button
+            type="button"
+            className={`chip normal-case ${confirm ? 'bg-rose-500 text-white' : 'bg-amber-400 text-slate-950 hover:bg-amber-300'}`}
+            title={t.special}
+            onClick={() => (confirm ? slot.onUse() : setConfirm(true))}
+          >
+            {confirm ? `Use ${t.name}’s Special?` : '★ Special Move'}
+          </button>
+        ) : (
+          <span className={slot.used ? 'text-slate-500' : 'text-emerald-300'}>{slot.used ? 'Special used' : 'Special ready'}</span>
+        )}
+      </div>
+      {zoom && <TrainerZoom id={slot.id} />}
+    </div>
+  );
+}
+

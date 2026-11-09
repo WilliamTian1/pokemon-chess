@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Difficulty } from '../ai/bot';
 import { requestBotActions } from '../ai/client';
+import { DRAFT_TRANSITION_MS } from './components/Effects';
 import {
   type Action, type GameEvent, type GameState, type Side, RuleError, applyAction, decider, newGame, quickGame, randomSeed, seededRng,
 } from '../engine';
@@ -103,7 +104,8 @@ export function useLocalGame(cfg: LocalConfig): Controller {
     void (async () => {
       try {
         const acts = await requestBotActions(s, botSide, level);
-        const pace = s.phase === 'battle' ? 380 : 450;
+        // Right after the draft the versus screen counts down; place once it has gone.
+        const pace = s.phase === 'placement' && s.placement.index === 0 ? DRAFT_TRANSITION_MS : s.phase === 'battle' ? 380 : 450;
         await sleep(Math.max(0, pace - (performance.now() - started)));
         let applied = 0;
         for (let i = 0; i < acts.length; i++) {

@@ -1,6 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { SIDE_NAME } from '../../engine';
+import { sfx } from '../audio';
 import { Modal, SIDE_TEXT } from '../components/bits';
+import { Confetti, DraftTransition, SoundButton, useMusic } from '../components/Effects';
 import type { Controller } from '../controller';
 import { BattleView } from './BattleView';
 import { DraftView } from './DraftView';
@@ -14,6 +16,12 @@ export function GameScreen({ ctl, onExit, title }: { ctl: Controller; onExit: ()
     ? 'Spectating'
     : ctl.mySides.length === 2 ? 'Hot-seat · both sides' : `You are the ${SIDE_NAME[ctl.mySides[0]]}`;
   const inProgress = s.phase !== 'over';
+  // Victory for the player on this screen (any finished game counts in hot-seat and spectating).
+  const won = s.phase === 'over' && (ctl.mySides.length !== 1 || ctl.mySides[0] === s.winner);
+  useMusic(s.phase === 'draft' ? 'draft' : s.phase === 'over' ? null : s.mapId === 'river' ? 'battleRiver' : 'battle');
+  useEffect(() => {
+    if (s.phase === 'over') sfx(won ? 'victory' : 'defeat');
+  }, [s.phase === 'over']); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="mx-auto flex w-full flex-col px-3 pb-8 pt-3 sm:px-4 wide:h-[100dvh] wide:pb-3">
@@ -25,6 +33,8 @@ export function GameScreen({ ctl, onExit, title }: { ctl: Controller; onExit: ()
             <div className={`text-xs ${spectating ? 'text-slate-400' : ctl.mySides.length === 1 ? SIDE_TEXT[ctl.mySides[0]] : 'text-slate-400'}`}>{roleText}</div>
           </div>
         </div>
+        <div className="flex items-center gap-2">
+        <SoundButton />
         {inProgress && !spectating && s.phase === 'battle' && (
           <button
             type="button"
@@ -36,6 +46,7 @@ export function GameScreen({ ctl, onExit, title }: { ctl: Controller; onExit: ()
             Concede
           </button>
         )}
+        </div>
       </header>
 
       <div className="wide:min-h-0 wide:flex-1">
@@ -50,6 +61,8 @@ export function GameScreen({ ctl, onExit, title }: { ctl: Controller; onExit: ()
         </div>
       )}
 
+      <DraftTransition state={s} names={ctl.names} />
+      {s.phase === 'over' && won && <Confetti />}
       {s.phase === 'over' && dismissedOver !== s.seq && (
         <Modal onClose={() => setDismissedOver(s.seq)}>
           <div className="space-y-3 text-center">

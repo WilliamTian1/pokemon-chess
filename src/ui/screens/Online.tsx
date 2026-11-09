@@ -3,11 +3,12 @@ import { type Side, getMap } from '../../engine';
 import { NetClient, savedName } from '../../net/client';
 import { ROOM_CODE_RE } from '../../net/protocol';
 import { SIDE_TEXT } from '../components/bits';
+import { SoundButton, useMusic } from '../components/Effects';
 import { LegendaryToggle, MapPicker, MapPreview, TrainerToggle, savedLegendaries, savedMapId, savedTrainers } from '../components/MapPicker';
 import { useNet, useOnlineGame } from '../controller';
 import { GameScreen } from './GameScreen';
 
-export function Online({ onExit }: { onExit: () => void }) {
+function OnlineScreens({ onExit, onGame }: { onExit: () => void; onGame: (inGame: boolean) => void }) {
   const [name, setName] = useState(savedName());
   const [client, setClient] = useState<NetClient | null>(null);
   const joinFromUrl = useMemo(() => new URLSearchParams(location.search).get('room')?.toUpperCase() ?? '', []);
@@ -64,10 +65,10 @@ export function Online({ onExit }: { onExit: () => void }) {
       </div>
     );
   }
-  return <Room client={client} onExit={() => { client.close(); setClient(null); onExit(); }} />;
+  return <Room client={client} onGame={onGame} onExit={() => { client.close(); setClient(null); onExit(); }} />;
 }
 
-function Room({ client, onExit }: { client: NetClient; onExit: () => void }) {
+function Room({ client, onExit, onGame }: { client: NetClient; onExit: () => void; onGame: (inGame: boolean) => void }) {
   const snap = useNet(client);
   const ctl = useOnlineGame(client, snap);
   const [randomRoles, setRandomRoles] = useState(true);
@@ -77,6 +78,8 @@ function Room({ client, onExit }: { client: NetClient; onExit: () => void }) {
   const [copied, setCopied] = useState(false);
   const room = snap.room;
 
+  const inGame = !!(ctl && room);
+  useEffect(() => onGame(inGame), [inGame]); // eslint-disable-line react-hooks/exhaustive-deps
   if (ctl && room) return <GameScreen ctl={ctl} onExit={onExit} title={`Online · room ${room.code}`} />;
 
   if (!room) {
@@ -163,3 +166,16 @@ function Room({ client, onExit }: { client: NetClient; onExit: () => void }) {
     </div>
   );
 }
+
+/** Online play: the lobby has the title music and a sound button; a match brings its own. */
+export function Online({ onExit }: { onExit: () => void }) {
+  const [inGame, setInGame] = useState(false);
+  useMusic(inGame ? undefined : 'menu');
+  return (
+    <>
+      <OnlineScreens onExit={onExit} onGame={setInGame} />
+      {!inGame && <SoundButton up className="fixed bottom-3 left-3 z-40" />}
+    </>
+  );
+}
+

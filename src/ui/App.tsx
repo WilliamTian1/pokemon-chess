@@ -1,6 +1,7 @@
 import { Suspense, lazy, useEffect, useState } from 'react';
 import type { Difficulty } from '../ai/bot';
 import type { Side } from '../engine';
+import { SoundButton, useMusic } from './components/Effects';
 import { type LocalConfig, useLocalGame } from './controller';
 import { GameScreen } from './screens/GameScreen';
 import { BotSetup, CardGallery, Home, HowToPlay, LocalSetup } from './screens/Menus';
@@ -63,7 +64,17 @@ export function App() {
     if (location.search) history.replaceState(null, '', location.pathname);
     setScreen({ name: 'home' });
   };
+  // Menus play the title theme; games and online rooms choose their own music.
+  const menu = screen.name !== 'game' && screen.name !== 'online';
+  useMusic(menu ? 'menu' : undefined);
+  return (
+    <>
+      {renderScreen()}
+      {menu && <SoundButton up className="fixed bottom-3 left-3 z-40" />}
+    </>
+  );
 
+  function renderScreen() {
   switch (screen.name) {
     case 'home':
       return (
@@ -95,6 +106,7 @@ export function App() {
       return <Online onExit={home} />;
     case 'game':
       return <LocalGame key={screen.key} cfg={screen.cfg} onExit={home} />;
+  }
   }
 }
 
