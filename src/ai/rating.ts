@@ -45,7 +45,8 @@ function utilityValue(m: MoveDef): number {
   if (fx.special === 'followMe' || fx.special === 'ragePowder') return 25;
   if (fx.special === 'futureSight') return 35;
   if (fx.targetStages) return 25;
-  if (fx.alliesStages || fx.special === 'tailwind') return 22;
+  if (fx.alliesStages || fx.special === 'tailwind' || fx.special === 'auroraVeil') return 22;
+  if (fx.special === 'wideGuard') return 20;
   if (fx.special === 'sandstorm' || fx.special === 'hail') return 20;
   return 15;
 }
@@ -56,6 +57,7 @@ const ABILITY_BONUS: Partial<Record<AbilityId, number>> = {
   iceScales: 15, ironBarbs: 15, shieldsDownMeteor: 35, airLock: 15, infiltrator: 10, guts: 10, moxie: 15,
   runAway: 10, leech: 15, darkAura: 10, teravolt: 10, turboblaze: 10, pressure: 5, hospitality: 15, rainDish: 15,
   sereneGrace: 10, celebrate: 10, poisonHeal: 10, emergencyExit: 5, truant: -40, defeatist: -15,
+  snowWarning: 10, swallow: 15, adaptabilityWaterDark: 15,
 };
 
 export interface Rating {

@@ -51,6 +51,7 @@ export function Art({ id, className = '', alt }: { id: string; className?: strin
       alt={alt ?? ''}
       draggable={false}
       loading="lazy"
+      decoding="async"
       className={`select-none object-cover ${className}`}
     />
   );
@@ -64,6 +65,7 @@ export function CardImage({ id, name, className = '' }: { id: string; name: stri
       alt={`${name} card`}
       draggable={false}
       loading="lazy"
+      decoding="async"
       className={`block aspect-[204/265] w-full select-none rounded-lg bg-slate-800 object-cover shadow-md shadow-black/40 ${className}`}
     />
   );

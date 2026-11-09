@@ -3,9 +3,11 @@ import type { Difficulty } from '../ai/bot';
 import { requestBotActions } from '../ai/client';
 import { DRAFT_TRANSITION_MS } from './components/Effects';
 import {
-  type Action, type GameEvent, type GameState, type Side, RuleError, applyAction, decider, newGame, quickGame, randomSeed, seededRng,
+  type Action, type DraftStyle, type GameEvent, type GameState, type Side, RuleError, applyAction, deciders, hiddenView, isSimultaneous, newGame,
+  quickGame, randomSeed, seededRng,
 } from '../engine';
 import type { NetClient, NetSnapshot } from '../net/client';
+import type { AccountView, ClockView, MatchResult } from '../net/protocol';
 
 export interface EventBatch {
   seq: number;
@@ -26,11 +28,25 @@ export interface Controller {
   /** Start a fresh game with the same settings (local modes) or ask the host (online). */
   rematch?: () => void;
   isHost?: boolean;
+  /** Online: chess-style clocks (timed matches), with the local-minus-server time skew. */
+  clock?: (ClockView & { skew: number }) | null;
+  /** Ranked matches: the accounts behind each side, and the result with rating changes. */
+  rated?: boolean;
+  accounts?: Record<Side, AccountView | null>;
+  result?: MatchResult | null;
+}
+
+/** What a match is played with (setup screens, the online lobby and matchmaking). */
+export interface MatchOptions {
+  mapId: string;
+  legendaries: boolean;
+  trainers: boolean;
+  style?: DraftStyle;
 }
 
 export type LocalConfig =
-  | { mode: 'local'; mapId: string; legendaries: boolean; trainers: boolean; scenario?: Scenario }
-  | { mode: 'bot'; human: Side; level: Difficulty; mapId: string; legendaries: boolean; trainers: boolean };
+  | ({ mode: 'local'; scenario?: Scenario } & MatchOptions)
+  | ({ mode: 'bot'; human: Side; level: Difficulty } & MatchOptions);
 
 /** Development only: a battle that starts with these teams already placed (see App's ?scenario=). */
 export interface Scenario {
@@ -66,7 +82,7 @@ export function useLocalGame(cfg: LocalConfig): Controller {
   const rng = useRef(seededRng(randomSeed()));
   const [state, setState] = useState<GameState>(() => (cfg.mode === 'local' && cfg.scenario
     ? scenarioGame(cfg.scenario, cfg.mapId, rng.current)
-    : newGame({ rng: rng.current, mapId: cfg.mapId, legendaries: cfg.legendaries, trainers: cfg.trainers })));
+    : newGame({ rng: rng.current, mapId: cfg.mapId, legendaries: cfg.legendaries, trainers: cfg.trainers, style: cfg.style })));
   const [events, setEvents] = useState<EventBatch>({ seq: 0, list: [] });
   const [error, setError] = useState<string | null>(null);
   const [thinking, setThinking] = useState(false);
@@ -96,20 +112,22 @@ export function useLocalGame(cfg: LocalConfig): Controller {
   useEffect(() => {
     if (!botSide || botBusy.current) return;
     const s = stateRef.current;
-    if (decider(s) !== botSide) return;
+    // In a Secret draft the bot picks and places while you do (deciders has both sides).
+    if (!deciders(s).includes(botSide)) return;
     botBusy.current = true;
-    setThinking(true);
+    setThinking(!isSimultaneous(s));
     const gen = generation.current;
     const started = performance.now();
     void (async () => {
       try {
-        const acts = await requestBotActions(s, botSide, level);
+        // The bot gets the same view a player in its seat would: nothing hidden.
+        const acts = await requestBotActions(hiddenView(s, botSide), botSide, level);
         // Right after the draft the versus screen counts down; place once it has gone.
-        const pace = s.phase === 'placement' && s.placement.index === 0 ? DRAFT_TRANSITION_MS : s.phase === 'battle' ? 380 : 450;
+        const pace = s.phase === 'placement' && s.placement.index === 0 && !isSimultaneous(s) ? DRAFT_TRANSITION_MS : s.phase === 'battle' ? 380 : 450;
         await sleep(Math.max(0, pace - (performance.now() - started)));
         let applied = 0;
         for (let i = 0; i < acts.length; i++) {
-          if (gen !== generation.current || decider(stateRef.current) !== botSide) break;
+          if (gen !== generation.current || !deciders(stateRef.current).includes(botSide)) break;
           if (!apply(acts[i], true)) break;
           applied += 1;
           if (i < acts.length - 1) await sleep(acts[i].type === 'move' ? 520 : 420);
@@ -136,12 +154,12 @@ export function useLocalGame(cfg: LocalConfig): Controller {
 
   const rematch = useCallback(() => {
     generation.current += 1;
-    const s = newGame({ rng: rng.current, mapId: cfg.mapId, legendaries: cfg.legendaries, trainers: cfg.trainers });
+    const s = newGame({ rng: rng.current, mapId: cfg.mapId, legendaries: cfg.legendaries, trainers: cfg.trainers, style: cfg.style });
     stateRef.current = s;
     setState(s);
     setEvents((e) => ({ seq: e.seq + 1, list: [] }));
     setError(null);
-  }, [cfg.mapId, cfg.legendaries, cfg.trainers]);
+  }, [cfg.mapId, cfg.legendaries, cfg.trainers, cfg.style]);
 
   const names = useMemo<Record<Side, string>>(() => {
     if (cfg.mode === 'local') return { A: 'Player 1', D: 'Player 2' };
@@ -156,7 +174,7 @@ export function useLocalGame(cfg: LocalConfig): Controller {
     mySides: cfg.mode === 'local' ? ['A', 'D'] : [cfg.human],
     names,
     dispatch: (a) => {
-      if (botSide && decider(stateRef.current) === botSide && a.type !== 'concede') return;
+      if (botSide && !deciders(stateRef.current).includes(cfg.mode === 'bot' ? cfg.human : 'A') && a.type !== 'concede') return;
       apply(a, false);
     },
     error,
@@ -194,7 +212,11 @@ export function useOnlineGame(client: NetClient, snap: NetSnapshot): Controller 
     error: snap.error,
     clearError: () => client.clearError(),
     thinking: false,
-    rematch: room.hostId === snap.playerId ? () => client.send({ t: 'rematch', swapRoles: true }) : undefined,
+    rematch: !room.rated && room.hostId === snap.playerId ? () => client.send({ t: 'rematch', swapRoles: true }) : undefined,
     isHost: room.hostId === snap.playerId,
+    clock: room.clock ? { ...room.clock, skew: snap.clockSkew } : null,
+    rated: !!room.rated,
+    accounts: room.accounts,
+    result: room.result,
   };
 }

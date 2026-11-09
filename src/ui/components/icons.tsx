@@ -195,3 +195,49 @@ export function DiceIcon({ className = '' }: { className?: string }) {
     </svg>
   );
 }
+
+/** Two fanned cards (classic draft). */
+export function CardsIcon({ className = '' }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 32 32" className={className} aria-hidden="true">
+      <rect x="5" y="7" width="14" height="19" rx="2" fill="#2f62b8" stroke="#2a170b" strokeWidth="1.8" transform="rotate(-14 12 16)" />
+      <rect x="13" y="6" width="14" height="19" rx="2" fill="#fbf3dc" stroke="#2a170b" strokeWidth="1.8" transform="rotate(10 20 16)" />
+      <circle cx="20" cy="15.5" r="3.2" fill="#c73a2e" stroke="#2a170b" strokeWidth="1.2" transform="rotate(10 20 16)" />
+    </svg>
+  );
+}
+
+/** A sealed scroll (secret draft). */
+export function SealedIcon({ className = '' }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 32 32" className={className} aria-hidden="true">
+      <rect x="6" y="8" width="20" height="16" rx="2" fill="#f2e4c2" stroke="#2a170b" strokeWidth="1.8" />
+      <path d="M6 9l10 8 10-8" fill="none" stroke="#2a170b" strokeWidth="1.6" />
+      <circle cx="16" cy="19" r="4.2" fill="#b52f24" stroke="#2a170b" strokeWidth="1.4" />
+      <path d="M14.4 19h3.2M16 17.4v3.2" stroke="#f2d27a" strokeWidth="1.2" />
+    </svg>
+  );
+}
+
+/** A gold coin (auction). */
+export function CoinIcon({ className = '' }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 32 32" className={className} aria-hidden="true">
+      <circle cx="16" cy="16" r="12" fill="#f2c94c" stroke="#2a170b" strokeWidth="2" />
+      <circle cx="16" cy="16" r="8.5" fill="none" stroke="#9a7426" strokeWidth="1.5" />
+      <rect x="13.5" y="13.5" width="5" height="5" fill="none" stroke="#9a7426" strokeWidth="1.6" />
+      <path d="M10 9.5a9 9 0 0 1 5-2.8" stroke="#fff" strokeOpacity=".6" strokeWidth="1.6" fill="none" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+/** A round clock (time controls). */
+export function ClockIcon({ className = '' }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 32 32" className={className} aria-hidden="true">
+      <circle cx="16" cy="17" r="12" fill="#fbf3dc" stroke="#2a170b" strokeWidth="2.2" />
+      <path d="M16 10v7l5 3" fill="none" stroke="#a8261d" strokeWidth="2.4" strokeLinecap="round" />
+      <path d="M12 3h8" stroke="#2a170b" strokeWidth="2.4" strokeLinecap="round" />
+    </svg>
+  );
+}

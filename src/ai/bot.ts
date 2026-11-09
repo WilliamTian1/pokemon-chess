@@ -1,11 +1,12 @@
 import {
   type Action, CARD_LIST, type CardDef, type CopyOption, type Dir, type GameState, type MoveOption, type Pos, type Rng, type Side, type Unit,
   basePower, canUseSpecial, cardOf, cheb, computeDamage, decider, effectiveMov, expectedRng, getCard, getMap, getUnit, grazeApplies,
-  isTrainerPick, specialTargets, trainerOf,
+  auctionOpen, deciders, draftStyle, isTrainerPick, secretNext, specialTargets, trainerOf,
   canPass, draftOptions, isImmune, isSupportOnly, isTrebuchet, liveUnits, makeAttackCtx, mapOf, moveOf, moveOptions, moveTargets, onBoard,
   otherSide, parseGrid, posKey, reachable, seededRng, simulate, steps, terrainAt, terrainBonus, trebuchetCtx, trebuchetOption, waitBlock, zoneTiles,
 } from '../engine';
 import { bestDraftPick, bestTrainerPick, hasDraftModel } from './draft';
+import { auctionAction, bestSecretPick, secretTrainerPick, simpleSecretPick } from './styles';
 import { matchup, rateCard } from './rating';
 import { type ValueModel, predictValue } from './value';
 
@@ -16,9 +17,16 @@ const DIRS4: Dir[] = ['N', 'E', 'S', 'W'];
 
 /** The next action(s) the bot wants to take for `side`. Empty when it isn't the bot's decision. */
 export function decide(s: GameState, side: Side, level: Difficulty, rng: Rng): Action[] {
-  if (s.phase === 'over' || decider(s) !== side) return [];
+  // Both sides may act at once in the simultaneous Secret draft and its blind placement.
+  if (s.phase === 'over' || !deciders(s).includes(side)) return [];
   if (s.pending.length) return [choosePending(s, side, level)];
-  if (s.phase === 'draft') return [{ type: 'draftPick', cardId: draftPick(s, side, level, rng) }];
+  if (s.phase === 'draft') {
+    if (auctionOpen(s)) return [auctionAction(s, side, level, rng)];
+    if (draftStyle(s) === 'secret') return [{ type: 'draftPick', cardId: secretDraftPick(s, side, level, rng), side }];
+    return [{ type: 'draftPick', cardId: draftPick(s, side, level, rng) }];
+  }
+  // Secret draft: placement is blind, so there's no opponent to plan against yet.
+  if (s.phase === 'placement' && draftStyle(s) === 'secret') return [simplePlacement(s, side, level === 'easy' ? 'easy' : 'medium', rng)];
   if (s.phase === 'placement') return [placeNext(s, side, level, rng)];
   return battleStep(s, side, level, rng);
 }
@@ -40,6 +48,12 @@ function draftPick(s: GameState, side: Side, level: Difficulty, rng: Rng): strin
   if (level === 'easy') return scored[rng.int(Math.min(8, scored.length))].c.id;
   if (level === 'medium') return scored[rng.int(Math.min(4, scored.length))].c.id;
   return scored[0].c.id;
+}
+
+/** Secret draft: the next pick from `side`'s own options (Pokémon, legendary or trainer), seeing nothing of the other side. */
+function secretDraftPick(s: GameState, side: Side, level: Difficulty, rng: Rng): string {
+  if (secretNext(s, side) === 'trainer') return secretTrainerPick(s, side, level, rng);
+  return level === 'hard' && SEARCH.draftModel && hasDraftModel(s.mapId) ? bestSecretPick(s, side) : simpleSecretPick(s, side, level, rng);
 }
 
 function draftValue(c: CardDef, side: Side, mine: CardDef[], theirs: CardDef[], level: Difficulty): number {

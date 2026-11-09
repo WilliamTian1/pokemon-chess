@@ -1,4 +1,5 @@
 import type { MapDef, Pos, Terrain } from '../types';
+import { isProcMapId, procMap } from './procmap';
 
 // Legend: . normal  w water  d dirt (cosmetic)  g grass (cosmetic land bridge)
 //         f flower (+30 HP)  b berry bush (-30 damage taken)  T trebuchet (on dirt)  t trebuchet (on grass)
@@ -104,6 +105,7 @@ export const MAP_LIST = Object.values(MAPS);
 export const DEFAULT_MAP_ID = 'meadow';
 
 export function getMap(id: string): MapDef {
+  if (isProcMapId(id)) return procMap(id);
   const m = MAPS[id];
   if (!m) throw new Error(`Unknown map: ${id}`);
   return m;

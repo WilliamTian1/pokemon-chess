@@ -1,71 +1,201 @@
 import { useEffect, useMemo, useState } from 'react';
 import { type Side, getMap } from '../../engine';
 import { NetClient, savedName } from '../../net/client';
-import { ROOM_CODE_RE } from '../../net/protocol';
+import { ROOM_CODE_RE, type StylePref, TIME_CONTROLS, timeControl } from '../../net/protocol';
+import { useAccount } from '../account';
+import { AccountChip, AuthModal } from '../components/Account';
+import { CardsIcon, ClockIcon, CoinIcon, PokeBallIcon, SealedIcon } from '../components/icons';
+import { Leaderboard } from './Profile';
 import { SIDE_TEXT } from '../components/bits';
 import { SoundButton, useMusic } from '../components/Effects';
-import { LegendaryToggle, MapPicker, MapPreview, TrainerToggle, savedLegendaries, savedMapId, savedTrainers } from '../components/MapPicker';
+import {
+  LegendaryToggle, MapPicker, MapPreview, OptionTiles, SetupHeading, StyleToggle, TrainerToggle, savedLegendaries, savedMapId, savedStyle, savedTrainers,
+} from '../components/MapPicker';
 import { useNet, useOnlineGame } from '../controller';
 import { GameScreen } from './GameScreen';
 
-function OnlineScreens({ onExit, onGame }: { onExit: () => void; onGame: (inGame: boolean) => void }) {
+function OnlineScreens({ onExit, onGame, onProfile }: { onExit: () => void; onGame: (inGame: boolean) => void; onProfile: (name: string) => void }) {
+  const { account } = useAccount();
   const [name, setName] = useState(savedName());
   const [client, setClient] = useState<NetClient | null>(null);
+  const [ranked, setRanked] = useState(false);
   const joinFromUrl = useMemo(() => new URLSearchParams(location.search).get('room')?.toUpperCase() ?? '', []);
   const [code, setCode] = useState(joinFromUrl);
+  const [auth, setAuth] = useState(false);
+  const [tc, setTc] = useState(() => storedPref('pcc-tc', '10+5'));
+  const [style, setStyle] = useState<StylePref>(() => storedPref('pcc-ranked-style', 'any') as StylePref);
 
   useEffect(() => () => client?.close(), [client]);
-
-  if (!client) {
-    const ok = name.trim().length > 0;
-    const connect = (then: (c: NetClient) => void) => {
-      const c = new NetClient(name.trim().slice(0, 20));
+  // Development only: `?screen=online&autoqueue=10+5` joins the ranked queue straight away (screenshots).
+  const auto = import.meta.env.DEV ? new URLSearchParams(location.search).get('autoqueue') : null;
+  useEffect(() => {
+    if (auto && account && !client) {
+      setRanked(true);
+      const c = new NetClient(account.username);
       setClient(c);
-      then(c);
-    };
-    return (
-      <div className="mx-auto max-w-md px-4 py-10">
-        <button type="button" className="btn-ghost mb-4" onClick={onExit}>← Back</button>
+      c.send({ t: 'queue', timeControl: auto.replace(' ', '+'), style: 'auction' });
+    }
+  }, [auto, account]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const back = () => {
+    client?.close();
+    setClient(null);
+    setRanked(false);
+  };
+  if (client && ranked) return <RankedMatch client={client} onGame={onGame} onExit={back} />;
+  if (client) return <Room client={client} onGame={onGame} onExit={() => { back(); onExit(); }} />;
+
+  const displayName = account?.username ?? name.trim();
+  const ok = displayName.length > 0;
+  const connect = (then: (c: NetClient) => void) => {
+    const c = new NetClient(displayName.slice(0, 20));
+    setClient(c);
+    then(c);
+  };
+  const findMatch = () => {
+    savePref('pcc-tc', tc);
+    savePref('pcc-ranked-style', style);
+    setRanked(true);
+    connect((c) => c.send({ t: 'queue', timeControl: tc, style }));
+  };
+  return (
+    <div className="mx-auto max-w-6xl px-4 py-6">
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <button type="button" className="btn-ghost" onClick={onExit}>← Back</button>
+        <div className="mr-auto">
+          <h2 className="title-banner text-3xl leading-tight">Play online</h2>
+          <div className="text-sm font-bold text-slate-300">Ranked matches against players (or bots of your level), or a private room for friends</div>
+        </div>
+        <AccountChip onProfile={onProfile} />
+      </div>
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
         <div className="panel space-y-4 p-5">
-          <h2 className="text-2xl font-bold">Online match</h2>
-          <label className="block text-sm">
-            <span className="mb-1 block font-semibold text-slate-300">Your name</span>
-            <input
-              value={name}
-              maxLength={20}
-              onChange={(e) => setName(e.target.value)}
-              className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 outline-none focus:border-amber-300"
-              placeholder="Ash"
-            />
-          </label>
-          <button type="button" disabled={!ok} className="btn-primary w-full py-2.5" onClick={() => connect((c) => c.send({ t: 'create' }))}>
-            Create a private room
-          </button>
-          <div className="flex gap-2">
-            <input
-              value={code}
-              maxLength={4}
-              onChange={(e) => setCode(e.target.value.toUpperCase().replace(/[^A-Z]/g, ''))}
-              className="w-28 rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-center font-mono text-lg tracking-widest outline-none focus:border-amber-300"
-              placeholder="CODE"
-            />
-            <button
-              type="button"
-              disabled={!ok || !ROOM_CODE_RE.test(code)}
-              className="btn-ghost flex-1"
-              onClick={() => connect((c) => c.send({ t: 'join', code }))}
-            >
-              Join room
-            </button>
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="font-display text-2xl text-lacquer">Ranked</h3>
+            {account && <span className="font-display text-lg">Your rating: {account.rating}</span>}
           </div>
-          <p className="text-xs text-slate-500">
-            Rooms hold two players plus any number of spectators. The server rolls all dice, so nobody can cheat their luck.
-          </p>
+          {account ? (
+            <>
+              <section>
+                <SetupHeading n={1}>Time control</SetupHeading>
+                <OptionTiles
+                  cols={2}
+                  value={tc}
+                  onChange={setTc}
+                  options={TIME_CONTROLS.map((t) => ({ value: t.id, title: t.label, sub: `${t.name}: ${t.baseMs / 60_000} min, +${t.incMs / 1000} s a move`, emblem: <ClockIcon className="h-full w-full" /> }))}
+                />
+              </section>
+              <section>
+                <SetupHeading n={2}>Draft style</SetupHeading>
+                <OptionTiles
+                  cols={2}
+                  value={style}
+                  onChange={setStyle}
+                  options={[
+                    { value: 'any' as const, title: 'Any', sub: 'Fastest match', emblem: <PokeBallIcon className="h-full w-full" /> },
+                    { value: 'classic' as const, title: 'Classic', sub: 'Shared pool', emblem: <CardsIcon className="h-full w-full" /> },
+                    { value: 'secret' as const, title: 'Secret', sub: 'Hidden pools', emblem: <SealedIcon className="h-full w-full" /> },
+                    { value: 'auction' as const, title: 'Auction', sub: '20 coins each', emblem: <CoinIcon className="h-full w-full" /> },
+                  ]}
+                />
+              </section>
+              <p className="text-xs font-bold text-slate-400">
+                Ranked matches are played with legendaries and trainers on a random map. If nobody of your level is searching, a bot account of similar rating takes the seat after a few seconds.
+              </p>
+              <button type="button" className="btn-primary w-full gap-3 py-3.5 font-display text-xl" onClick={findMatch}>
+                <PokeBallIcon className="h-8 w-8" /> Find a ranked match
+              </button>
+            </>
+          ) : (
+            <div className="space-y-3 text-center">
+              <p className="font-bold text-slate-300">Sign in to play ranked, get a rating and climb the ladder.</p>
+              <button type="button" className="btn-primary px-8 py-3 font-display text-lg" onClick={() => setAuth(true)}>Sign in or create an account</button>
+            </div>
+          )}
+        </div>
+        <div className="space-y-4">
+          <div className="panel space-y-3 p-5">
+            <h3 className="font-display text-2xl text-lacquer">Private room</h3>
+            {!account && (
+              <label className="block text-sm">
+                <span className="mb-1 block text-xs font-extrabold uppercase tracking-wide text-slate-400">Your name</span>
+                <input value={name} maxLength={20} onChange={(e) => setName(e.target.value)} placeholder="Ash"
+                  className="w-full rounded-lg border-2 border-slate-600 bg-slate-950 px-3 py-2 font-bold outline-none focus:border-amber-400" />
+              </label>
+            )}
+            <button type="button" disabled={!ok} className="btn-primary w-full py-2.5" onClick={() => connect((c) => c.send({ t: 'create' }))}>
+              Create a private room
+            </button>
+            <div className="flex gap-2">
+              <input value={code} maxLength={4} onChange={(e) => setCode(e.target.value.toUpperCase().replace(/[^A-Z]/g, ''))} placeholder="CODE"
+                className="w-28 rounded-lg border-2 border-slate-600 bg-slate-950 px-3 py-2 text-center font-mono text-lg font-bold tracking-widest outline-none focus:border-amber-400" />
+              <button type="button" disabled={!ok || !ROOM_CODE_RE.test(code)} className="btn-ghost flex-1" onClick={() => connect((c) => c.send({ t: 'join', code }))}>
+                Join room
+              </button>
+            </div>
+            <p className="text-xs font-bold text-slate-400">Private rooms are unranked. The server rolls all dice, so nobody can cheat their luck.</p>
+          </div>
+          <div className="panel space-y-2 p-5">
+            <h3 className="font-display text-2xl text-lacquer">Ladder</h3>
+            <Leaderboard onProfile={onProfile} limit={10} compact />
+          </div>
         </div>
       </div>
-    );
+      {auth && <AuthModal onClose={() => setAuth(false)} />}
+    </div>
+  );
+}
+
+function storedPref(key: string, def: string): string {
+  try {
+    return localStorage.getItem(key) ?? def;
+  } catch {
+    return def;
   }
-  return <Room client={client} onGame={onGame} onExit={() => { client.close(); setClient(null); onExit(); }} />;
+}
+
+function savePref(key: string, v: string): void {
+  try {
+    localStorage.setItem(key, v);
+  } catch {
+    // Storage can be unavailable.
+  }
+}
+
+/** Ranked: searching, then the match itself. */
+function RankedMatch({ client, onExit, onGame }: { client: NetClient; onExit: () => void; onGame: (inGame: boolean) => void }) {
+  const snap = useNet(client);
+  const ctl = useOnlineGame(client, snap);
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 500);
+    return () => clearInterval(t);
+  }, []);
+  const inGame = !!(ctl && snap.room);
+  useEffect(() => onGame(inGame), [inGame]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (ctl && snap.room) {
+    const tc = timeControl(snap.room.timeControl);
+    return <GameScreen ctl={ctl} onExit={onExit} title={`Ranked${tc ? ` · ${tc.label}` : ''}`} />;
+  }
+  const q = snap.queue;
+  const waited = q ? Math.max(0, Math.floor((now - q.since) / 1000)) : 0;
+  return (
+    <div className="mx-auto flex min-h-[70vh] max-w-md flex-col items-center justify-center px-4">
+      <div className="panel w-full space-y-4 p-6 text-center">
+        <PokeBallIcon className="mx-auto h-16 w-16 animate-spin [animation-duration:2.4s]" />
+        <h2 className="font-display text-2xl text-lacquer">{snap.status !== 'open' ? 'Connecting…' : q ? 'Looking for an opponent…' : 'Joining the queue…'}</h2>
+        {q && (
+          <div className="space-y-1 text-sm font-bold text-slate-300">
+            <div className="font-display text-3xl">{Math.floor(waited / 60)}:{String(waited % 60).padStart(2, '0')}</div>
+            <div>{timeControl(q.timeControl)?.label} · {q.style === 'any' ? 'any draft style' : `${q.style} draft`} · {q.searching} searching</div>
+            <div className="text-xs text-slate-400">A bot account of similar rating joins if nobody is found in a few seconds.</div>
+          </div>
+        )}
+        {snap.error && <p className="text-sm font-bold text-rose-300">{snap.error}</p>}
+        <button type="button" className="btn-ghost w-full" onClick={() => { client.send({ t: 'unqueue' }); onExit(); }}>Cancel</button>
+      </div>
+    </div>
+  );
 }
 
 function Room({ client, onExit, onGame }: { client: NetClient; onExit: () => void; onGame: (inGame: boolean) => void }) {
@@ -75,6 +205,8 @@ function Room({ client, onExit, onGame }: { client: NetClient; onExit: () => voi
   const [mapId, setMapId] = useState(savedMapId);
   const [legendaries, setLegendaries] = useState(savedLegendaries);
   const [trainers, setTrainers] = useState(savedTrainers);
+  const [style, setStyle] = useState(savedStyle);
+  const [roomTc, setRoomTc] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const room = snap.room;
 
@@ -145,13 +277,21 @@ function Room({ client, onExit, onGame }: { client: NetClient; onExit: () => voi
           <div className="space-y-2">
             <div className="text-xs uppercase tracking-wide text-slate-400">Map</div>
             <MapPicker value={mapId} onChange={setMapId} />
+            <StyleToggle value={style} onChange={setStyle} />
             <LegendaryToggle value={legendaries} onChange={setLegendaries} />
             <TrainerToggle value={trainers} onChange={setTrainers} />
+            <label className="flex items-center justify-between gap-2 text-sm font-bold text-slate-300">
+              <span>Time control</span>
+              <select value={roomTc ?? ''} onChange={(e) => setRoomTc(e.target.value || null)} className="rounded-lg border-2 border-slate-600 bg-slate-950 px-2 py-1.5 font-bold">
+                <option value="">Untimed</option>
+                {TIME_CONTROLS.map((t) => <option key={t.id} value={t.id}>{t.label} ({t.name})</option>)}
+              </select>
+            </label>
             <label className="flex items-center gap-2 text-sm text-slate-300">
               <input type="checkbox" checked={randomRoles} onChange={(e) => setRandomRoles(e.target.checked)} />
               Randomize who attacks
             </label>
-            <button type="button" className="btn-primary w-full py-2.5" disabled={!ready} onClick={() => client.send({ t: 'start', randomRoles, mapId, legendaries, trainers })}>
+            <button type="button" className="btn-primary w-full py-2.5" disabled={!ready} onClick={() => client.send({ t: 'start', randomRoles, mapId, legendaries, trainers, style, timeControl: roomTc })}>
               {ready ? 'Start match' : 'Waiting for two seated players…'}
             </button>
           </div>
@@ -168,12 +308,12 @@ function Room({ client, onExit, onGame }: { client: NetClient; onExit: () => voi
 }
 
 /** Online play: the lobby has the title music and a sound button; a match brings its own. */
-export function Online({ onExit }: { onExit: () => void }) {
+export function Online({ onExit, onProfile }: { onExit: () => void; onProfile: (name: string) => void }) {
   const [inGame, setInGame] = useState(false);
   useMusic(inGame ? undefined : 'menu');
   return (
     <>
-      <OnlineScreens onExit={onExit} onGame={setInGame} />
+      <OnlineScreens onExit={onExit} onGame={setInGame} onProfile={onProfile} />
       {!inGame && <SoundButton up className="fixed bottom-3 left-3 z-40" />}
     </>
   );

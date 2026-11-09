@@ -49,7 +49,8 @@ export type AbilityId =
   | 'drizzle' | 'drought' | 'leech' | 'infiltrator' | 'ironBarbs' | 'waveRider'
   | 'hospitality' | 'liquidVoice' | 'iceScales' | 'slushRush'
   | 'unburden' | 'pixilate' | 'moldBreaker' | 'leafGuard' | 'snowCloak' | 'adaptability' | 'artilleryExpertise'
-  | 'triage' | 'decoy' | 'imposter' | 'wonderGuard' | 'speedBoost' | 'dancer';
+  | 'triage' | 'decoy' | 'imposter' | 'wonderGuard' | 'speedBoost' | 'dancer'
+  | 'snowWarning' | 'swallow' | 'adaptabilityWaterDark';
 
 /** Grid strings are the card's mini-grid, rows top→bottom joined by `/`.
  *  `G` user, `O` target, `B` user dashes here first, `R` knockback destination, `.` empty. */
@@ -67,6 +68,8 @@ export type Bonus =
   | { when: 'userStatus'; amount: number }
   | { when: 'targetStatus'; amount: number }
   | { when: 'normalTerrain'; amount: number }
+  /** Knock Off: the target stands on a berry bush or flowers. */
+  | { when: 'targetBonusTerrain'; amount: number }
   | { when: 'userHpAtMost'; hp: number; amount: number }
   | { when: 'userDamageAtLeast'; dmg: number; amount: number }
   | { when: 'singleTarget'; amount: number }
@@ -77,7 +80,8 @@ export type Bonus =
 export type SpecialMove =
   | 'foulPlay' | 'powerTrip' | 'endeavor' | 'gyroBall' | 'allySwitch' | 'followMe'
   | 'ragePowder' | 'futureSight' | 'sunnyDay' | 'rainDance' | 'sandstorm' | 'hail'
-  | 'flowerShield' | 'lightScreen' | 'tailwind' | 'helpingHand' | 'afterYou' | 'transform' | 'batonPass' | 'taunt' | 'metronome';
+  | 'flowerShield' | 'lightScreen' | 'tailwind' | 'helpingHand' | 'afterYou' | 'transform' | 'batonPass' | 'taunt' | 'metronome'
+  | 'psycheUp' | 'wideGuard' | 'auroraVeil' | 'spitUp';
 
 export interface MoveFx {
   graze?: { chance: number; power: number; negateNear?: 'water' | 'ice' };
@@ -101,6 +105,10 @@ export interface MoveFx {
   removeDefBoosts?: boolean;
   /** Clear Smog: all of the target's stages are ignored for this hit. */
   ignoreAllDefStages?: boolean;
+  /** Shadow Punch, Knock Off: the target's terrain bonus (berry bush defense) is ignored. */
+  ignoreTerrain?: boolean;
+  /** Spit Up: the user's defense boosts are removed after the attack. */
+  removeUserDefBoosts?: boolean;
   resetTargetStages?: boolean;
   invertTargetStages?: boolean;
   ignoreAbilities?: boolean;
@@ -217,6 +225,8 @@ export interface Unit {
   /** After You already gave this Pokémon an extra activation this turn (once per turn). */
   gotAfterYou: boolean;
   followMe: null | { kind: 'followMe' | 'ragePowder'; duringTurnOf: Side };
+  /** Wide Guard: during this side's turn, attacks that hit this Pokémon and any other are invalidated. */
+  wideGuard: Side | null;
   /** Moves on cooldown (Fake Out) until the user ends an activation far enough from opponents. */
   locked: string[];
   /** Extra damage on this unit's attacks until its side's turn ends (Helping Hand, Nobunaga). */
@@ -271,6 +281,36 @@ export interface LogEntry {
 
 export type Phase = 'draft' | 'placement' | 'battle' | 'over';
 
+/**
+ * How teams are formed. classic: alternating picks from a shared pool; secret: each side picks from its
+ * own hidden pool; auction: lots are revealed one at a time and bid for with 20 coins.
+ */
+export type DraftStyle = 'classic' | 'secret' | 'auction';
+
+export interface AuctionLot {
+  cardId: string;
+  winner: Side | null;
+  price: number;
+  /** Dealt at random (a side ran out of coins, or the lots ran out). */
+  random?: boolean;
+}
+
+export interface AuctionState {
+  /** Lots still to come, in order. Hidden from the players (the server sends '?' in their place). */
+  deck: string[];
+  /** The lot being bid for. */
+  lot: string | null;
+  coins: Record<Side, number>;
+  high: { side: Side; amount: number } | null;
+  /** Whose call it is: bid higher, or pass. */
+  toAct: Side;
+  /** Who opened the current lot (alternates lot by lot). */
+  opener: Side;
+  /** Sides that passed on the current lot without bidding. */
+  passed: Side[];
+  history: AuctionLot[];
+}
+
 /** Trainer mode: four trainers are offered after the draft; the Attacker picks one, then the Defender. */
 export interface TrainerState {
   pool: string[];
@@ -289,7 +329,17 @@ export interface GameState {
   maxRounds: number;
   side: Side;
   /** `pool` and `legendPool` are this match's random selections of normal and legendary cards. */
-  draft: { order: Side[]; index: number; picks: Record<Side, string[]>; pool: string[]; legendPool: string[] };
+  draft: {
+    order: Side[]; index: number; picks: Record<Side, string[]>; pool: string[]; legendPool: string[];
+    /** Missing on games from before draft styles existed: classic. */
+    style?: DraftStyle;
+    /**
+     * Secret draft: each side's own pools, legendary options and trainer options (the opponent's are
+     * hidden from it). Both sides pick at the same time; nothing is revealed until the battle begins.
+     */
+    secret?: { pools: Record<Side, string[]>; legendPools: Record<Side, string[]>; trainerPools?: Record<Side, string[]> };
+    auction?: AuctionState;
+  };
   /** Placement alternates A, D, A, D…: the Attacker places first. */
   placement: { order: Side[]; index: number };
   units: Unit[];
@@ -313,7 +363,13 @@ export interface GameState {
 // ---------------------------------------------------------------- actions & events
 
 export type Action =
-  | { type: 'draftPick'; cardId: string }
+  /** `side`: who is picking, in the simultaneous Secret draft (otherwise the side on the clock). */
+  | { type: 'draftPick'; cardId: string; side?: Side }
+  /** Auction: bid `amount` coins for the current lot (more than the standing bid), or pass. */
+  | { type: 'bid'; amount: number }
+  | { type: 'passBid' }
+  /** Time control: `side` ran out of time (sent by the server). */
+  | { type: 'timeout'; side: Side }
   | { type: 'place'; unitId: string; pos: Pos }
   | { type: 'move'; unitId: string; to: Pos }
   | { type: 'undoMove'; unitId: string }
@@ -343,7 +399,7 @@ export type GameEvent =
   /** A Pokémon changed form (Cherrim's Sunshine form, Minior's Core). */
   | { t: 'transform'; unitId: string; cardId: string }
   /** A move or ability that affects the whole field (weather, Light Screen, Taunt…). */
-  | { t: 'field'; kind: 'sun' | 'rain' | 'sand' | 'hail' | 'screen' | 'wind' | 'taunt' | 'flowers'; side: Side }
+  | { t: 'field'; kind: 'sun' | 'rain' | 'sand' | 'hail' | 'screen' | 'wind' | 'veil' | 'guard' | 'taunt' | 'flowers'; side: Side }
   | { t: 'text'; text: string };
 
 export interface Rng {

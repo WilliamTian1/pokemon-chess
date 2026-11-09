@@ -12,6 +12,8 @@ export default defineConfig({
     proxy: {
       // Online play in dev: `npm run server` in another terminal.
       '/ws': { target: `ws://localhost:${serverPort}`, ws: true },
+      // Accounts, ratings and profiles.
+      '/api': { target: `http://localhost:${serverPort}` },
     },
   },
   test: {

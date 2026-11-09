@@ -16,6 +16,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "pg": "8.13.1",
     "react": "18.3.1",
     "react-dom": "18.3.1",
     "tsx": "4.19.2",
@@ -23,6 +24,7 @@
   },
   "devDependencies": {
     "@types/node": "22.10.1",
+    "@types/pg": "8.11.10",
     "@types/react": "18.3.12",
     "@types/react-dom": "18.3.1",
     "@types/ws": "8.5.13",

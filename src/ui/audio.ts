@@ -57,6 +57,7 @@ export function onAudioSettings(f: () => void): () => void {
 
 const MUSIC_LEVEL = 0.22;
 let ctx: AudioContext | null = null;
+const LITE = typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: coarse)').matches;
 /** music → duck → master: `duck` dips the music while a jingle plays. */
 let bus: { master: GainNode; music: GainNode; duck: GainNode; sfx: GainNode } | null = null;
 let noiseBuf: AudioBuffer | null = null;
@@ -66,7 +67,13 @@ function audio(): AudioContext | null {
   if (ctx) return ctx;
   const AC = typeof window !== 'undefined' ? window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext : undefined;
   if (!AC) return null;
-  ctx = new AC();
+  // Phones: a 32 kHz context. Each decoded music loop is a float buffer at the context's rate (tens of
+  // MB at 48 kHz), so this cuts the memory and decoding work by a third, inaudibly on phone speakers.
+  try {
+    ctx = LITE ? new AC({ sampleRate: 32000 }) : new AC();
+  } catch {
+    ctx = new AC();
+  }
   const master = ctx.createGain();
   master.gain.value = settings.volume;
   master.connect(ctx.destination);
@@ -179,7 +186,7 @@ function freq(name: string): number {
 
 export type Sfx =
   | 'hit' | 'bigHit' | 'heal' | 'miss' | 'faint' | 'statUp' | 'statDown' | 'burn' | 'paralysis' | 'poison' | 'sleep'
-  | 'freeze' | 'confuse' | 'flinch' | 'special' | 'sun' | 'rain' | 'sand' | 'hail' | 'screen' | 'wind' | 'taunt' | 'flowers'
+  | 'freeze' | 'confuse' | 'flinch' | 'special' | 'sun' | 'rain' | 'sand' | 'hail' | 'screen' | 'wind' | 'veil' | 'guard' | 'taunt' | 'flowers'
   | 'turn' | 'pick' | 'place' | 'step' | 'trebuchet' | 'click' | 'victory' | 'defeat' | 'count' | 'go' | 'evolve';
 
 /** Effects that are Conquest jingles with the Conquest soundtrack (victory and defeat open the results music). */
@@ -264,7 +271,12 @@ export function sfx(name: Sfx, delay = 0): void {
       for (let i = 0; i < 14; i++) noise(0.03, { at: at + Math.random() * 1.3, vol: 0.25, filter: 'highpass', freq: 5000 });
       break;
     case 'screen':
+    case 'veil':
       ['G5', 'D6', 'G6'].forEach((n, i) => tone(freq(n), 0.6, { at: at + i * 0.07, wave: 'sine', vol: 0.12, attack: 0.05 }));
+      break;
+    case 'guard':
+      tone(freq('C5'), 0.3, { at, wave: 'triangle', vol: 0.2 });
+      tone(freq('G5'), 0.45, { at: at + 0.08, wave: 'triangle', vol: 0.18 });
       break;
     case 'wind':
       noise(1.2, { at, vol: 0.25, filter: 'bandpass', freq: 400, sweepTo: 2500 });

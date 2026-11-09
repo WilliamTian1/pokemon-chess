@@ -82,6 +82,9 @@ export function basePower(s: GameState, ac: AttackCtx, target: Unit, dice: numbe
     case 'powerTrip':
       p = 20 + 20 * stageCount(A, 1) - 20 * stageCount(A, -1);
       break;
+    case 'spitUp':
+      p += 50 * Math.max(0, A.stages.def);
+      break;
     case 'gyroBall': {
       const diff = effectiveMov(s, target) - effectiveMov(s, A, ac.attackerPos);
       if (diff > 0) p += 40 * diff;
@@ -96,6 +99,9 @@ export function basePower(s: GameState, ac: AttackCtx, target: Unit, dice: numbe
         break;
       case 'targetStatus':
         if (target.status) p += b.amount;
+        break;
+      case 'targetBonusTerrain':
+        if (target.pos && terrainBonus(s, target)) p += b.amount;
         break;
       case 'normalTerrain':
         if (target.pos && isNormalTerrain(terrainAt(s, ac.attackerPos)) && isNormalTerrain(terrainAt(s, target.pos))) p += b.amount;
@@ -222,6 +228,9 @@ export function computeDamage(s: GameState, ac: AttackCtx, target: Unit, base: n
     if (ac.moveType === 'Dark' && withAbility(s, 'darkAura').length > 0) mod += 20;
     if (ac.moveType === 'Normal' && (aAb === 'adaptability' ||
       liveUnits(s).some((x) => x.id !== A.id && abilityOf(x) === 'adaptability' && cheb(x.pos!, ac.attackerPos) === 1))) mod += 30;
+    // Crawdaunt's Adaptability: the same for Water and Dark attacks.
+    if ((ac.moveType === 'Water' || ac.moveType === 'Dark') && (aAb === 'adaptabilityWaterDark' ||
+      liveUnits(s).some((x) => x.id !== A.id && abilityOf(x) === 'adaptabilityWaterDark' && cheb(x.pos!, ac.attackerPos) === 1))) mod += 30;
     if (ac.pixilated) mod += 30;
   }
   // Helping Hand / Nobunaga, Red and Blue's specials, and Red's Pikachu.
@@ -241,7 +250,7 @@ export function computeDamage(s: GameState, ac: AttackCtx, target: Unit, base: n
   }
   if (dAb === 'resistance' && dist <= 1) mod += 20;
   if (!ac.ignoreAbilities && !defBoostsIgnored && flowerGiftAdjacent(s, target)) mod -= 30;
-  if (aAb !== 'airLock' && terrainBonus(s, target) === 'bush') mod -= 30 * terrainMult(target);
+  if (aAb !== 'airLock' && !ac.move?.fx.ignoreTerrain && terrainBonus(s, target) === 'bush') mod -= 30 * terrainMult(target);
 
   // ---- status
   if (A.status === 'brn' && aAb !== 'guts') mod -= 30;
@@ -252,12 +261,13 @@ export function computeDamage(s: GameState, ac: AttackCtx, target: Unit, base: n
   return { damage: roundUp5(raw), mult, immune: false, absorbed: false };
 }
 
-/** Graze is suppressed by Compound Eyes, Drizzle (Hurricane) and the move's own terrain clause. */
+/** Graze is suppressed by Compound Eyes, Drizzle (Hurricane), Snow Warning (Blizzard) and the move's own terrain clause. */
 export function grazeApplies(s: GameState, ac: AttackCtx): boolean {
   const g = ac.move?.fx.graze;
   if (!g) return false;
   if (neverMisses(s, ac.attacker, ac.attackerPos)) return false;
   if (ac.moveName === 'Hurricane' && withAbility(s, 'drizzle').length > 0) return false;
+  if (ac.moveName === 'Blizzard' && withAbility(s, 'snowWarning').length > 0) return false;
   if (g.negateNear === 'water' && (terrainAt(s, ac.attackerPos) === 'water' || adjacentToType(s, ac.attacker, 'Water', ac.attackerPos))) return false;
   if (g.negateNear === 'ice' && (terrainAt(s, ac.attackerPos) === 'ice' || adjacentToType(s, ac.attacker, 'Ice', ac.attackerPos))) return false;
   return true;

@@ -11,3 +11,13 @@ services:
     envVars:
       - key: NODE_VERSION
         value: "22"
+      # Accounts and ratings need a database that survives deploys (the free plan's disk doesn't):
+      # a Postgres connection string, e.g. from a free Neon project. See docs/online-setup.md.
+      - key: DATABASE_URL
+        sync: false
+      # Optional: an OAuth client ID for "Sign in with Google" (docs/online-setup.md).
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      # Bot-vs-bot ranked games while nobody is queueing (0 turns them off on a busy or tiny instance).
+      - key: BOT_IDLE_GAMES
+        value: "1"

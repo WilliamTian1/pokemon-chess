@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   type Action, type CopyOption, DIRS, DIR_VEC, type Dir, type GameState, type MoveDef, type MoveOption, type Pos, type Side, type TargetPreview,
-  type Unit, addPos, bestHit, canUseSpecial, cardOf, dangerZone, decider, dirToward, followMeBlockers, followMeUsers, getCard, getMap,
-  getTrainer, inBounds, liveUnits, markedTiles, moveOf, moveOptions, moveTargets, onBoard, otherSide, parseAim, posKey, previewAction,
+  type Unit, addPos, bestHit, canUseSpecial, cardOf, dangerZone, decider, deciders, dirToward, followMeBlockers, followMeUsers, getCard, getMap,
+  getTrainer, inBounds, isSimultaneous, liveUnits, markedTiles, moveOf, moveOptions, moveTargets, onBoard, otherSide, parseAim, posKey, previewAction,
   selfEffectNotes, specialTargets, targeting, trainerOf, trebuchetOption, unitAt, unitTurnInfo, waitBlock,
 } from '../../engine';
 import { Art, HpBar, Modal, StatusBadge, TypeBadge } from '../components/bits';
@@ -210,8 +210,9 @@ export function BattleView({ ctl }: { ctl: Controller }) {
 
   // ---------------------------------------------------------------- placement
   const placing = s.phase === 'placement';
-  const placeSide = placing ? decider(s) : null;
-  const myPlacement = placing && placeSide !== null && ctl.mySides.includes(placeSide);
+  // Secret draft: both sides place at once, each blind to the other (this state is a hidden view).
+  const placeSide = !placing ? null : isSimultaneous(s) && ctl.mySides.length === 1 ? ctl.mySides[0] : decider(s);
+  const myPlacement = placing && placeSide !== null && ctl.mySides.includes(placeSide) && deciders(s).includes(placeSide);
   const unplaced = placing && placeSide ? s.units.filter((u) => u.side === placeSide && !u.pos) : [];
   const placeUnit = unplaced.find((u) => u.id === placeSel) ?? unplaced[0] ?? null;
   const freeSpawns = placing && placeSide ? getMap(s.mapId).spawns[placeSide].filter((p) => !unitAt(s, p)) : [];
@@ -334,7 +335,8 @@ export function BattleView({ ctl }: { ctl: Controller }) {
     overlay.matchups = m;
   }
   const remaining = s.phase === 'battle' ? s.units.filter((u) => u.side === s.side && onBoard(u) && !u.activated) : [];
-  const trainerSlot = (side: Side): TrainerSlot | null => (trainerOf(s, side) ? {
+  // '?': a secret trainer, hidden until the battle begins.
+  const trainerSlot = (side: Side): TrainerSlot | null => (trainerOf(s, side) && trainerOf(s, side) !== '?' ? {
     id: trainerOf(s, side)!,
     used: s.trainers!.used[side],
     canUse: myBattleTurn && ctl.mySides.includes(side) && canUseSpecial(s, side),
@@ -404,8 +406,9 @@ export function BattleView({ ctl }: { ctl: Controller }) {
     ? Math.min(trainersInside ? innerSide : 2 * cardW + 8 + 22, Math.floor((trainersInside ? 0.34 : 0.3) * gridSize.w))
     : 0;
   const hud = (
-    <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2 wide:flex-nowrap">
-      <div className="min-w-0 wide:flex-1">
+    <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2 phone:gap-x-2 phone:gap-y-1 wide:flex-nowrap">
+      {/* Phones: the banner and the two buttons share a line (the banner has a small base width). */}
+      <div className="min-w-0 phone:flex-1 phone:basis-[170px] wide:flex-1">
         <TurnBanner ctl={ctl} remaining={remaining.length} />
       </div>
       <BoardTools
@@ -472,7 +475,7 @@ export function BattleView({ ctl }: { ctl: Controller }) {
           banner, action bar and log leave, so End turn and the log never need scrolling to. */}
       <main ref={mainRef} className="order-1 min-w-0 space-y-3 md:col-span-2 wide:order-2 wide:col-span-1 wide:flex wide:min-h-0 wide:flex-col wide:gap-2 wide:space-y-0 wide:overflow-y-auto">
         {/* One-screen layouts: the banner and tools go up into the game header, leaving the height to the board. */}
-        {wide && hudSlot ? createPortal(hud, hudSlot) : <div className="lacquer space-y-3 px-3 py-2">{hud}</div>}
+        {wide && hudSlot ? createPortal(hud, hudSlot) : <div className="lacquer px-3 py-2 phone:px-2 phone:py-1.5">{hud}</div>}
         <div ref={setBoardBox} className="wide:flex wide:min-h-[110px] wide:flex-1 wide:items-center wide:justify-center">
         <div className="mx-auto w-full" style={wide && boardSize.w > 0 ? { width: Math.min(boardSize.w, boardSize.h * boardAspect) } : undefined}>
           <Board
@@ -513,7 +516,7 @@ export function BattleView({ ctl }: { ctl: Controller }) {
         ) : (
           <>
             {/* On phones the controls stay pinned to the bottom of the screen while the board scrolls. */}
-            <div className="sticky bottom-0 z-20 -mx-1 rounded-xl bg-slate-950/90 p-1 backdrop-blur">{commands}</div>
+            <div className="sticky bottom-0 z-20 -mx-1 rounded-xl bg-[#1b120b] p-1">{commands}</div>
             <LogPanel log={s.log} className="h-56" />
           </>
         )}
@@ -590,11 +593,14 @@ function BoardTools({ state, dangerSide, solo, onClearSolo, dz, readout, onChart
         </button>
       )}
       {!solo && <span className="hidden text-xs text-slate-400 min-[1400px]:wide:inline">Click an opponent to see its reach</span>}
-      <button type="button" className="btn-ghost" onClick={onMatchups}>Matchups</button>
-      <button type="button" className="btn-ghost" onClick={onChart}>Type chart</button>
-      {/* Phones: beside the buttons or on its own line. One-screen layouts keep the row slim (the
+      <button type="button" className="btn-ghost phone:!px-2 phone:!py-1 phone:text-xs" onClick={onMatchups}>Matchups</button>
+      <button type="button" className="btn-ghost phone:!px-2 phone:!py-1 phone:text-xs" onClick={onChart}>
+        <span className="phone:hidden">Type chart</span><span className="sm:hidden">Chart</span>
+      </button>
+      {/* Tablets: beside the buttons or on its own line; phones only when it says something about the
+          board (the standing hint is left out to save room). One-screen layouts keep the row slim (the
           hover readout appears on the board instead). */}
-      <div className="line-clamp-2 min-w-[min(100%,240px)] flex-1 text-xs leading-snug text-slate-400 wide:hidden">{text}</div>
+      <div className={`line-clamp-2 min-w-[min(100%,240px)] flex-1 text-xs leading-snug text-slate-400 wide:hidden ${solo || readout ? '' : 'phone:hidden'}`}>{text}</div>
     </div>
   );
 }
@@ -604,17 +610,19 @@ function BoardTools({ state, dangerSide, solo, onClearSolo, dz, readout, onChart
 function TurnBanner({ ctl, remaining }: { ctl: Controller; remaining: number }) {
   const s = ctl.state;
   if (s.phase === 'placement') {
-    const side = decider(s)!;
+    const blind = isSimultaneous(s);
+    const side = blind && ctl.mySides.length === 1 ? ctl.mySides[0] : decider(s)!;
+    const done = blind && !deciders(s).includes(side);
     return (
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <span className={`sash ${side === 'A' ? 'sash-a' : 'sash-d'}`}>{side === 'A' ? 'Attacker' : 'Defender'}</span>
-          <span className="font-display text-lg text-[#fff3d6]">
-            Placement · {ctl.mySides.includes(side) ? 'place a Pokémon on a glowing spawn tile' : `${ctl.names[side]} is placing…`}
+          <span className={`sash shrink-0 ${side === 'A' ? 'sash-a' : 'sash-d'}`}>{side === 'A' ? 'Attacker' : 'Defender'}</span>
+          <span className="font-display text-lg text-[#fff3d6] phone:text-sm">
+            Placement · {done ? `waiting for ${ctl.names[otherSide(side)]}…` : ctl.mySides.includes(side) ? 'place a Pokémon on a glowing spawn tile' : `${ctl.names[side]} is placing…`}
           </span>
         </div>
-        <div className="text-xs text-slate-400">
-          The Attacker places first.{' '}
+        <div className="text-xs text-slate-400 phone:hidden">
+          {blind ? 'Both sides place at once; neither team is seen until the battle begins.' : 'The Attacker places first.'}{' '}
           The board faces you: your spawn tiles are along the bottom edge.
         </div>
       </div>
@@ -625,18 +633,19 @@ function TurnBanner({ ctl, remaining }: { ctl: Controller; remaining: number }) 
   return (
     <div className="flex flex-wrap items-center justify-between gap-2">
       <div className="flex min-w-0 items-center gap-3">
-        <div className="draft-seal !h-12 !w-12" title={`Round ${s.round} of ${s.maxRounds}`}>
+        <div className="draft-seal !h-12 !w-12 phone:!h-10 phone:!w-10" title={`Round ${s.round} of ${s.maxRounds}`}>
           <span className="text-[8px] font-extrabold uppercase tracking-widest text-[#f2d27a]">Round</span>
           <span className="font-display text-lg leading-none">{s.round}<span className="text-[10px] text-[#f2d27a]">/{s.maxRounds}</span></span>
         </div>
         <div className="min-w-0">
           <div className="flex min-w-0 items-center gap-2">
-            <span className="truncate font-display text-xl leading-tight text-[#fff3d6]">
+            <span className={`truncate font-display text-xl leading-tight phone:text-base ${s.phase === 'over' ? 'text-[#fff3d6]' : side === 'A' ? 'text-[#fff3d6] phone:text-rose-300' : 'text-[#fff3d6] phone:text-sky-300'}`}>
               {s.phase === 'over' ? 'Battle over' : mine && ctl.mySides.length === 1 ? 'Your turn!' : `${ctl.names[side]}’s turn`}
             </span>
-            {s.phase !== 'over' && <span className={`sash shrink-0 ${side === 'A' ? 'sash-a' : 'sash-d'}`}>{side === 'A' ? 'Attacker' : 'Defender'}</span>}
+            {/* Phones colour the name by side instead. */}
+            {s.phase !== 'over' && <span className={`sash shrink-0 phone:hidden ${side === 'A' ? 'sash-a' : 'sash-d'}`}>{side === 'A' ? 'Attacker' : 'Defender'}</span>}
           </div>
-          <div className="text-xs font-bold text-slate-300">
+          <div className="truncate text-xs font-bold text-slate-300">
             {s.phase === 'over' ? s.winReason : ctl.thinking ? 'Thinking…' : `${remaining} Pokémon left to activate`}
           </div>
         </div>
@@ -727,7 +736,7 @@ function ActionBar(props: {
   const endTurn = (
     <button
       type="button"
-      className={confirmEnd ? 'btn-danger' : 'btn-primary'}
+      className={`shrink-0 ${confirmEnd ? 'btn-danger' : 'btn-primary'}`}
       disabled={blockers.length > 0}
       title={blockers.length ? `Follow Me: ${blockers.map((u) => cardOf(u).name).join(', ')} must attack first` : undefined}
       onClick={() => {
@@ -741,8 +750,8 @@ function ActionBar(props: {
 
   if (!unit) {
     return (
-      <div className="panel flex flex-wrap items-center justify-between gap-2 p-3">
-        <div className="text-sm text-slate-300">
+      <div className="panel flex items-center justify-between gap-2 p-3 phone:p-2">
+        <div className="min-w-0 text-sm text-slate-300 phone:text-xs">
           {remaining.length ? 'Select one of your Pokémon on the board to move and act.' : 'Everyone has acted.'}
         </div>
         {endTurn}

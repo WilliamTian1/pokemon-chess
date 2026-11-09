@@ -257,6 +257,11 @@ function selfMove(ctx: Ctx, u: Unit, move: MoveDef): void {
     log(ctx, `${nameOf(u)} foresaw an attack! It lands at the start of its next turn.`, 'info', u.side);
   }
   if (fx.special === 'metronome') queueMetronome(ctx, u);
+  if (fx.special === 'wideGuard') {
+    u.wideGuard = otherSide(u.side);
+    emit(ctx, { t: 'field', kind: 'guard', side: u.side });
+    log(ctx, `${nameOf(u)} put up a Wide Guard: next turn, attacks that hit it and other Pokémon fail.`, 'info', u.side);
+  }
 }
 
 function stageAll(ctx: Ctx, target: Unit, stages: Partial<Record<StatId, number>>, source: Unit, ignoreAbilities = false): void {
@@ -274,11 +279,13 @@ function globalMove(ctx: Ctx, u: Unit, move: MoveDef): void {
   const all = liveUnits(s);
   const hurt = all.filter((x) => !weatherProof(s, x));
   const FIELD = {
-    sunnyDay: 'sun', rainDance: 'rain', sandstorm: 'sand', hail: 'hail', lightScreen: 'screen', tailwind: 'wind', taunt: 'taunt', flowerShield: 'flowers',
+    sunnyDay: 'sun', rainDance: 'rain', sandstorm: 'sand', hail: 'hail', lightScreen: 'screen', tailwind: 'wind', auroraVeil: 'veil', taunt: 'taunt',
+    flowerShield: 'flowers',
   } as const;
-  // Weather, Light Screen and Tailwind move a stat one stage, but never past +1 (or, lowering, past -1).
-  const capped = (x: Unit, stat: StatId, delta: 1 | -1, label: string): void => {
-    if (delta > 0 ? x.stages[stat] < 1 : x.stages[stat] > -1) applyStage(ctx, x, stat, delta, { source: u, label });
+  // Weather, Light Screen and Tailwind move a stat one stage, but never past +1 (or, lowering, past -1);
+  // Aurora Veil caps at +2.
+  const capped = (x: Unit, stat: StatId, delta: 1 | -1, label: string, cap = 1): void => {
+    if (delta > 0 ? x.stages[stat] < cap : x.stages[stat] > -cap) applyStage(ctx, x, stat, delta, { source: u, label });
   };
   const kind = move.fx.special && move.fx.special in FIELD ? FIELD[move.fx.special as keyof typeof FIELD] : null;
   if (kind) emit(ctx, { t: 'field', kind, side: u.side });
@@ -318,6 +325,10 @@ function globalMove(ctx: Ctx, u: Unit, move: MoveDef): void {
       // +1 Defense for the whole team, but never above +1.
       for (const x of liveUnits(s, u.side)) capped(x, 'def', 1, 'Light Screen');
       break;
+    case 'auroraVeil':
+      // +1 Defense for the user and all its allies, up to +2.
+      for (const x of liveUnits(s, u.side)) capped(x, 'def', 1, 'Aurora Veil', 2);
+      break;
     case 'tailwind':
       // +1 movement for the user and all its allies, but never above +1.
       for (const x of liveUnits(s, u.side)) capped(x, 'mov', 1, 'Tailwind');
@@ -355,6 +366,14 @@ function zoneMove(ctx: Ctx, u: Unit, move: MoveDef, moveType: PType | null, tg: 
     log(ctx, `${nameOf(u)}'s ${move.name} missed everything!`, 'bad', u.side);
     emit(ctx, { t: 'miss', unitId: u.id });
     dealDamage(ctx, u, fx.missAll.selfDamage, { label: 'crash' });
+    finish();
+    return;
+  }
+
+  const guard = move.kind === 'attack' && tg.targets.length >= 2 ? tg.targets.find((t) => t.wideGuard === u.side && !t.fainted) : undefined;
+  if (guard) {
+    log(ctx, `${nameOf(guard)}'s Wide Guard blocked ${nameOf(u)}'s ${move.name}!`, 'info', guard.side);
+    for (const t of tg.targets) emit(ctx, { t: 'miss', unitId: t.id });
     finish();
     return;
   }
@@ -540,6 +559,10 @@ function statusEffects(ctx: Ctx, u: Unit, t: Unit, move: MoveDef): void {
     log(ctx, `${nameOf(t)} deals 30 extra damage for the rest of this turn (Helping Hand).`, 'good', t.side);
   }
   if (fx.special === 'afterYou') grantAfterYou(ctx, t);
+  if (fx.special === 'psycheUp') {
+    u.stages = { ...t.stages };
+    log(ctx, `${nameOf(u)} copied ${nameOf(t)}'s stat changes (Psyche Up).`, 'info', u.side);
+  }
 }
 
 /**
@@ -597,6 +620,10 @@ function afterEffects(ctx: Ctx, u: Unit, move: MoveDef, hits: Unit[], res: ExecR
   if (u.fainted) return;
   if (fx.drain && n > 0) heal(ctx, u, fx.drain, move.name);
   if (fx.drainPerTarget && n > 0) heal(ctx, u, fx.drainPerTarget * n, move.name);
+  if (fx.removeUserDefBoosts && u.stages.def > 0) {
+    u.stages.def = 0;
+    log(ctx, `${nameOf(u)} used up its stockpiled Defense.`, 'info', u.side);
+  }
   if (fx.selfStages) {
     if (fx.selfStages.chance === undefined) applySelfStages(ctx, u, fx.selfStages.stages);
     else if (n > 0 && ctx.rng.chance(Math.min(1, fx.selfStages.chance * secondaryMult(s, u)))) applySelfStages(ctx, u, fx.selfStages.stages);

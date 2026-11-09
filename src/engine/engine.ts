@@ -13,7 +13,7 @@ import {
   isTrebuchet, liveUnits, moveOf, onBoard, reachable, type ReachInfo, terrainAt, terrainBonus, terrainMult, trainerOf, turnEffect, unitAt,
   withAbility,
 } from './query';
-import type { Action, ActiveActivation, Dir, GameEvent, GameState, MoveDef, Pos, Rng, Side, Unit } from './types';
+import type { Action, ActiveActivation, Dir, DraftStyle, GameEvent, GameState, MoveDef, Pos, Rng, Side, Unit } from './types';
 import { SIDE_NAME, otherSide } from './types';
 import { cheb, posKey, samePos, steps } from './util';
 
@@ -50,24 +50,84 @@ export function randomLegendPool(rng: Rng): string[] {
 /** Pokémon picks per side (the trainer pick comes after them). */
 export const TEAM_SIZE = 4;
 
+/** Coins each side starts an auction with. */
+export const AUCTION_COINS = 20;
+/** Secret draft: legendary options each side gets. */
+export const SECRET_LEGEND_OPTIONS = 3;
+/** Secret draft (trainer mode): trainer options each side gets. */
+export const SECRET_TRAINER_OPTIONS = 3;
+
+export const draftStyle = (s: GameState): DraftStyle => s.draft.style ?? 'classic';
+const SECRET_ORDER: Side[] = ['A', 'A', 'A', 'A', 'D', 'D', 'D', 'D'];
+
+/**
+ * Secret draft: what `side` picks next — a Pokémon, its legendary, its trainer — or null when done. Both
+ * sides pick at the same time, each at its own pace.
+ */
+export function secretNext(s: GameState, side: Side): 'pokemon' | 'legend' | 'trainer' | null {
+  const sp = s.draft.secret!;
+  const n = s.draft.picks[side].length;
+  // Legendary mode deals both sides options (a hidden view only shows its own, so check either).
+  const normals = sp.legendPools.A.length + sp.legendPools.D.length > 0 ? NORMAL_PICKS : TEAM_SIZE;
+  if (n < normals) return 'pokemon';
+  if (n < TEAM_SIZE) return 'legend';
+  if (s.trainers && !s.trainers.picks[side]) return 'trainer';
+  return null;
+}
+
+/** Whether this is the simultaneous part of a Secret draft (its picks and its blind placement). */
+export const isSimultaneous = (s: GameState): boolean => draftStyle(s) === 'secret' && (s.phase === 'draft' || s.phase === 'placement');
+
+/**
+ * Every side that may act right now: one side normally, both in the simultaneous Secret draft and its
+ * blind placement. decider() is the first of these.
+ */
+export function deciders(s: GameState): Side[] {
+  if (s.phase === 'over') return [];
+  if (!s.pending.length && isSimultaneous(s)) {
+    if (s.phase === 'draft') return (['A', 'D'] as const).filter((x) => secretNext(s, x) !== null);
+    return (['A', 'D'] as const).filter((x) => s.units.some((u) => u.side === x && !u.pos && !u.fainted));
+  }
+  const d = decider(s);
+  return d ? [d] : [];
+}
+
 /** Pick number `index` (0-based, both sides) is a trainer pick: the two picks after the eight Pokémon. */
-export const isTrainerPick = (s: GameState, index = s.draft.index): boolean => !!s.trainers && index >= 2 * TEAM_SIZE;
+export function isTrainerPick(s: GameState, index = s.draft.index): boolean {
+  if (draftStyle(s) === 'secret' && s.phase === 'draft') return index === s.draft.index && secretNext(s, decider(s)!) === 'trainer';
+  return !!s.trainers && index >= 2 * TEAM_SIZE;
+}
 
 /**
  * Whether pick number `index` (0-based, both sides) is a legendary pick. Without legendaries (an empty
  * legendary pool) all eight picks come from the normal pool.
  */
-export const isLegendPick = (s: GameState, index = s.draft.index): boolean =>
-  s.draft.legendPool.length > 0 && index >= 2 * NORMAL_PICKS && index < 2 * TEAM_SIZE;
+export function isLegendPick(s: GameState, index = s.draft.index): boolean {
+  if (index >= 2 * TEAM_SIZE) return false;
+  const style = draftStyle(s);
+  if (style === 'auction') return false;
+  if (style === 'secret') return s.phase === 'draft' && index === s.draft.index && secretNext(s, decider(s)!) === 'legend';
+  return s.draft.legendPool.length > 0 && index >= 2 * NORMAL_PICKS;
+}
 
-/** Card (or trainer) ids the side on the clock may draft right now. */
-export function draftOptions(s: GameState): string[] {
+/** Card (or trainer) ids the side on the clock (or, in a Secret draft, `side`) may draft right now. */
+export function draftOptions(s: GameState, side?: Side): string[] {
   if (s.phase !== 'draft') return [];
+  if (draftStyle(s) === 'secret') {
+    const who = side ?? decider(s);
+    if (!who) return [];
+    const sp = s.draft.secret!;
+    const next = secretNext(s, who);
+    if (next === 'trainer') return sp.trainerPools?.[who] ?? [];
+    const taken = new Set([...s.draft.picks.A, ...s.draft.picks.D]);
+    return (next === 'legend' ? sp.legendPools[who] : next === 'pokemon' ? sp.pools[who] : []).filter((id) => !taken.has(id));
+  }
   if (isTrainerPick(s)) {
     const t = s.trainers!;
     return t.pool.filter((id) => t.picks.A !== id && t.picks.D !== id);
   }
   const taken = new Set([...s.draft.picks.A, ...s.draft.picks.D]);
+  if (draftStyle(s) === 'auction') return [];
   return (isLegendPick(s) ? s.draft.legendPool : s.draft.pool).filter((id) => !taken.has(id));
 }
 
@@ -82,8 +142,11 @@ export function randomTrainerPool(rng: Rng): string[] {
  */
 export function newGame(opts: {
   rng: Rng; mapId?: string; pool?: string[]; legendPool?: string[]; legendaries?: boolean; trainers?: boolean; trainerPool?: string[];
+  style?: DraftStyle;
 }): GameState {
   const trainers = !!opts.trainers || !!opts.trainerPool;
+  const style = opts.style ?? 'classic';
+  if (style !== 'classic') return styledGame(opts, style);
   return {
     version: 1,
     mapId: opts.mapId ?? DEFAULT_MAP_ID,
@@ -92,7 +155,7 @@ export function newGame(opts: {
     maxRounds: MAX_ROUNDS,
     side: 'A',
     draft: {
-      order: trainers ? [...ALTERNATE, 'A', 'D'] : [...ALTERNATE], index: 0, picks: { A: [], D: [] },
+      order: trainers ? [...ALTERNATE, 'A', 'D'] : [...ALTERNATE], index: 0, picks: { A: [], D: [] }, style: 'classic',
       pool: opts.pool ?? randomPool(opts.rng, opts.legendaries === false ? NO_LEGEND_POOL_SIZE : DRAFT_POOL_SIZE),
       legendPool: opts.legendPool ?? (opts.legendaries === false ? [] : randomLegendPool(opts.rng)),
     },
@@ -115,13 +178,45 @@ export function newGame(opts: {
   };
 }
 
+/** Secret draft and Auction: the classic game, with the pools dealt the style's way. */
+function styledGame(opts: Parameters<typeof newGame>[0], style: DraftStyle): GameState {
+  const legendaries = opts.legendaries !== false;
+  const size = legendaries ? DRAFT_POOL_SIZE : NO_LEGEND_POOL_SIZE;
+  const normals = shuffled(DRAFTABLE.filter((c) => !c.legendary).map((c) => c.id), opts.rng);
+  const legends = shuffled(DRAFTABLE.filter((c) => c.legendary).map((c) => c.id), opts.rng);
+  if (style === 'secret') {
+    const k = legendaries ? SECRET_LEGEND_OPTIONS : 0;
+    const pools = { A: normals.slice(0, size), D: normals.slice(size, 2 * size) };
+    const legendPools = { A: legends.slice(0, k), D: legends.slice(k, 2 * k) };
+    // Each side gets its own trainer options too (three each, never the same card).
+    const t = shuffled(TRAINER_LIST.map((x) => x.id), opts.rng);
+    const trainerPools = { A: t.slice(0, SECRET_TRAINER_OPTIONS), D: t.slice(SECRET_TRAINER_OPTIONS, 2 * SECRET_TRAINER_OPTIONS) };
+    const s = newGame({
+      ...opts, style: 'classic', pool: [...pools.A, ...pools.D], legendPool: [...legendPools.A, ...legendPools.D],
+      ...(opts.trainers ? { trainerPool: [...trainerPools.A, ...trainerPools.D] } : {}),
+    });
+    s.draft.style = 'secret';
+    s.draft.secret = { pools, legendPools, ...(s.trainers ? { trainerPools } : {}) };
+    s.draft.order = s.trainers ? [...SECRET_ORDER, 'A', 'D'] : [...SECRET_ORDER];
+    return s;
+  }
+  const pool = opts.pool ?? normals.slice(0, size);
+  const legendPool = opts.legendPool ?? (legendaries ? legends.slice(0, LEGEND_POOL_SIZE) : []);
+  const s = newGame({ ...opts, style: 'classic', pool, legendPool });
+  s.draft.style = 'auction';
+  const deck = shuffled([...pool, ...legendPool], opts.rng);
+  s.draft.auction = { deck, lot: null, coins: { A: AUCTION_COINS, D: AUCTION_COINS }, high: null, toAct: 'A', opener: 'D', passed: [], history: [] };
+  nextLot({ s, rng: opts.rng, events: [], silent: true });
+  return s;
+}
+
 function makeUnit(id: string, side: Side, cardId: string): Unit {
   const c = getCard(cardId);
   return {
     id, side, cardId, draftId: cardId, hp: c.hp, maxHp: c.hp, pos: null, fainted: false,
     stages: { atk: 0, def: 0, mov: 0 }, status: null, toxicN: 0, confused: false, flinched: false,
     sturdyBroken: false, nextTurn: { noMove: false, noAct: false },
-    turn: { noMove: false, noAct: false, reasons: [] }, activated: false, actAgain: 0, gotAfterYou: false, followMe: null,
+    turn: { noMove: false, noAct: false, reasons: [] }, activated: false, actAgain: 0, gotAfterYou: false, followMe: null, wideGuard: null,
     locked: [], dmgBonus: 0, movBonus: 0, ignoreDefBoosts: false,
   };
 }
@@ -130,7 +225,13 @@ function makeUnit(id: string, side: Side, cardId: string): Unit {
 export function cloneState(s: GameState, shareLog = false): GameState {
   return {
     ...s,
-    draft: { order: s.draft.order, index: s.draft.index, picks: { A: [...s.draft.picks.A], D: [...s.draft.picks.D] }, pool: s.draft.pool, legendPool: s.draft.legendPool },
+    draft: {
+      ...s.draft, picks: { A: [...s.draft.picks.A], D: [...s.draft.picks.D] },
+      auction: s.draft.auction && {
+        ...s.draft.auction, deck: [...s.draft.auction.deck], coins: { ...s.draft.auction.coins }, high: s.draft.auction.high && { ...s.draft.auction.high },
+        passed: [...s.draft.auction.passed], history: s.draft.auction.history.map((h) => ({ ...h })),
+      },
+    },
     placement: { ...s.placement },
     units: s.units.map((u) => ({
       ...u,
@@ -155,7 +256,12 @@ export function cloneState(s: GameState, shareLog = false): GameState {
 export function decider(s: GameState): Side | null {
   if (s.phase === 'over') return null;
   if (s.pending.length) return s.pending[0].side;
-  if (s.phase === 'draft') return s.draft.order[s.draft.index];
+  if (isSimultaneous(s)) {
+    // The first side that still has something to do (the other may act at the same time).
+    if (s.phase === 'draft') return secretNext(s, 'A') ? 'A' : secretNext(s, 'D') ? 'D' : null;
+    return s.units.some((u) => u.side === 'A' && !u.pos) ? 'A' : s.units.some((u) => u.side === 'D' && !u.pos) ? 'D' : null;
+  }
+  if (s.phase === 'draft') return auctionOpen(s) ? s.draft.auction!.toAct : s.draft.order[s.draft.index];
   if (s.phase === 'placement') return s.placement.order[s.placement.index];
   return s.side;
 }
@@ -193,13 +299,19 @@ export function applyInPlace(ctx: Ctx, action: Action): void {
     endGame(ctx, otherSide(action.side), `${SIDE_NAME[action.side]} conceded.`);
     return;
   }
+  if (action.type === 'timeout') {
+    endGame(ctx, otherSide(action.side), `${SIDE_NAME[action.side]} ran out of time.`);
+    return;
+  }
   if (s.pending.length) {
     if (action.type !== 'choose') throw new RuleError('A choice must be made first.');
     resolvePending(ctx, action.option);
     return;
   }
   switch (action.type) {
-    case 'draftPick': return draftPick(ctx, action.cardId);
+    case 'draftPick': return draftPick(ctx, action.cardId, action.side);
+    case 'bid': return auctionBid(ctx, action.amount);
+    case 'passBid': return auctionPass(ctx);
     case 'place': return place(ctx, action.unitId, action.pos);
     case 'move': return doMove(ctx, action.unitId, action.to);
     case 'undoMove': return undoMove(ctx, action.unitId);
@@ -216,9 +328,10 @@ export function applyInPlace(ctx: Ctx, action: Action): void {
 
 // ---------------------------------------------------------------- draft & placement
 
-function draftPick(ctx: Ctx, cardId: string): void {
+function draftPick(ctx: Ctx, cardId: string, who?: Side): void {
   const s = ctx.s;
   if (s.phase !== 'draft') throw new RuleError('Not drafting.');
+  if (draftStyle(s) === 'secret') return secretPick(ctx, cardId, who ?? decider(s)!);
   const side = s.draft.order[s.draft.index];
   if (isTrainerPick(s)) {
     if (!draftOptions(s).includes(cardId)) throw new RuleError('Choose one of the trainers on offer.');
@@ -229,6 +342,7 @@ function draftPick(ctx: Ctx, cardId: string): void {
     else s.side = s.draft.order[s.draft.index];
     return;
   }
+  if (auctionOpen(s)) throw new RuleError('Bid for the lot on offer, or pass.');
   const c = CARDS[cardId];
   if (!c || !c.draftable) throw new RuleError('That card cannot be drafted.');
   if (s.draft.picks.A.includes(cardId) || s.draft.picks.D.includes(cardId)) throw new RuleError(`${c.name} was already drafted.`);
@@ -245,6 +359,181 @@ function draftPick(ctx: Ctx, cardId: string): void {
   else s.side = s.draft.order[s.draft.index];
 }
 
+// ---------------------------------------------------------------- hidden information
+
+/**
+ * The game as `viewer` may see it (null: a spectator). A Secret draft hides the other side's pools, picks,
+ * legendary, trainer and placed Pokémon until the battle begins; an Auction hides the order of the lots
+ * to come. Used for what the server sends each player, for hot-seat screens and for what bots get to see.
+ */
+export function hiddenView(s: GameState, viewer: Side | null): GameState {
+  const d = s.draft;
+  if (draftStyle(s) === 'auction' && d.auction && s.phase === 'draft') {
+    return { ...s, draft: { ...d, pool: [], legendPool: [], auction: { ...d.auction, deck: d.auction.deck.map(() => '?') } } };
+  }
+  if (!isSimultaneous(s) || !d.secret) return s;
+  const see = (x: Side) => viewer === x;
+  const pools = { A: see('A') ? d.secret.pools.A : [], D: see('D') ? d.secret.pools.D : [] };
+  const legendPools = { A: see('A') ? d.secret.legendPools.A : [], D: see('D') ? d.secret.legendPools.D : [] };
+  const trainerPools = d.secret.trainerPools && { A: see('A') ? d.secret.trainerPools.A : [], D: see('D') ? d.secret.trainerPools.D : [] };
+  const picks = { A: see('A') ? d.picks.A : d.picks.A.map(() => '?'), D: see('D') ? d.picks.D : d.picks.D.map(() => '?') };
+  return {
+    ...s,
+    draft: { ...d, picks, pool: [...pools.A, ...pools.D], legendPool: [...legendPools.A, ...legendPools.D], secret: { pools, legendPools, trainerPools } },
+    trainers: s.trainers && {
+      ...s.trainers,
+      pool: [...(trainerPools?.A ?? []), ...(trainerPools?.D ?? [])],
+      // '?' : picked, but hidden.
+      picks: { A: see('A') || !s.trainers.picks.A ? s.trainers.picks.A : '?', D: see('D') || !s.trainers.picks.D ? s.trainers.picks.D : '?' },
+    },
+    units: s.units.filter((u) => see(u.side)),
+    // Placement messages name no Pokémon; draft messages none at all, so the log can stay.
+  };
+}
+
+// ---------------------------------------------------------------- auction
+
+/** Whether the auction is still running (afterwards the draft continues with the trainer picks). */
+export const auctionOpen = (s: GameState): boolean => draftStyle(s) === 'auction' && s.phase === 'draft' && s.draft.index < 2 * TEAM_SIZE;
+
+const hasLegend = (s: GameState, side: Side): boolean => s.draft.picks[side].some((id) => CARDS[id].legendary);
+
+/** Whether `side` may bid for `cardId`: a free team slot, and at most one legendary per team. */
+export function canBidFor(s: GameState, side: Side, cardId: string | null): boolean {
+  if (!cardId || s.draft.picks[side].length >= TEAM_SIZE) return false;
+  return !(CARDS[cardId].legendary && hasLegend(s, side));
+}
+
+function auctionBid(ctx: Ctx, amount: number): void {
+  const s = ctx.s;
+  if (!auctionOpen(s)) throw new RuleError('There is no auction running.');
+  const a = s.draft.auction!;
+  const side = a.toAct;
+  if (!Number.isInteger(amount) || amount < 0) throw new RuleError('Bids are whole numbers of coins.');
+  if (amount > a.coins[side]) throw new RuleError(`You only have ${a.coins[side]} coins.`);
+  if (a.high && amount <= a.high.amount) throw new RuleError(`Bid more than ${a.high.amount}.`);
+  a.high = { side, amount };
+  log(ctx, `${SIDE_NAME[side]} bids ${amount} for ${CARDS[a.lot!].name}.`, 'info', side);
+  const other = otherSide(side);
+  if (canBidFor(s, other, a.lot) && a.coins[other] > amount && !a.passed.includes(other)) {
+    a.toAct = other;
+    s.side = other;
+  } else {
+    settleLot(ctx, side, amount);
+  }
+}
+
+function auctionPass(ctx: Ctx): void {
+  const s = ctx.s;
+  if (!auctionOpen(s)) throw new RuleError('There is no auction running.');
+  const a = s.draft.auction!;
+  const side = a.toAct;
+  if (a.high) {
+    settleLot(ctx, a.high.side, a.high.amount);
+    return;
+  }
+  a.passed.push(side);
+  log(ctx, `${SIDE_NAME[side]} passes on ${CARDS[a.lot!].name}.`, 'info', side);
+  const other = otherSide(side);
+  if (canBidFor(s, other, a.lot) && !a.passed.includes(other)) {
+    a.toAct = other;
+    s.side = other;
+  } else {
+    settleLot(ctx, null, 0);
+  }
+}
+
+function settleLot(ctx: Ctx, winner: Side | null, price: number): void {
+  const s = ctx.s;
+  const a = s.draft.auction!;
+  const id = a.lot!;
+  if (winner) {
+    s.draft.picks[winner].push(id);
+    a.coins[winner] -= price;
+    log(ctx, `${SIDE_NAME[winner]} wins ${CARDS[id].name} for ${price} coin${price === 1 ? '' : 's'}.`, 'good', winner);
+  } else {
+    log(ctx, `Nobody bid for ${CARDS[id].name}; it leaves the auction.`, 'info');
+  }
+  a.history.push({ cardId: id, winner, price });
+  a.lot = null;
+  a.high = null;
+  a.passed = [];
+  // Out of coins: the rest of the team is dealt at random.
+  for (const side of ['A', 'D'] as const) if (a.coins[side] <= 0) fillAtRandom(ctx, side);
+  nextLot(ctx);
+}
+
+/** Deals `side` random cards until its team is full: from the lots still to come, then any unused card. */
+function fillAtRandom(ctx: Ctx, side: Side): void {
+  const s = ctx.s;
+  const a = s.draft.auction!;
+  const dealt: string[] = [];
+  while (s.draft.picks[side].length < TEAM_SIZE) {
+    const fromDeck = a.deck.map((id, i) => ({ id, i })).filter(({ id }) => canBidFor(s, side, id));
+    let id: string;
+    if (fromDeck.length) {
+      const k = fromDeck[ctx.rng.int(fromDeck.length)];
+      a.deck.splice(k.i, 1);
+      id = k.id;
+    } else {
+      const used = new Set([...s.draft.picks.A, ...s.draft.picks.D, ...a.history.map((h) => h.cardId)]);
+      const spare = DRAFTABLE.filter((c) => !c.legendary && !used.has(c.id)).map((c) => c.id);
+      id = spare[ctx.rng.int(spare.length)];
+    }
+    s.draft.picks[side].push(id);
+    a.history.push({ cardId: id, winner: side, price: 0, random: true });
+    dealt.push(CARDS[id].name);
+  }
+  if (dealt.length) log(ctx, `${SIDE_NAME[side]}'s team is filled at random: ${dealt.join(', ')}.`, 'info', side);
+}
+
+/** Reveals the next lot anyone can bid for, or ends the auction. */
+function nextLot(ctx: Ctx): void {
+  const s = ctx.s;
+  const a = s.draft.auction!;
+  for (;;) {
+    const full = (['A', 'D'] as const).every((side) => s.draft.picks[side].length >= TEAM_SIZE);
+    if (full) break;
+    if (!a.deck.length) {
+      for (const side of ['A', 'D'] as const) fillAtRandom(ctx, side);
+      break;
+    }
+    const id = a.deck.shift()!;
+    const can = (['A', 'D'] as const).filter((side) => canBidFor(s, side, id));
+    if (!can.length) {
+      a.history.push({ cardId: id, winner: null, price: 0 });
+      continue;
+    }
+    a.lot = id;
+    a.opener = otherSide(a.opener);
+    a.toAct = can.includes(a.opener) ? a.opener : can[0];
+    s.side = a.toAct;
+    log(ctx, `Up for auction: ${CARDS[id].name}.`, 'system');
+    return;
+  }
+  a.lot = null;
+  s.draft.index = 2 * TEAM_SIZE;
+  log(ctx, `The auction is over. Attacker: ${s.draft.picks.A.map((id) => CARDS[id].name).join(', ')}. Defender: ${s.draft.picks.D.map((id) => CARDS[id].name).join(', ')}.`, 'system');
+  if (s.draft.index >= s.draft.order.length) finishDraft(ctx);
+  else s.side = s.draft.order[s.draft.index];
+}
+
+/** Secret draft: `side` picks its next Pokémon, legendary or trainer, in secret. */
+function secretPick(ctx: Ctx, cardId: string, side: Side): void {
+  const s = ctx.s;
+  const next = secretNext(s, side);
+  if (!next) throw new RuleError('Your picks are done: waiting for the other side.');
+  if (!draftOptions(s, side).includes(cardId)) {
+    throw new RuleError(next === 'trainer' ? 'Pick one of your trainer options.' : next === 'legend' ? 'Pick one of your legendary options.' : 'That card is not in your pool.');
+  }
+  if (next === 'trainer') s.trainers!.picks[side] = cardId;
+  else s.draft.picks[side].push(cardId);
+  log(ctx, `${SIDE_NAME[side]} made a secret pick.`, 'info', side);
+  s.draft.index += 1;
+  if (secretNext(s, 'A') === null && secretNext(s, 'D') === null) finishDraft(ctx);
+  else s.side = decider(s)!;
+}
+
 /** Turns the picks into units; placement follows, Attacker first. */
 function finishDraft(ctx: Ctx): void {
   const s = ctx.s;
@@ -254,35 +543,48 @@ function finishDraft(ctx: Ctx): void {
   s.phase = 'placement';
   s.placement = { order: [...ALTERNATE], index: 0 };
   s.side = 'A';
-  log(ctx, 'Draft complete. The Attacker places first.', 'system');
+  log(ctx, draftStyle(s) === 'secret' ? 'Draft complete. Both sides place their Pokémon in secret.' : 'Draft complete. The Attacker places first.', 'system');
 }
 
 function place(ctx: Ctx, unitId: string, pos: Pos): void {
   const s = ctx.s;
   if (s.phase !== 'placement') throw new RuleError('Not in the placement phase.');
-  const side = s.placement.order[s.placement.index];
   const u = getUnit(s, unitId);
+  // Secret draft: both sides place at the same time, in any order, without seeing each other.
+  const secret = isSimultaneous(s);
+  const side = secret ? u.side : s.placement.order[s.placement.index];
   if (u.side !== side) throw new RuleError('Not your Pokémon.');
   if (u.pos) throw new RuleError('Already placed.');
   if (!getMap(s.mapId).spawns[side].some((p) => samePos(p, pos))) throw new RuleError('Pokémon must be placed on your spawn tiles.');
   if (unitAt(s, pos)) throw new RuleError('That spawn tile is taken.');
   u.pos = { x: pos.x, y: pos.y };
-  log(ctx, `${SIDE_NAME[side]} placed ${cardOf(u).name}.`, 'info', side);
+  log(ctx, secret ? `${SIDE_NAME[side]} placed a Pokémon in secret.` : `${SIDE_NAME[side]} placed ${cardOf(u).name}.`, 'info', side);
   s.placement.index += 1;
   if (s.placement.index >= s.placement.order.length) startBattle(ctx);
-  else s.side = s.placement.order[s.placement.index];
+  else s.side = secret ? decider(s)! : s.placement.order[s.placement.index];
 }
 
 function startBattle(ctx: Ctx): void {
   const s = ctx.s;
+  const revealing = draftStyle(s) === 'secret';
   s.phase = 'battle';
   s.round = 1;
+  if (revealing) {
+    const team = (x: Side) => s.draft.picks[x].map((id) => CARDS[id].name).join(', ');
+    const trainer = (x: Side) => (s.trainers?.picks[x] ? ` with ${getTrainer(s.trainers.picks[x]!).name}` : '');
+    log(ctx, `Revealed! Attacker: ${team('A')}${trainer('A')}. Defender: ${team('D')}${trainer('D')}.`, 'system');
+  }
   log(ctx, 'The battle begins!', 'system');
   const all = liveUnits(s);
   for (const src of withAbility(s, 'sandStream')) {
     emit(ctx, { t: 'field', kind: 'sand', side: src.side });
     log(ctx, `${nameOf(src)}'s Sand Stream whips up a sandstorm.`, 'info', src.side);
     for (const x of all) if (hasType(x, 'Rock')) applyStage(ctx, x, 'def', 1, { source: src, label: 'Sand Stream' });
+  }
+  for (const src of withAbility(s, 'snowWarning')) {
+    emit(ctx, { t: 'field', kind: 'hail', side: src.side });
+    log(ctx, `${nameOf(src)}'s Snow Warning brings a snowfall.`, 'info', src.side);
+    for (const x of all) if (hasType(x, 'Ice')) applyStage(ctx, x, 'def', 1, { source: src, label: 'Snow Warning' });
   }
   for (const src of withAbility(s, 'drizzle')) {
     emit(ctx, { t: 'field', kind: 'rain', side: src.side });
@@ -310,7 +612,11 @@ function startTurn(ctx: Ctx, side: Side): void {
   s.side = side;
   s.active = null;
   log(ctx, `Round ${s.round} — ${SIDE_NAME[side]}'s turn.`, 'system', side);
-  for (const u of s.units) if (u.side === side) u.followMe = null;
+  for (const u of s.units) {
+    if (u.side !== side) continue;
+    u.followMe = null;
+    u.wideGuard = null;
+  }
 
   const due = s.futureSight.filter((f) => f.side === side);
   s.futureSight = s.futureSight.filter((f) => f.side !== side);
@@ -904,6 +1210,19 @@ function trainerSpecial(ctx: Ctx, unitId?: string): void {
 // ---------------------------------------------------------------- helpers for tests / quick play
 
 /** Builds a game that skips the draft (and optionally placement). */
+/**
+ * A match that starts from ready-made teams (Secret draft, Auction, training games): the draft is
+ * skipped, then the trainer pick (trainer mode) and placement follow as usual.
+ */
+export function gameFromTeams(teams: Record<Side, string[]>, opts: { rng: Rng; mapId?: string; trainers?: boolean; trainerPool?: string[] }): GameState {
+  const s = newGame({ rng: opts.rng, mapId: opts.mapId, pool: [], legendPool: [], trainers: opts.trainers, trainerPool: opts.trainerPool });
+  s.draft.picks = { A: [...teams.A], D: [...teams.D] };
+  s.draft.index = 2 * TEAM_SIZE;
+  if (s.trainers) s.side = s.draft.order[s.draft.index];
+  else finishDraft({ s, rng: opts.rng, events: [], silent: true });
+  return s;
+}
+
 export function quickGame(teamA: string[], teamD: string[], opts: { mapId?: string; rng: Rng; place?: boolean }): GameState {
   // Any 4-card teams, legendary or not: the draft rules are skipped entirely.
   let s = newGame({ rng: opts.rng, mapId: opts.mapId, pool: [], legendPool: [] });

@@ -1,4 +1,4 @@
-import type { ClientMsg, RoomView, ServerMsg } from './protocol';
+import type { AccountView, ClientMsg, QueueView, RoomView, ServerMsg } from './protocol';
 
 export type ConnStatus = 'connecting' | 'open' | 'closed';
 
@@ -7,6 +7,12 @@ export interface NetSnapshot {
   playerId: string | null;
   room: RoomView | null;
   error: string | null;
+  /** The signed-in account the server recognised (null for guests). */
+  account: AccountView | null;
+  /** Ranked matchmaking: searching, or null. */
+  queue: QueueView | null;
+  /** Local clock minus server clock, from the last room update (for the game clocks). */
+  clockSkew: number;
 }
 
 const TOKEN_KEY = 'pokemon-chess-token';
@@ -49,7 +55,7 @@ function serverUrl(): string {
 export class NetClient {
   private ws: WebSocket | null = null;
   private listeners = new Set<(s: NetSnapshot) => void>();
-  private snap: NetSnapshot = { status: 'connecting', playerId: null, room: null, error: null };
+  private snap: NetSnapshot = { status: 'connecting', playerId: null, room: null, error: null, account: null, queue: null, clockSkew: 0 };
   private closedByUser = false;
   private retry = 0;
   private queue: ClientMsg[] = [];
@@ -96,11 +102,14 @@ export class NetClient {
       const msg = JSON.parse(String(e.data)) as ServerMsg;
       switch (msg.t) {
         case 'welcome':
-          this.set({ playerId: msg.id });
+          this.set({ playerId: msg.id, account: msg.account ?? null });
           break;
         case 'room':
           this.roomCode = msg.room.code;
-          this.set({ room: msg.room, error: null });
+          this.set({ room: msg.room, error: null, clockSkew: Date.now() - msg.room.serverNow });
+          break;
+        case 'queue':
+          this.set({ queue: msg.queue });
           break;
         case 'left':
           this.roomCode = null;

@@ -25,7 +25,8 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { Worker, isMainThread, parentPort, workerData } from 'node:worker_threads';
 import {
-  type Action, type GameState, type Rng, type Side, RuleError, applyAction, cardOf, decider, draftOptions, liveUnits, moveOptions, newGame,
+  type Action, DRAFTABLE, type GameState, type Rng, type Side, RuleError, applyAction, cardOf, decider, draftOptions, gameFromTeams, liveUnits,
+  moveOptions, newGame,
   seededRng, trebuchetOption,
 } from '../src/engine';
 import { positionFeatures } from '../src/ai/bot';
@@ -36,9 +37,13 @@ type Decide = (s: GameState, side: Side, level: string, rng: Rng) => Action[];
 interface Job {
   seed: number;
   players: Record<Side, string>;
-  draft: 'bot' | 'random';
+  draft: 'bot' | 'random' | 'teams';
   mapId: string;
   legends: boolean;
+  /** `--draft teams --legends mix`: each side independently with or without a legendary. */
+  legendMix?: boolean;
+  /** `--style secret|auction`: the draft style (bots draft that way). */
+  style?: 'classic' | 'secret' | 'auction';
   trainers: boolean;
   usage: boolean;
   positions: boolean;
@@ -106,11 +111,39 @@ async function loadDecide(spec: string, other: string | undefined): Promise<{ de
   return { decide: mod.decide as Decide, level: spec };
 }
 
+/**
+ * Random teams for `--draft teams` (training data for every draft style): four distinct cards a side,
+ * with one legendary each, none, or (with --legends mix) one side only.
+ */
+function randomTeams(r: Rng, job: Job): Record<Side, string[]> {
+  const normals = DRAFTABLE.filter((c) => !c.legendary).map((c) => c.id);
+  const legends = DRAFTABLE.filter((c) => c.legendary).map((c) => c.id);
+  const shuffle = (xs: string[]) => {
+    const out = [...xs];
+    for (let i = out.length - 1; i > 0; i--) {
+      const j = r.int(i + 1);
+      [out[i], out[j]] = [out[j], out[i]];
+    }
+    return out;
+  };
+  let withLegend = { A: job.legends, D: job.legends };
+  if (job.legendMix) {
+    const k = r.int(10);
+    withLegend = k < 5 ? { A: true, D: true } : k < 8 ? { A: false, D: false } : k < 9 ? { A: true, D: false } : { A: false, D: true };
+  }
+  const n = shuffle(normals);
+  const l = shuffle(legends);
+  const team = (side: Side, i: number) => (withLegend[side] ? [...n.slice(i, i + 3), l[side === 'A' ? 0 : 1]] : n.slice(i, i + 4));
+  return { A: team('A', 0), D: team('D', 4) };
+}
+
 async function playGame(job: Job, other: string | undefined): Promise<GameRecord> {
   const players = { A: await loadDecide(job.players.A, other), D: await loadDecide(job.players.D, other) };
   const rng = seededRng(job.seed);
   const botRng = seededRng(job.seed * 7919 + 13);
-  let s = newGame({ rng, mapId: job.mapId, legendaries: job.legends, trainers: job.trainers });
+  let s = job.draft === 'teams'
+    ? gameFromTeams(randomTeams(seededRng(job.seed * 31 + 7), job), { rng, mapId: job.mapId, trainers: job.trainers })
+    : newGame({ rng, mapId: job.mapId, legendaries: job.legends, trainers: job.trainers, style: job.style });
   const ms = { A: 0, D: 0 };
   const decisions = { A: 0, D: 0 };
   let replans = 0;
@@ -124,7 +157,7 @@ async function playGame(job: Job, other: string | undefined): Promise<GameRecord
   while (s.phase !== 'over') {
     if (++steps > 4000) throw new Error(`seed ${job.seed}: game did not terminate`);
     const side = decider(s)!;
-    if (s.phase === 'draft' && job.draft === 'random') {
+    if (s.phase === 'draft' && job.draft !== 'bot') {
       const free = draftOptions(s);
       s = applyAction(s, { type: 'draftPick', cardId: free[botRng.int(free.length)] }, rng).state;
       continue;
@@ -171,7 +204,7 @@ async function playGame(job: Job, other: string | undefined): Promise<GameRecord
   const z = s.winner === 'A' ? 1 : 0;
   return {
     seed: job.seed, players: job.players, winner: s.winner!, round: s.round, teams: { A: s.draft.picks.A, D: s.draft.picks.D }, mapId: job.mapId,
-    pool: s.draft.pool, legends: job.legends, ...(s.trainers ? { trainers: { ...s.trainers.picks } } : {}), fainted: { A: a.fainted, D: d.fainted }, hpFrac: { A: a.hpFrac, D: d.hpFrac }, ms, decisions, replans,
+    pool: s.draft.pool, legends: job.legendMix ? undefined : job.legends, ...(s.trainers ? { trainers: { ...s.trainers.picks } } : {}), fainted: { A: a.fainted, D: d.fainted }, hpFrac: { A: a.hpFrac, D: d.hpFrac }, ms, decisions, replans,
     ...(job.usage ? { usage } : {}),
     ...(job.positions ? { positions: turns.map((t): ValueRecord => ({ g: job.seed, k: 'turn', r: t.round, y: z, n: 0, z, f: positionFeatures(t) })) } : {}),
   };
@@ -192,7 +225,8 @@ if (!isMainThread) {
   const start = Number(arg('seed', '1'));
   const swap = arg('swap') === 'true';
   const draft = (arg('draft', 'bot') as Job['draft']);
-  const mapId = arg('map', 'meadow')!;
+  // `--map proc`: a different procedurally generated map for every seed (both roles of a swapped pair share it).
+  const mapArg = arg('map', 'meadow')!;
   const usage = arg('usage') === 'true';
   const legendMode = arg('legends', 'on')!;
   const trainerMode = arg('trainers', 'off')!;
@@ -204,10 +238,13 @@ if (!isMainThread) {
   const jobs: Job[] = [];
   for (let i = 0; i < games; i++) {
     const legends = legendMode === 'mix' ? i % 2 === 0 : legendMode !== 'off';
+    const legendMix = draft === 'teams' && legendMode === 'mix';
+    const style = (arg('style', 'classic') as Job['style']);
+    const mapId = mapArg === 'proc' ? `proc-${start + i}` : mapArg;
     const trainers = trainerMode === 'mix' ? Math.floor(i / 2) % 2 === 0 : trainerMode === 'on';
     const positions = positionsOut !== undefined;
-    jobs.push({ seed: start + i, players: { A: a, D: d }, draft, mapId, legends, trainers, usage, positions });
-    if (swap) jobs.push({ seed: start + i, players: { A: d, D: a }, draft, mapId, legends, trainers, usage, positions });
+    jobs.push({ seed: start + i, players: { A: a, D: d }, draft, mapId, legends, legendMix, style, trainers, usage, positions });
+    if (swap) jobs.push({ seed: start + i, players: { A: d, D: a }, draft, mapId, legends, legendMix, style, trainers, usage, positions });
   }
   const buckets: Job[][] = Array.from({ length: threads }, () => []);
   jobs.forEach((j, i) => buckets[i % threads].push(j));

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { type GameState, type Side, type Unit, cardOf, getTrainer } from '../../engine';
 import { useBoxSize, useFitGrid, useTouch } from '../hooks';
 import { CardImage, HpBar, Modal } from './bits';
-import { PokeBallIcon } from './icons';
+import { PokeBallIcon, SealedIcon } from './icons';
 import { CardDetail, UnitChips, VsList, vsTable } from './CardView';
 import { CardMagnifier, type Region } from './CardMagnifier';
 import type { EventBatch } from '../controller';
@@ -87,6 +87,12 @@ export function TeamCards({ state, events, side, name, mine, fill, magnifyRegion
           {units.map((u) => <PokeBallIcon key={u.id} className={`h-4 w-4 ${u.fainted ? 'opacity-30 grayscale' : ''}`} />)}
         </div>
       </div>
+      {units.length === 0 && state.phase === 'placement' && (
+        <div className="flex flex-1 flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-slate-600 p-4 text-center">
+          <SealedIcon className="h-12 w-12 opacity-80" />
+          <span className="text-sm font-bold text-slate-300">Hidden until the battle begins</span>
+        </div>
+      )}
       <div ref={setBox} className={fill ? 'min-h-0 flex-1' : ''}>
         <div
           className={fill ? `grid h-full justify-center gap-2 ${trainerApart || inner ? 'content-end' : 'content-center'}` : 'grid grid-cols-[repeat(auto-fill,minmax(170px,1fr))] gap-2'}

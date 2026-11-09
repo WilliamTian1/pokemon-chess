@@ -1,6 +1,6 @@
-# v1.2 rules interpretations
+# v1.5 rules interpretations
 
-The README spec, `Conquest Rules.pdf` and `Conquest Cards.pdf` leave some behaviour open. This page lists what v1.2 actually does, so the group can agree on (or change) each call. Each item names the card or rule so it is easy to find in `src/engine/`.
+The README spec, `Conquest Rules.pdf` and `Conquest Cards.pdf` leave some behaviour open. This page lists what v1.5 actually does, so the group can agree on (or change) each call. Each item names the card or rule so it is easy to find in `src/engine/`.
 
 ## Maps
 
@@ -125,9 +125,37 @@ Cannons, wooden logs and ice sliding are not implemented. Magma and pit tiles ex
 - **Gengar's Shadow Ball** grid now has a red tile: it hits 2 tiles ahead and knocks the target back 1.
 - Sudowoodo's Substitute and Breloom's Mach Punch (30) are now printed, matching what the game already did.
 
+## Draft styles
+
+Every mode (maps, legendaries on/off, trainers on/off) can be played with any of three draft styles.
+
+- **Classic:** the original alternating draft from one shared pool.
+- **Secret draft:** each side gets its own pool, never overlapping the other's: 15 Pokémon and 3 legendary options with legendaries on, 20 Pokémon with them off, and in trainer mode 3 trainer options of its own. Both sides pick at the same time (3 + 1 legendary, or 4, then a trainer), and then place their Pokémon at the same time on their own spawn tiles. Neither side sees the other's pool, picks, trainer or placement until the battle begins; online, the server sends each player only their own side. In hot-seat the sides take turns behind a pass-the-device cover screen.
+- **Auction:** the match's pool (and its 4 legendaries) is shuffled into lots, revealed one at a time. Each side has 20 coins.
+  - Bidding is open and ascending: the opener (alternating lot by lot) bids any amount from 0 or passes. The other side raises or passes, and so on. When a side passes, the other wins the lot at its bid. If both pass without a bid, the lot leaves the auction.
+  - A team holds at most one legendary.
+  - A side that reaches 0 coins has the rest of its team dealt at random from the lots still to come. If the lots run out, the remaining slots are dealt at random too.
+  - Upcoming lots are never shown.
+  - Trainer picks follow the auction as usual.
+
+## New cards (2026-11-09 card sheet)
+
+Golurk, Pelipper, Ninetales, Aurorus, Crawdaunt, Swalot and Rampardos joined the draft pool.
+
+- **Wide Guard** (Pelipper): during the opponent's next turn, any attack that would hit Pelipper *and* at least one other Pokémon does nothing at all. Attacks that hit only Pelipper, or don't include it, work normally. It wears off when Pelipper's side starts its next turn.
+- **Psyche Up** (Ninetales): the user's stat changes become a copy of the target's (ally or opponent).
+- **Aurora Veil** (Aurorus): +1 Defense for the user and every ally on the field, never above +2. A grid is printed beside it, but the text covers all allies, so it is played like Light Screen.
+- **Snow Warning** (Aurorus): at the start of the battle every Ice type gets +1 Defense; while Aurorus is on the field, Blizzard never grazes.
+- **Shadow Punch** (Golurk) ignores the target's stat stages and its berry-bush defense. **Dynamic Punch** misses half the time; when it hits, the target is confused.
+- **Knock Off** (Crawdaunt): +50 power when the target stands on a berry bush or flowers, and the bush's defense doesn't apply. **Crab Hammer**: a 10% chance to miss each target, otherwise a 10% chance of +75 power.
+- **Adaptability** (Crawdaunt): like Porygon-Z's, but for Water and Dark attacks (+30 for Crawdaunt and Pokémon next to it).
+- **Spit Up** (Swalot): +50 power per Defense stage above 0, then Swalot's Defense boosts are removed. **Stockpile**: +1 Defense.
+- **Swallow** (Swalot): whenever Swalot is left under 60 HP (but not fainted) with Defense boosts, they are removed and it heals 70 HP per boost.
+- **Heat Wave** (Ninetales): a 10% chance to miss each target, otherwise a 10% chance to burn it. **Head Smash** (Rampardos): charges like Sudowoodo's, 80 recoil per target hit.
+
 ## Expansion cards (Conquest Cards.pdf, pages 10–13)
 
-19 Pokémon from the expansion sheet are in the draft pool (pages 10–13 here). Golurk is left out for now: its card is still an unfinished copy of Octillery's (Water type, Octazooka, Helping Hand). In the 2026-11-09 `Conquest Cards.pdf`, Wigglytuff sits on page 13, which is otherwise a work-in-progress page (unfinished copies named Golurk, Pelipper, Ninetales and others are not used).
+19 Pokémon from the expansion sheet are in the draft pool (pages 10–13 here). In the 2026-11-09 `Conquest Cards.pdf`, Wigglytuff sits on page 13, which is otherwise a work-in-progress page (unfinished copies named Golurk, Pelipper, Ninetales and others are not used).
 
 - **Types read from the icons.** Tinkaton is Steel/Fairy, Corsola Rock/Water, Wigglytuff Fairy/Normal (145 HP since the 2026-11-09 card sheet), Haxorus Dragon, Oricorio Flying/Ghost (Revelation Dance is Ghost).
 - **Flying Press** counts as Fighting and Flying at once: effectiveness multiplies across both, and an immunity to either (Ghost to Fighting) stops it.

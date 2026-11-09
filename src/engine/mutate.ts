@@ -80,7 +80,15 @@ export function dealDamage(ctx: Ctx, u: Unit, amount: number, opts: DamageOpts =
     }
     faint(ctx, u, opts.source ?? null);
   }
-  return before - u.hp;
+  const dealt = before - u.hp;
+  // Swallow: dropping under 60 HP with Defense boosts trades each boost for 70 HP.
+  if (!u.fainted && u.hp < 60 && u.stages.def > 0 && abilityOf(u) === 'swallow' && !(opts.attack && opts.ignoreAbilities)) {
+    const n = u.stages.def;
+    u.stages.def = 0;
+    log(ctx, `${nameOf(u)} swallowed its stockpile!`, 'good', u.side);
+    heal(ctx, u, 70 * n, 'Swallow');
+  }
+  return dealt;
 }
 
 export function heal(ctx: Ctx, u: Unit, amount: number, label?: string): number {

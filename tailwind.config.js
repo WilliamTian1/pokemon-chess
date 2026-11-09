@@ -18,6 +18,8 @@ export default {
       screens: {
         // One-screen layouts (draft and battle fit the viewport); must match useWideLayout().
         wide: { raw: '(min-width: 1024px) and (min-height: 560px)' },
+        // Phones (below `sm`). Tailwind's max-* variants are off once a raw screen exists, so this stands in for max-sm.
+        phone: { raw: '(max-width: 639px)' },
       },
       colors: {
         slate: scale('slate', [50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950]),

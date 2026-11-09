@@ -1,6 +1,6 @@
 import type { AbilityId, CardDef, MoveDef, MoveFx, PType, TargetSpec } from '../types';
 
-// Transcribed from `Conquest Cards.pdf` (2026-11-09 edition): pages 1–9 are the v1.2 roster, 10–12
+// Transcribed from `Conquest Cards.pdf` (2026-11-09 edition): pages 1–9 are the v1.5 roster, 10–12
 // the expansion, and Wigglytuff is on page 13 (otherwise a work-in-progress page). Moves are listed in
 // the order they appear on the card (top first) — Foul Play reads the target's *first* attack.
 
@@ -909,6 +909,76 @@ export const CARD_LIST: CardDef[] = [
       FAKE_OUT('.O./OOO/.O./.G.'),
     ],
     ability: A.competitive,
+  }),
+  // ------------------------------------------------------------ 2026-11-09 card sheet (same page as Wigglytuff)
+  card({
+    id: 'golurk', name: 'Golurk', types: ['Ghost', 'Ground'], hp: 155, mov: 3, page: 13,
+    moves: [
+      atk('Shadow Punch', 'Ghost', 50, grid('.R./.O./.G.'), 'Ignores the opponent’s stat changes and terrain bonuses.', {
+        ignoreAllDefStages: true, ignoreTerrain: true,
+      }),
+      atk('Dynamic Punch', 'Fighting', 65, grid('.../.O./.G.'), '50% chance to miss. Otherwise, confuses the opponent.', {
+        missChance: 0.5, confuse: { chance: 1 },
+      }),
+    ],
+    ability: ['ironFist', 'Iron Fist', 'This pokemon and adjacent pokemon deal 20 extra damage when using moves with “Punch”, “Mash”, or “Fist” in their name.'],
+  }),
+  card({
+    id: 'pelipper', name: 'Pelipper', types: ['Water', 'Flying'], hp: 125, mov: 3, page: 13,
+    moves: [
+      atk('Hurricane', 'Flying', 70, grid('OOO/O.O/OOO/.G.'), '30% chance to confuse the opponent.', { confuse: { chance: 0.3 } }),
+      sts('Wide Guard', SELF, 'For the next turn this pokemon invalidates attacks that hit it as well as other pokemon.', { special: 'wideGuard' }),
+    ],
+    ability: ['drizzle', 'Drizzle', 'At the start of the battle, all water types have their attack go up and all fire types have their attack go down. Hurricane and Thunder always hit.'],
+  }),
+  card({
+    id: 'ninetales', name: 'Ninetales', types: ['Fire'], hp: 145, mov: 3, page: 13,
+    moves: [
+      atk('Heat Wave', 'Fire', 50, grid('OOO/OOO/.../.G.'), '10% chance to miss. Otherwise, 10% chance to burn each target.', {
+        missChance: 0.1, status: { id: 'brn', chance: 0.1 },
+      }),
+      sts('Psyche Up', grid('.O./.../.G.'), 'Copy the target’s stat changes.', { special: 'psycheUp' }),
+    ],
+    ability: ['drought', 'Drought', 'At the start of the battle, all fire types have their attack go up and all water types have their attack go down. Solar Beam and Solar Blade can be used without recharging.'],
+  }),
+  card({
+    id: 'aurorus', name: 'Aurorus', types: ['Rock', 'Ice'], hp: 200, mov: 2, page: 13,
+    moves: [
+      atk('Blizzard', 'Ice', 70, grid('OOO/OOO/.../.G.'), '10% chance to freeze each target.', { status: { id: 'frz', chance: 0.1 } }),
+      sts('Aurora Veil', GLOBAL, 'Raises the defense of all allies and this pokemon by one stage, to a max of 2 stages.', { special: 'auroraVeil' }),
+    ],
+    ability: ['snowWarning', 'Snow Warning', 'At the start of the battle, all ice types get a defense boost. Blizzard cannot miss for anyone.'],
+    notes: ['Aurora Veil has a grid printed beside it, but its text covers every ally on the field, so it is used like Light Screen.'],
+  }),
+  card({
+    id: 'crawdaunt', name: 'Crawdaunt', types: ['Water', 'Dark'], hp: 110, mov: 2, page: 13,
+    moves: [
+      atk('Crab Hammer', 'Water', 75, grid('OOO/.O./.G.'), '10% chance to miss, otherwise 10% chance to deal 75 extra damage.', {
+        missChance: 0.1, bonus: [{ when: 'chance', chance: 0.1, amount: 75 }],
+      }),
+      atk('Knock Off', 'Dark', 50, grid('.R./.O./.G.'), 'Deals 50 extra damage if the opponent is on terrain with bonuses, and ignores defense boosts from terrain.', {
+        bonus: [{ when: 'targetBonusTerrain', amount: 50 }], ignoreTerrain: true,
+      }),
+    ],
+    ability: ['adaptabilityWaterDark', 'Adaptability', 'This pokemon, and adjacent pokemon, deal 30 extra damage when using water/dark type attacks.'],
+  }),
+  card({
+    id: 'swalot', name: 'Swalot', types: ['Poison'], hp: 175, mov: 2, page: 13,
+    moves: [
+      atk('Spit Up', 'Normal', 20, grid('.O./.O./.G.'), 'Deals 50 extra damage per defense boost that the user has. Removes all defense boosts.', {
+        special: 'spitUp', removeUserDefBoosts: true,
+      }),
+      sts('Stockpile', SELF, 'Raises the user’s defense by one stage.', { selfStages: { stages: { def: 1 } } }),
+    ],
+    ability: ['swallow', 'Swallow', 'If the user has their hp drop to less than 60, and they have at least one defense boost, remove all defense boosts and recover 70 hp for each one.'],
+  }),
+  card({
+    id: 'rampardos', name: 'Rampardos', types: ['Rock'], hp: 125, mov: 2, page: 13,
+    moves: [
+      atk('Head Smash', 'Rock', 160, grid('.O./OBO/.G.'), 'Deals 80 recoil damage per target hit.', { recoilPerTarget: 80 }),
+      sts('Swords Dance', SELF, 'Raises the user’s attack stat by two stages.', { selfStages: { stages: { atk: 2 } } }),
+    ],
+    ability: A.moldBreaker,
   }),
 ];
 

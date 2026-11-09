@@ -1,8 +1,10 @@
 import { type ReactNode, useEffect, useMemo, useState } from 'react';
 import {
-  type CardDef, type PType, type Side, TRAINERS, TYPES, bestHit, decider, draftOptions, getCard, getTrainer, isLegendPick, isTrainerPick, otherSide,
+  type Action, type CardDef, type PType, type Side, TEAM_SIZE, TRAINERS, TYPES, auctionOpen, bestHit, canBidFor, decider, deciders, draftStyle, draftOptions, getCard, getTrainer, isLegendPick,
+  isTrainerPick, otherSide, secretNext,
 } from '../../engine';
 import { Art, CardImage, Modal, SIDE_TEXT, TypeBadge } from '../components/bits';
+import { CoinIcon, SealedIcon } from '../components/icons';
 import { CardDetail } from '../components/CardView';
 import { CounterLists, MultChip, TypeChartModal, matchupTitle } from '../components/Matchups';
 import { trainerImg } from '../components/Trainers';
@@ -140,30 +142,46 @@ export function useCardFilter(all: CardDef[]) {
 
 export function DraftView({ ctl }: { ctl: Controller }) {
   const s = ctl.state;
-  const turn = decider(s)!;
-  const mine = ctl.mySides.includes(turn);
+  const style = draftStyle(s);
+  const secret = style === 'secret';
+  const auction = auctionOpen(s);
+  // Secret draft: both sides pick at once, each from its own pool, so the screen is about one side
+  // (yours; in hot-seat GameScreen hands this view one side at a time). Its state is already a hidden
+  // view: the other side's picks and trainer read '?' and its pools are empty.
+  const turn: Side = secret && ctl.mySides.length === 1 ? ctl.mySides[0] : decider(s)!;
+  const pending = deciders(s);
+  const mine = ctl.mySides.includes(turn) && pending.includes(turn);
+  const secretStep = secret ? secretNext(s, turn) : null;
+  const waiting = secret && ctl.mySides.includes(turn) && secretStep === null;
   const [detail, setDetail] = useState<CardDef | null>(null);
   const [hovered, setHovered] = useState<string | null>(null);
   const [pinned, setPinned] = useState<string | null>(null);
   const [chart, setChart] = useState(false);
+  // Phones: the search and sort row stays folded away until asked for.
+  const [searching, setSearching] = useState(false);
   const takenBy = useMemo(() => {
     const m = new Map<string, Side>();
     for (const side of ['A', 'D'] as const) for (const id of s.draft.picks[side]) m.set(id, side);
     return m;
   }, [s.draft.picks]);
-  const normals = useMemo(() => s.draft.pool.map(getCard), [s.draft.pool]);
-  const legends = useMemo(() => s.draft.legendPool.map(getCard), [s.draft.legendPool]);
+  const normals = useMemo(() => (secret ? s.draft.secret!.pools[turn] : auction ? [] : s.draft.pool).map(getCard), [s.draft.pool, secret, auction, turn]); // eslint-disable-line react-hooks/exhaustive-deps
+  const legends = useMemo(() => (secret ? s.draft.secret!.legendPools[turn] : auction ? [] : s.draft.legendPool).map(getCard), [s.draft.legendPool, secret, auction, turn]); // eslint-disable-line react-hooks/exhaustive-deps
   const pool = useMemo(() => [...normals, ...legends], [normals, legends]);
-  const pickNo = s.draft.index + 1;
-  const legendTurn = isLegendPick(s);
-  const trainerTurn = isTrainerPick(s);
-  const pickable = new Set(draftOptions(s));
+  const secretTotal = TEAM_SIZE + (s.trainers ? 1 : 0);
+  const pickNo = secret
+    ? Math.min(secretTotal, s.draft.picks[turn].length + (s.trainers?.picks[turn] ? 1 : 0) + 1)
+    : s.draft.index + 1;
+  const pickOf = secret ? secretTotal : s.draft.order.length;
+  const legendTurn = secret ? secretStep === 'legend' : isLegendPick(s);
+  const trainerTurn = secret ? secretStep === 'trainer' : isTrainerPick(s);
+  const pickable = new Set(draftOptions(s, secret ? turn : undefined));
+  const pick = (cardId: string) => ctl.dispatch((secret ? { type: 'draftPick', cardId, side: turn } : { type: 'draftPick', cardId }) as Action);
 
   // Matchups are shown against the hovered or pinned card, or else against the opposing team.
   const focus = hovered ?? pinned;
   const focusCard = focus ? getCard(focus) : null;
   const rival: Side = ctl.mySides.length === 1 ? otherSide(ctl.mySides[0]) : otherSide(turn);
-  const rivalPicks = s.draft.picks[rival].map(getCard);
+  const rivalPicks = s.draft.picks[rival].filter((id) => id !== '?').map(getCard);
   const badge = (c: CardDef): ReactNode => {
     if (focusCard) {
       if (c.id === focusCard.id) return <span className="chip bg-amber-400 text-slate-900">Comparing</span>;
@@ -204,7 +222,7 @@ export function DraftView({ ctl }: { ctl: Controller }) {
     if (id) setReading(id);
   };
   const readId = reading ?? pinned;
-  const draft = (c: CardDef) => ctl.dispatch({ type: 'draftPick', cardId: c.id });
+  const draft = (c: CardDef) => pick(c.id);
   // A chime for every pick, whoever makes it.
   useEffect(() => {
     if (s.draft.index > 0) sfx('pick');
@@ -213,19 +231,30 @@ export function DraftView({ ctl }: { ctl: Controller }) {
   return (
     <div className="flex flex-col gap-2 wide:h-full wide:min-h-0">
       {/* Pinned on phones so whose pick it is stays in view while scrolling the cards. */}
-      <div className="panel sticky top-0 z-20 flex shrink-0 flex-col gap-2.5 px-3 py-2.5 wide:static">
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-2.5">
-          <div className="flex min-w-0 items-center gap-3">
-            <div className="draft-seal" title={`Pick ${pickNo} of ${s.draft.order.length}`}>
-              <span className="text-[9px] font-extrabold uppercase tracking-widest text-[#f2d27a]">Pick</span>
-              <span className="font-display text-xl leading-none">{pickNo}<span className="text-xs text-[#f2d27a]">/{s.draft.order.length}</span></span>
-            </div>
-            <div className="min-w-0">
-              <div className={`truncate font-display text-xl leading-tight ${SIDE_TEXT[turn]}`}>
-                {mine ? 'Your pick!' : ctl.thinking ? `${ctl.names[turn]} is thinking…` : `${ctl.names[turn]} is picking…`}
+      <div className="panel sticky top-0 z-20 flex shrink-0 flex-col gap-2.5 px-3 py-2.5 phone:gap-1.5 phone:px-2 phone:py-1.5 wide:static">
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-2.5 phone:gap-x-2 phone:gap-y-1.5">
+          <div className="flex min-w-0 items-center gap-3 phone:flex-1 phone:gap-2">
+            {auction ? (
+              <div className="draft-seal" title={`Lot ${s.draft.auction!.history.length + 1}`}>
+                <span className="text-[9px] font-extrabold uppercase tracking-widest text-[#f2d27a]">Lot</span>
+                <span className="font-display text-xl leading-none">{s.draft.auction!.history.length + 1}</span>
               </div>
-              <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
-                <span className="draft-phase">{trainerTurn ? 'Trainer pick' : legendTurn ? '★ Legendary pick' : 'Pool pick'}</span>
+            ) : (
+              <div className="draft-seal" title={`Pick ${pickNo} of ${pickOf}`}>
+                <span className="text-[9px] font-extrabold uppercase tracking-widest text-[#f2d27a]">Pick</span>
+                <span className="font-display text-xl leading-none">{pickNo}<span className="text-xs text-[#f2d27a]">/{pickOf}</span></span>
+              </div>
+            )}
+            <div className="min-w-0">
+              <div className={`truncate font-display text-xl leading-tight phone:text-base ${SIDE_TEXT[turn]}`}>
+                {waiting ? `Sealed! Waiting for ${ctl.names[otherSide(turn)]}…`
+                  : auction ? (mine ? 'Your call!' : ctl.thinking ? `${ctl.names[turn]} is thinking…` : `${ctl.names[turn]}’s call…`)
+                  : mine ? 'Your pick!' : ctl.thinking ? `${ctl.names[turn]} is thinking…` : `${ctl.names[turn]} is picking${secret ? ' in secret' : ''}…`}
+              </div>
+              <div className="mt-0.5 flex min-w-0 items-center gap-1.5 overflow-hidden phone:mt-0">
+                <span className="draft-phase">
+                  {waiting ? 'Revealed when the battle begins' : trainerTurn ? (secret ? 'Secret trainer pick' : 'Trainer pick') : auction ? 'Auction' : secret ? (legendTurn ? '★ Secret legendary pick' : 'Secret pick') : legendTurn ? '★ Legendary pick' : 'Pool pick'}
+                </span>
                 {focusCard && (
                   <span className="draft-phase !bg-[#f2d27a] !text-[#4a2b16]">
                     Comparing with {focusCard.name}
@@ -237,17 +266,24 @@ export function DraftView({ ctl }: { ctl: Controller }) {
               </div>
             </div>
           </div>
+          <div className={`flex flex-wrap gap-x-5 gap-y-2 phone:order-3 phone:w-full phone:gap-1 ${auction ? '' : 'phone:flex-nowrap phone:justify-between'}`}>
           {(['A', 'D'] as const).map((side) => {
             const trainer = s.trainers?.picks[side] ?? null;
-            const active = turn === side;
+            const active = secret ? pending.includes(side) : turn === side;
             return (
               <div key={side} className={`draft-army ${side === 'A' ? 'draft-army-a' : 'draft-army-d'} ${active ? 'draft-army-active' : ''}`}>
-                <span className="draft-sash">{side === 'A' ? 'Attacker' : 'Defender'}</span>
-                <div className="flex items-center gap-1.5">
+                <span className="draft-sash" title={side === 'A' ? 'Attacker' : 'Defender'}>
+                  <span className="phone:hidden">{side === 'A' ? 'Attacker' : 'Defender'}</span>
+                  <span className="sm:hidden">{side}</span>
+                </span>
+                <div className="flex items-center gap-1.5 phone:gap-[3px]">
                   {[0, 1, 2, 3].map((i) => {
                     const id = s.draft.picks[side][i];
-                    const next = active && s.draft.picks[side].length === i;
-                    const legendSlot = i === 3 && s.draft.legendPool.length > 0;
+                    const next = active && !auction && s.draft.picks[side].length === i;
+                    const legendSlot = i === 3 && s.draft.legendPool.length > 0 && !auction;
+                    if (id === '?') {
+                      return <span key={i} className="draft-medal draft-medal-empty !border-solid !text-[#8a1c15]" title="A secret pick">?</span>;
+                    }
                     return id ? (
                       <button
                         key={i}
@@ -266,8 +302,15 @@ export function DraftView({ ctl }: { ctl: Controller }) {
                       </span>
                     );
                   })}
+                  {auction && (
+                    <span className="ml-1 flex items-center gap-1 rounded-full bg-[#4a2b16] px-2 py-1 font-display text-sm text-[#f2d27a] phone:ml-0.5 phone:px-1.5 phone:py-0 phone:text-xs" title="Coins left">
+                      <CoinIcon className="h-5 w-5 phone:h-4 phone:w-4" />{s.draft.auction!.coins[side]}
+                    </span>
+                  )}
                   {s.trainers && (
-                    trainer ? (
+                    trainer === '?' ? (
+                      <span className="draft-trainer draft-medal-empty !border-solid !text-[#8a1c15]" title="A secret trainer">?</span>
+                    ) : trainer ? (
                       <img src={trainerImg(trainer)} alt={getTrainer(trainer).name} title={getTrainer(trainer).name} className="draft-trainer" />
                     ) : (
                       <span className={`draft-trainer draft-medal-empty ${active && trainerTurn ? 'draft-medal-next' : ''}`} title="Trainer">T</span>
@@ -277,13 +320,33 @@ export function DraftView({ ctl }: { ctl: Controller }) {
               </div>
             );
           })}
-          <button type="button" className="btn-ghost ml-auto shrink-0" onClick={() => setChart(true)}>Type chart</button>
+          </div>
+          <div className="ml-auto flex shrink-0 items-center gap-1.5 phone:order-2">
+            {!auction && (
+              <button type="button" className={`btn-ghost relative !px-2 !py-1 text-xs sm:hidden ${searching ? '!border-[#a8261d]' : ''}`} onClick={() => setSearching((v) => !v)} aria-expanded={searching}>
+                Search
+                {filter.active && !searching && <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-[#a8261d]" />}
+              </button>
+            )}
+            <button type="button" className="btn-ghost shrink-0 phone:!px-2 phone:!py-1 phone:text-xs" onClick={() => setChart(true)}>
+              Type chart
+            </button>
+          </div>
         </div>
-        <div className="w-full border-t-2 border-dashed border-slate-700 pt-2">{filter.controls}</div>
+        {!auction && <div className={`w-full border-t-2 border-dashed border-slate-700 pt-2 ${searching ? '' : 'phone:hidden'}`}>{filter.controls}</div>}
       </div>
       <div className="flex gap-3 wide:min-h-0 wide:flex-1">
       <div ref={setGridBox} className="min-w-0 flex-1">
-        {ordered.length === 0 && (
+        {auction && <AuctionBoard ctl={ctl} onRead={setReading} />}
+        {waiting && (
+          <div className="panel mb-2 flex items-center gap-3 p-3">
+            <SealedIcon className="h-10 w-10 shrink-0" />
+            <p className="text-sm font-bold text-slate-300">
+              Your team is sealed. {ctl.names[otherSide(turn)]} is still picking from a pool you can’t see; both teams and trainers are revealed when the battle begins.
+            </p>
+          </div>
+        )}
+        {!auction && ordered.length === 0 && (
           <div className="panel p-4 text-sm text-slate-300">
             No card in this pool matches. <button type="button" className="btn-ghost ml-2" onClick={filter.clear}>Clear search</button>
           </div>
@@ -308,7 +371,7 @@ export function DraftView({ ctl }: { ctl: Controller }) {
             owner={(id) => (s.trainers!.picks.A === id ? 'A' : s.trainers!.picks.D === id ? 'D' : null)}
             pickable={trainerTurn && mine ? pickable : new Set()}
             active={trainerTurn}
-            onPick={(id) => ctl.dispatch({ type: 'draftPick', cardId: id })}
+            onPick={pick}
             onHover={(id) => id && setReading(id)}
           />
         )}
@@ -323,7 +386,7 @@ export function DraftView({ ctl }: { ctl: Controller }) {
             <>
               <img src={trainerImg(readId)} alt={`${getTrainer(readId).name} card`} className="w-full rounded-lg shadow-2xl shadow-black/60" />
               <p className="text-center text-[11px] text-slate-400">
-                Trainer: picked after the 8 Pokémon, the Attacker first. Its Special Move can be used once per game.
+                {secret ? 'Trainer: picked after your 4 Pokémon, in secret.' : 'Trainer: picked after the 8 Pokémon, the Attacker first.'} Its Special Move can be used once per game.
               </p>
             </>
           ) : readId ? (
@@ -361,7 +424,7 @@ export function DraftView({ ctl }: { ctl: Controller }) {
                 type="button"
                 className="btn-primary flex-1"
                 onClick={() => {
-                  ctl.dispatch({ type: 'draftPick', cardId: detail.id });
+                  pick(detail.id);
                   setDetail(null);
                 }}
               >
@@ -372,6 +435,108 @@ export function DraftView({ ctl }: { ctl: Controller }) {
         </Modal>
       )}
       {chart && <TypeChartModal onClose={() => setChart(false)} cards={pool} />}
+    </div>
+  );
+}
+
+/** Auction: the lot on offer, the standing bid, both sides' coins and the bid controls. */
+function AuctionBoard({ ctl, onRead }: { ctl: Controller; onRead: (id: string) => void }) {
+  const s = ctl.state;
+  const a = s.draft.auction!;
+  const lot = a.lot!;
+  const card = getCard(lot);
+  const turn = a.toAct;
+  const mine = ctl.mySides.includes(turn);
+  const min = a.high ? a.high.amount + 1 : 0;
+  const max = a.coins[turn];
+  const [amount, setAmount] = useState(min);
+  useEffect(() => {
+    setAmount(min);
+    onRead(lot);
+  }, [lot, min]); // eslint-disable-line react-hooks/exhaustive-deps
+  const canAfford = max >= min;
+  const bid = (n: number) => ctl.dispatch({ type: 'bid', amount: Math.max(min, Math.min(max, n)) });
+  const blocked = (side: Side) => !canBidFor(s, side, lot);
+  return (
+    <div className="grid gap-3 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
+      <div className="panel flex flex-col items-center gap-2 p-3">
+        <div className="text-xs font-extrabold uppercase tracking-widest text-slate-400">
+          Lot {a.history.length + 1} · {a.deck.length} more to come
+        </div>
+        <CardImage id={lot} name={card.name} className="w-full max-w-[280px] shadow-xl phone:max-w-[190px]" />
+        {card.legendary && <span className="chip bg-amber-400 text-slate-950">★ Legendary · one per team</span>}
+      </div>
+      <div className="panel space-y-4 p-4">
+        <div className="grid grid-cols-2 gap-2">
+          {(['A', 'D'] as const).map((side) => (
+            <div key={side} className={`paper-inset flex items-center justify-between gap-2 p-2 ${a.high?.side === side ? '!border-[#d9ab45]' : ''}`}>
+              <span className={`sash ${side === 'A' ? 'sash-a' : 'sash-d'}`}>
+                <span className="phone:hidden">{side === 'A' ? 'Attacker' : 'Defender'}</span><span className="sm:hidden">{side === 'A' ? 'Atk' : 'Def'}</span>
+              </span>
+              <span className="flex items-center gap-1 font-display text-xl"><CoinIcon className="h-6 w-6" />{a.coins[side]}</span>
+              <span className="text-xs font-bold text-slate-400">{s.draft.picks[side].length}/{TEAM_SIZE}</span>
+            </div>
+          ))}
+        </div>
+        <div className="text-center">
+          <div className="text-xs font-extrabold uppercase tracking-widest text-slate-400">Standing bid</div>
+          <div className="font-display text-3xl">
+            {a.high ? <span>{a.high.side === 'A' ? 'Attacker' : 'Defender'} · {a.high.amount} <CoinIcon className="inline h-7 w-7 align-[-4px]" /></span> : 'No bids yet'}
+          </div>
+          {(['A', 'D'] as const).filter(blocked).map((side) => (
+            <div key={side} className="text-xs font-bold text-slate-400">
+              The {side === 'A' ? 'Attacker' : 'Defender'} can’t bid ({s.draft.picks[side].length >= TEAM_SIZE ? 'team full' : 'already has a legendary'}).
+            </div>
+          ))}
+        </div>
+        {mine ? (
+          <div className="space-y-2">
+            {canAfford ? (
+              <>
+                <div className="flex items-center justify-center gap-2">
+                  <button type="button" className="btn-ghost !px-3" disabled={amount <= min} onClick={() => setAmount((x) => Math.max(min, x - 1))}>−</button>
+                  <span className="min-w-[4.5rem] text-center font-display text-3xl">{amount}</span>
+                  <button type="button" className="btn-ghost !px-3" disabled={amount >= max} onClick={() => setAmount((x) => Math.min(max, x + 1))}>+</button>
+                </div>
+                <div className="flex flex-wrap justify-center gap-1.5">
+                  {[1, 3, 5].map((d) => (
+                    <button key={d} type="button" className="btn-ghost !py-1 text-xs" disabled={min + d - 1 > max} onClick={() => setAmount(Math.min(max, min + d - 1))}>
+                      {a.high ? `+${d}` : d - 1}
+                    </button>
+                  ))}
+                  <button type="button" className="btn-ghost !py-1 text-xs" onClick={() => setAmount(max)}>All in ({max})</button>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <button type="button" className="btn-primary py-2.5 font-display text-lg" onClick={() => bid(amount)}>Bid {amount}</button>
+                  <button type="button" className="btn-ghost py-2.5 font-display text-lg" onClick={() => ctl.dispatch({ type: 'passBid' })}>Pass</button>
+                </div>
+              </>
+            ) : (
+              <button type="button" className="btn-ghost w-full py-2.5 font-display text-lg" onClick={() => ctl.dispatch({ type: 'passBid' })}>
+                Pass (you can’t outbid {a.high?.amount})
+              </button>
+            )}
+            <p className="text-center text-xs font-bold text-slate-400">
+              {a.high ? 'Pass and the high bidder wins it.' : 'Pass with no bid: the other side may still take it, or it leaves the auction.'} Run out of coins and the rest of your team is dealt at random.
+            </p>
+          </div>
+        ) : (
+          <div className="text-center text-sm font-bold text-slate-300">{ctl.thinking ? `${ctl.names[turn]} is thinking…` : `Waiting for ${ctl.names[turn]}…`}</div>
+        )}
+        {a.history.length > 0 && (
+          <div className="border-t-2 border-dashed border-slate-700 pt-2">
+            <div className="mb-1 text-xs font-extrabold uppercase tracking-widest text-slate-400">Lots so far</div>
+            <div className="flex flex-wrap gap-1.5">
+              {a.history.map((h, i) => (
+                <span key={i} className={`flex items-center gap-1 rounded-full border-2 py-0.5 pl-0.5 pr-2 text-xs font-bold ${h.winner === 'A' ? 'border-[#c73a2e]' : h.winner === 'D' ? 'border-[#2f62b8]' : 'border-slate-600 opacity-60'}`} title={`${getCard(h.cardId).name}: ${h.winner ? `${h.winner === 'A' ? 'Attacker' : 'Defender'}${h.random ? ' (dealt at random)' : ` for ${h.price}`}` : 'nobody'}`}>
+                  <Art id={h.cardId} className="h-6 w-6 rounded-full" alt={getCard(h.cardId).name} />
+                  {h.random ? '🎲' : h.winner ? h.price : '—'}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

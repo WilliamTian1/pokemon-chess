@@ -5,3 +5,5 @@ dist/
 .vite/
 coverage/
 Pokemon Conquest (MP3).zophar
+.data/
+__pycache__/

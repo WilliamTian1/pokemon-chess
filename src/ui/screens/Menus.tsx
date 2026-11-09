@@ -4,13 +4,17 @@ import { CARD_LIST, type CardDef, type Side, TRAINER_LIST } from '../../engine';
 import { Art, Modal } from '../components/bits';
 import { CardDetail, MiniGrid } from '../components/CardView';
 import { BannerIcon, DiceIcon, GreatBallIcon, PokeBallIcon, ShieldIcon, SpearIcon, SwordsIcon, UltraBallIcon } from '../components/icons';
-import { LegendaryToggle, MapPicker, OptionTiles, SetupHeading, TrainerToggle, savedLegendaries, savedMapId, savedTrainers } from '../components/MapPicker';
+import {
+  LegendaryToggle, MapPicker, OptionTiles, SetupHeading, StyleToggle, TrainerToggle, savedLegendaries, savedMapId, savedStyle, savedTrainers,
+} from '../components/MapPicker';
+import type { MatchOptions } from '../controller';
+import { AccountChip } from '../components/Account';
 import { TypeChartModal } from '../components/Matchups';
 import { CardGrid, useCardFilter } from './DraftView';
 
 const SHOWCASE = ['charizard', 'blastoise', 'venusaur', 'pikachu', 'mewtwo', 'gengar', 'lapras', 'dragonite'];
 
-export function Home({ onBot, onLocal, onOnline, onCards, onLab, onRules }: {
+export function Home({ onBot, onLocal, onOnline, onCards, onLab, onRules, onProfile }: {
   onBot: () => void;
   onLocal: () => void;
   onOnline: () => void;
@@ -18,9 +22,11 @@ export function Home({ onBot, onLocal, onOnline, onCards, onLab, onRules }: {
   /** Only for the owner (see useLabAccess in App.tsx). */
   onLab?: () => void;
   onRules: () => void;
+  onProfile: (username: string) => void;
 }) {
   return (
     <div className="mx-auto flex min-h-screen max-w-3xl flex-col items-center justify-center gap-7 px-4 py-10">
+      <AccountChip onProfile={onProfile} className="fixed right-3 top-3 z-40" />
       <div className="flex w-full flex-col items-center text-center">
         <div className="mb-4 flex justify-center -space-x-2">
           {SHOWCASE.map((id, i) => (
@@ -36,12 +42,12 @@ export function Home({ onBot, onLocal, onOnline, onCards, onLab, onRules }: {
           <h1 className="title-brush text-[2.1rem] leading-[1.05] sm:text-6xl">Pokémon Conquest</h1>
           <div className="title-brush title-gold mt-1 text-3xl sm:text-5xl">Chess</div>
         </div>
-        <p className="mt-4 text-sm text-slate-300">v1.2</p>
+        <p className="mt-4 text-sm text-slate-300">v1.5</p>
       </div>
       <div className="scroll w-full max-w-3xl">
         <div className="grid gap-3 sm:grid-cols-3">
           <MenuButton title="Play vs Bot" sub="Easy · Medium · Hard" icon={<PokeBallIcon className="h-9 w-9" />} onClick={onBot} primary />
-          <MenuButton title="Online match" sub="Private room with friends" icon={<BannerIcon className="h-9 w-9" />} onClick={onOnline} />
+          <MenuButton title="Play online" sub="Ranked ladder · private rooms" icon={<BannerIcon className="h-9 w-9" />} onClick={onOnline} />
           <MenuButton title="Hot-seat" sub="Two players, one device" icon={<SwordsIcon className="h-9 w-9" />} onClick={onLocal} />
         </div>
         <div className="mt-4 flex flex-wrap justify-center gap-3">
@@ -66,21 +72,23 @@ function MenuButton({ title, sub, icon, onClick, primary }: { title: string; sub
   );
 }
 
-export function LocalSetup({ onStart, onBack }: { onStart: (mapId: string, legendaries: boolean, trainers: boolean) => void; onBack: () => void }) {
+export function LocalSetup({ onStart, onBack }: { onStart: (opts: MatchOptions) => void; onBack: () => void }) {
   const [mapId, setMapId] = useState(savedMapId);
   const [legendaries, setLegendaries] = useState(savedLegendaries);
   const [trainers, setTrainers] = useState(savedTrainers);
+  const [style, setStyle] = useState(savedStyle);
   return (
     <SetupFrame title="Hot-seat" sub="Two players, one device" onBack={onBack}
       left={(
         <>
-          <section><SetupHeading n={1}>Legendaries</SetupHeading><LegendaryToggle value={legendaries} onChange={setLegendaries} /></section>
-          <section><SetupHeading n={2}>Trainers</SetupHeading><TrainerToggle value={trainers} onChange={setTrainers} /></section>
+          <section><SetupHeading n={1}>Draft style</SetupHeading><StyleToggle value={style} onChange={setStyle} /></section>
+          <section><SetupHeading n={2}>Legendaries</SetupHeading><LegendaryToggle value={legendaries} onChange={setLegendaries} /></section>
+          <section><SetupHeading n={3}>Trainers</SetupHeading><TrainerToggle value={trainers} onChange={setTrainers} /></section>
         </>
       )}
       map={<MapPicker value={mapId} onChange={setMapId} />}
-      mapStep={3}
-      onStart={() => onStart(mapId, legendaries, trainers)}
+      mapStep={4}
+      onStart={() => onStart({ mapId, legendaries, trainers, style })}
     />
   );
 }
@@ -111,11 +119,12 @@ function SetupFrame({ title, sub, onBack, left, map, mapStep, onStart }: {
   );
 }
 
-export function BotSetup({ onStart, onBack }: { onStart: (human: Side, level: Difficulty, mapId: string, legendaries: boolean, trainers: boolean) => void; onBack: () => void }) {
+export function BotSetup({ onStart, onBack }: { onStart: (human: Side, level: Difficulty, opts: MatchOptions) => void; onBack: () => void }) {
   const [level, setLevel] = useState<Difficulty>('medium');
   const [mapId, setMapId] = useState(savedMapId);
   const [legendaries, setLegendaries] = useState(savedLegendaries);
   const [trainers, setTrainers] = useState(savedTrainers);
+  const [style, setStyle] = useState(savedStyle);
   const [role, setRole] = useState<Side | 'R'>('A');
   const desc: Record<Difficulty, string> = {
     easy: 'Plays loosely and often picks something random. Good for learning the rules.',
@@ -154,13 +163,14 @@ export function BotSetup({ onStart, onBack }: { onStart: (human: Side, level: Di
               The Attacker must faint all four Defenders within 10 rounds. The Defender wins by surviving.
             </p>
           </section>
-          <section><SetupHeading n={3}>Legendaries</SetupHeading><LegendaryToggle value={legendaries} onChange={setLegendaries} /></section>
-          <section><SetupHeading n={4}>Trainers</SetupHeading><TrainerToggle value={trainers} onChange={setTrainers} /></section>
+          <section><SetupHeading n={3}>Draft style</SetupHeading><StyleToggle value={style} onChange={setStyle} /></section>
+          <section><SetupHeading n={4}>Legendaries</SetupHeading><LegendaryToggle value={legendaries} onChange={setLegendaries} /></section>
+          <section><SetupHeading n={5}>Trainers</SetupHeading><TrainerToggle value={trainers} onChange={setTrainers} /></section>
         </>
       )}
       map={<MapPicker value={mapId} onChange={setMapId} />}
-      mapStep={5}
-      onStart={() => onStart(role === 'R' ? (Math.random() < 0.5 ? 'A' : 'D') : role, level, mapId, legendaries, trainers)}
+      mapStep={6}
+      onStart={() => onStart(role === 'R' ? (Math.random() < 0.5 ? 'A' : 'D') : role, level, { mapId, legendaries, trainers, style })}
     />
   );
 }

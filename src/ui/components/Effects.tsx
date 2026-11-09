@@ -6,6 +6,9 @@ import type { EventBatch } from '../controller';
 import { Art } from './bits';
 import { trainerImg } from './Trainers';
 
+/** Phones and tablets get fewer particles (each one is an animated element). */
+const LITE = typeof window !== 'undefined' && !!window.matchMedia?.('(max-width: 1023px), (pointer: coarse)').matches;
+
 // ---------------------------------------------------------------- sound hooks
 
 /** Plays `track` while the calling screen is shown (switching tracks cross-fades); undefined leaves it alone. */
@@ -105,7 +108,7 @@ type FieldKind = Extract<GameEvent, { t: 'field' }>['kind'];
 
 const FIELD_TEXT: Record<FieldKind, string> = {
   sun: 'The sunlight turned harsh!', rain: 'It started to rain!', sand: 'A sandstorm kicked up!', hail: 'It started to hail!',
-  screen: 'Light Screen!', wind: 'Tailwind!', taunt: 'Taunt!', flowers: 'Flower Shield!',
+  screen: 'Light Screen!', wind: 'Tailwind!', veil: 'Aurora Veil!', guard: 'Wide Guard!', taunt: 'Taunt!', flowers: 'Flower Shield!',
 };
 
 /** Weather and other field-wide moves wash over the screen for a moment. */
@@ -119,11 +122,14 @@ export function FieldFx({ events }: { events: EventBatch }) {
     return () => window.clearTimeout(t);
   }, [events.seq]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!fx) return null;
-  const drops = Array.from({ length: fx.kind === 'rain' ? 70 : fx.kind === 'hail' ? 45 : fx.kind === 'sand' || fx.kind === 'wind' ? 60 : fx.kind === 'flowers' ? 30 : 0 }, (_, i) => i);
+  const n = fx.kind === 'rain' ? 70 : fx.kind === 'hail' ? 45 : fx.kind === 'sand' || fx.kind === 'wind' ? 60 : fx.kind === 'flowers' ? 30 : 0;
+  const drops = Array.from({ length: LITE ? Math.ceil(n / 3) : n }, (_, i) => i);
   return createPortal(
     <div key={fx.key} className="pointer-events-none fixed inset-0 z-[55] overflow-hidden animate-fieldFade">
       {fx.kind === 'sun' && <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_-10%,rgba(253,224,71,.65),rgba(251,146,60,.25)_40%,transparent_70%)]" />}
       {fx.kind === 'screen' && <div className="absolute inset-0 animate-screenSweep bg-[linear-gradient(100deg,transparent_30%,rgba(165,243,252,.45)_50%,transparent_70%)]" />}
+      {fx.kind === 'veil' && <div className="absolute inset-0 animate-screenSweep bg-[linear-gradient(100deg,transparent_25%,rgba(167,243,208,.4)_40%,rgba(196,181,253,.4)_55%,rgba(253,186,116,.35)_70%,transparent_80%)]" />}
+      {fx.kind === 'guard' && <div className="absolute inset-0 animate-tauntPulse bg-[radial-gradient(circle,transparent_45%,rgba(56,189,248,.45))]" />}
       {fx.kind === 'taunt' && <div className="absolute inset-0 animate-tauntPulse bg-[radial-gradient(circle,transparent_40%,rgba(225,29,72,.55))]" />}
       {fx.kind === 'sand' && <div className="absolute inset-0 bg-amber-700/25" />}
       {fx.kind === 'rain' && <div className="absolute inset-0 bg-slate-900/25" />}
@@ -194,7 +200,9 @@ export function DraftTransition({ state, names }: { state: GameState; names: Rec
   useEffect(() => {
     const from = prev.current;
     prev.current = state.phase;
-    if (from !== 'draft' || state.phase !== 'placement') return;
+    // The versus screen marks the reveal: after the draft, or, in a Secret draft, when the battle begins.
+    const secret = state.draft.style === 'secret';
+    if (secret ? from !== 'placement' || state.phase !== 'battle' : from !== 'draft' || state.phase !== 'placement') return;
     setShow(true);
     setCount(3);
     const timers = [
@@ -249,7 +257,7 @@ export function DraftTransition({ state, names }: { state: GameState; names: Rec
 
 /** Confetti for a win. */
 export function Confetti() {
-  const bits = Array.from({ length: 90 }, (_, i) => i);
+  const bits = Array.from({ length: LITE ? 32 : 90 }, (_, i) => i);
   const colors = ['#f43f5e', '#38bdf8', '#facc15', '#34d399', '#a78bfa', '#fb923c'];
   return createPortal(
     <div className="pointer-events-none fixed inset-0 z-[45] overflow-hidden">

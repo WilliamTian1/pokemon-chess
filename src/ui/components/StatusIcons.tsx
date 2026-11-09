@@ -45,6 +45,7 @@ export function unitTags(state: GameState | null, u: Unit): Tag[] {
   }
   if (u.confused) out.push({ key: 'confused', img: 'effect', title: 'Confused: ⅓ chance its next action fails', turns: 1 });
   if (u.followMe) out.push({ key: 'decoy', img: 'effect', title: 'Follow Me: opponents must target it next turn', turns: 1 });
+  if (u.wideGuard) out.push({ key: 'guard', img: 'effect', title: 'Wide Guard: next turn, attacks that hit it and other Pokémon fail', turns: 1 });
   if (state?.taunted === u.side) out.push({ key: 'taunt', img: 'effect', title: 'Taunted: must attack if it can', turns: 1 });
   if (u.dmgBonus > 0) out.push({ key: 'boost', img: 'atk-up', title: `+${u.dmgBonus} damage this turn`, turns: 1 });
   if (u.locked.length) out.push({ key: 'cooldown', img: 'effect', title: `${u.locked.join(', ')} on cooldown until it ends a turn 4+ tiles from opponents` });

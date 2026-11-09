@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react';
 import { DEFAULT_MAP_ID, MAPS, MAP_LIST, type MapDef, type Terrain } from '../../engine';
 import { Art } from './bits';
-import { BushIcon, FlowerIcon, PokeBallIcon, TrebuchetIcon } from './icons';
+import type { DraftStyle } from '../../engine';
+import { BushIcon, CardsIcon, CoinIcon, FlowerIcon, PokeBallIcon, SealedIcon, TrebuchetIcon } from './icons';
 
 /** A numbered heading for a step of a setup screen. */
 export function SetupHeading({ n, children }: { n: number; children: ReactNode }) {
@@ -102,6 +103,40 @@ export function LegendaryToggle({ value, onChange }: { value: boolean; onChange:
 }
 
 const TRAINERS_KEY = 'pcc-trainers';
+const STYLE_KEY = 'pcc-style';
+
+/** The draft style chosen last time on this device (classic by default). */
+export function savedStyle(): DraftStyle {
+  try {
+    const v = localStorage.getItem(STYLE_KEY);
+    return v === 'secret' || v === 'auction' ? v : 'classic';
+  } catch {
+    return 'classic';
+  }
+}
+
+/** Classic draft, Secret draft or Auction. */
+export function StyleToggle({ value, onChange }: { value: DraftStyle; onChange: (s: DraftStyle) => void }) {
+  const choose = (v: DraftStyle) => {
+    try {
+      localStorage.setItem(STYLE_KEY, v);
+    } catch {
+      // Storage can be unavailable; the choice still applies to this game.
+    }
+    onChange(v);
+  };
+  return (
+    <OptionTiles
+      value={value}
+      onChange={choose}
+      options={[
+        { value: 'classic' as const, title: 'Classic', sub: 'Take turns picking from one pool', emblem: <CardsIcon className="h-full w-full" /> },
+        { value: 'secret' as const, title: 'Secret', sub: 'Both pick at once, hidden until battle', emblem: <SealedIcon className="h-full w-full" /> },
+        { value: 'auction' as const, title: 'Auction', sub: 'Bid 20 coins, lot by lot', emblem: <CoinIcon className="h-full w-full" /> },
+      ]}
+    />
+  );
+}
 
 /** Whether trainer mode was last chosen on this device (off by default). */
 export function savedTrainers(): boolean {

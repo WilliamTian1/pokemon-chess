@@ -1,4 +1,7 @@
 import { type ChildProcess, spawn } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
 import type { ClientMsg, RoomView, ServerMsg } from '../src/net/protocol';
@@ -8,7 +11,11 @@ let server: ChildProcess;
 
 beforeAll(async () => {
   server = spawn(process.execPath, ['--import', 'tsx', 'server/index.ts'], {
-    env: { ...process.env, PORT: String(PORT) },
+    // A throwaway account store; no idle bot games; bots fill the ranked queue after 1.5 s.
+    env: {
+      ...process.env, PORT: String(PORT), DATA_DIR: fs.mkdtempSync(path.join(os.tmpdir(), 'pcc-test-')), DATABASE_URL: '', BOT_IDLE_GAMES: '0',
+      BOT_FILL_MS: '1500', BOT_THREADS: '1',
+    },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   await new Promise<void>((resolve, reject) => {
@@ -31,8 +38,8 @@ class TestClient {
   inbox: ServerMsg[] = [];
   room: RoomView | null = null;
   id = '';
-  constructor(readonly token: string, readonly name: string) {
-    this.ws = new WebSocket(`ws://localhost:${PORT}/ws`);
+  constructor(readonly token: string, readonly name: string, cookie?: string) {
+    this.ws = new WebSocket(`ws://localhost:${PORT}/ws`, cookie ? { headers: { cookie } } : undefined);
     this.ws.on('message', (d) => {
       const m = JSON.parse(String(d)) as ServerMsg;
       this.inbox.push(m);
@@ -118,4 +125,76 @@ describe('room server', () => {
 
     for (const x of [a, b2, c]) x.close();
   });
+});
+
+/** Signs up over HTTP and returns the session cookie. */
+async function signup(username: string, password = 'hunter2hunter2'): Promise<string> {
+  const r = await fetch(`http://localhost:${PORT}/api/auth/signup`, {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username, password }),
+  });
+  expect(r.status).toBe(200);
+  return (r.headers.get('set-cookie') ?? '').split(';')[0];
+}
+
+describe('accounts and ranked play', () => {
+  it('signs up, logs in, rejects bad passwords and duplicate names', async () => {
+    const cookie = await signup('RedFan');
+    const me = await (await fetch(`http://localhost:${PORT}/api/me`, { headers: { cookie } })).json();
+    expect(me.account).toMatchObject({ username: 'RedFan', rating: 1200 });
+    const dup = await fetch(`http://localhost:${PORT}/api/auth/signup`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username: 'redfan', password: 'whatever123' }),
+    });
+    expect(dup.status).toBe(409);
+    const bad = await fetch(`http://localhost:${PORT}/api/auth/login`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username: 'RedFan', password: 'wrong-password' }),
+    });
+    expect(bad.status).toBe(401);
+    const good = await fetch(`http://localhost:${PORT}/api/auth/login`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username: 'RedFan', password: 'hunter2hunter2' }),
+    });
+    expect(good.status).toBe(200);
+    const board = await (await fetch(`http://localhost:${PORT}/api/leaderboard`)).json();
+    expect(Array.isArray(board.players)).toBe(true);
+  });
+
+  it('pairs two queued players into a timed, rated match and updates both ratings', async () => {
+    const [ca, cb] = await Promise.all([signup('Kanto1'), signup('Johto2')]);
+    const a = new TestClient('t1', 'x', ca);
+    const b = new TestClient('t2', 'y', cb);
+    await Promise.all([a.open(), b.open()]);
+    a.send({ t: 'queue', timeControl: '5+3', style: 'classic' });
+    b.send({ t: 'queue', timeControl: '5+3', style: 'any' });
+    await a.until((m) => m.t === 'room' && !!m.room.game, 5000);
+    await b.until((m) => m.t === 'room' && !!m.room.game, 5000);
+    expect(a.room!.rated).toBe(true);
+    expect(a.room!.clock).toMatchObject({ A: 300_000, D: 300_000, incMs: 3000 });
+    expect(a.room!.game!.draft.style).toBe('classic');
+    const loser = a.room!.players.find((p) => p.id === a.id)!.side!;
+    a.send({ t: 'action', action: { type: 'concede', side: loser } });
+    const over = (await b.until((m) => m.t === 'room' && m.room.game?.phase === 'over')) as Extract<ServerMsg, { t: 'room' }>;
+    expect(over.room.result?.deltas?.[loser]).toBeLessThan(0);
+    const prof = await (await fetch(`http://localhost:${PORT}/api/users/Kanto1`)).json();
+    expect(prof.games).toBe(1);
+    expect(prof.losses).toBe(1);
+    expect(prof.recent[0]).toMatchObject({ result: 'loss', opponent: { username: 'Johto2' } });
+    a.close();
+    b.close();
+  });
+
+  it('fills the queue with a bot account, which plays its moves', async () => {
+    const cookie = await signup('Lonely1');
+    const a = new TestClient('t3', 'z', cookie);
+    await a.open();
+    a.send({ t: 'queue', timeControl: '10+5', style: 'classic' });
+    await a.until((m) => m.t === 'room' && !!m.room.game, 8000);
+    const side = a.room!.players.find((p) => p.id === a.id)!.side!;
+    const botSide = side === 'A' ? 'D' : 'A';
+    expect(a.room!.accounts?.[botSide]?.bot).toBeTruthy();
+    // The Attacker picks first; if that's the bot, wait for its pick, else pick and wait for its reply.
+    if (side === 'A') a.send({ t: 'action', action: { type: 'draftPick', cardId: a.room!.game!.draft.pool[0] } });
+    await a.until((m) => m.t === 'room' && (m.room.game?.draft.picks[botSide].length ?? 0) > 0, 30000);
+    a.send({ t: 'action', action: { type: 'concede', side } });
+    await a.until((m) => m.t === 'room' && m.room.game?.phase === 'over');
+    a.close();
+  }, 60_000);
 });

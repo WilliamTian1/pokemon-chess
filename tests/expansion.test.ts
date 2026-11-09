@@ -15,7 +15,7 @@ function withTrainer(s: GameState, side: 'A' | 'D', id: string): GameState {
 
 describe('expansion cards', () => {
   it('adds the 19 expansion Pokémon', () => {
-    expect(CARD_LIST).toHaveLength(93);
+    expect(CARD_LIST).toHaveLength(100);
     const ids = ['flygon', 'hawlucha', 'sylveon', 'tinkaton', 'meganium', 'porygonz', 'corsola', 'vivillon', 'octillery', 'comfey',
       'wobbuffet', 'ditto', 'shedinja', 'ninjask', 'froslass', 'roserade', 'haxorus', 'oricorio', 'wigglytuff'];
     for (const id of ids) expect(getCard(id).draftable && !getCard(id).legendary).toBe(true);
