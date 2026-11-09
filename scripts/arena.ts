@@ -13,7 +13,8 @@
  * `--legends mix` alternates (training data for both modes). `--usage` records how often each move is chosen
  * when it is usable (in --out records).
  * `--tune '{"weights":{"clock":0},"search":{"beam":3},"eval":{"ko":1.2}}'` overrides the repo bot's Hard
- * settings, and `--tune-other` the --other bot's (if it exports them).
+ * settings, and `--tune-other` the --other bot's (if it exports them). `--value model.json` gives the repo
+ * bot a value network (scripts/train-value.ts) to score its search leaves with.
  */
 import fs from 'node:fs';
 import os from 'node:os';
@@ -68,6 +69,7 @@ function arg(name: string, def?: string): string | undefined {
 type Tune = { weights?: object; search?: object; eval?: object };
 let tune: Tune | null = null;
 let tuneOther: Tune | null = null;
+let valueFile: string | undefined;
 
 function applyTune(mod: Record<string, unknown>, t: Tune | null): void {
   if (!t) return;
@@ -86,6 +88,7 @@ async function loadDecide(spec: string, other: string | undefined): Promise<{ de
   }
   const mod = await import('../src/ai/bot');
   applyTune(mod as unknown as Record<string, unknown>, tune);
+  if (valueFile) mod.setValueModel(JSON.parse(fs.readFileSync(valueFile, 'utf8')));
   return { decide: mod.decide as Decide, level: spec };
 }
 
@@ -157,7 +160,10 @@ async function playGame(job: Job, other: string | undefined): Promise<GameRecord
 }
 
 if (!isMainThread) {
-  const { jobs, other, tuneJson, tuneOtherJson } = workerData as { jobs: Job[]; other?: string; tuneJson?: string; tuneOtherJson?: string };
+  const { jobs, other, tuneJson, tuneOtherJson, value } = workerData as {
+    jobs: Job[]; other?: string; tuneJson?: string; tuneOtherJson?: string; value?: string;
+  };
+  valueFile = value;
   tune = tuneJson ? JSON.parse(tuneJson) : null;
   tuneOther = tuneOtherJson ? JSON.parse(tuneOtherJson) : null;
   for (const job of jobs) parentPort!.postMessage(await playGame(job, other));
@@ -189,7 +195,7 @@ if (!isMainThread) {
   await Promise.all(buckets.map((bucket) => new Promise<void>((resolve, reject) => {
     // Workers don't inherit tsx's loader, so each one registers it before loading this file.
     const boot = `import('tsx/esm/api').then((m) => { m.register(); return import(${JSON.stringify(pathToFileURL(here).href)}); })`;
-    const w = new Worker(boot, { eval: true, workerData: { jobs: bucket, other, tuneJson: arg('tune'), tuneOtherJson: arg('tune-other') } });
+    const w = new Worker(boot, { eval: true, workerData: { jobs: bucket, other, tuneJson: arg('tune'), tuneOtherJson: arg('tune-other'), value: arg('value') } });
     w.on('message', (r: GameRecord) => {
       records.push(r);
       sink?.write(`${JSON.stringify(r)}\n`);

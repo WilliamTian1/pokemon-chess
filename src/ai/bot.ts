@@ -6,6 +6,7 @@ import {
 } from '../engine';
 import { bestDraftPick, hasDraftModel } from './draft';
 import { matchup, rateCard } from './rating';
+import { type ValueModel, predictValue } from './value';
 
 export type Difficulty = 'easy' | 'medium' | 'hard';
 export const DIFFICULTIES: Difficulty[] = ['easy', 'medium', 'hard'];
@@ -820,6 +821,12 @@ export const SEARCH = {
    * policy for both sides, real dice) instead of the static evaluation. 0 = off.
    */
   leafRollouts: 0,
+  /**
+   * Weight of the value network in the leaf score (0 = hand evaluation only, 1 = network only), in
+   * logit units; `handScale` converts the hand evaluation to logits for the blend.
+   */
+  net: 1,
+  handScale: 0.002,
 
   /** Soft time limit per search. */
   budgetMs: 2500,
@@ -953,9 +960,27 @@ function replyLeaf(s0: GameState, side: Side, deadline: number): GameState {
   return s;
 }
 
+/** The value network (scripts/train-value.ts); null = hand evaluation only. */
+let valueNet: ValueModel | null = null;
+export function setValueModel(m: ValueModel | null): void {
+  valueNet = m;
+}
+
+/** P(`side` wins) according to the value network. */
+export function netValue(s: GameState, side: Side): number {
+  if (s.phase === 'over') return s.winner === side ? 1 : 0;
+  const p = predictValue(valueNet!, positionFeatures(s));
+  return side === 'A' ? p : 1 - p;
+}
+
+const logit = (p: number): number => Math.log(Math.max(1e-6, p) / Math.max(1e-6, 1 - p));
+
 function leafValue(s: GameState, side: Side): number {
   if (SEARCH.leafRollouts > 0) return rolloutValue(s, side, SEARCH.leafRollouts);
-  return new Evaluator(s, side, 'hard').evaluate(s);
+  const w = valueNet ? SEARCH.net : 0;
+  if (s.phase === 'over') return s.winner === side ? 1e6 - s.round : -1e6 + s.round;
+  const hand = w < 1 ? new Evaluator(s, side, 'hard').evaluate(s) * SEARCH.handScale : 0;
+  return w > 0 ? w * logit(netValue(s, side)) + (1 - w) * hand : hand;
 }
 
 let rolloutSeed = 1;

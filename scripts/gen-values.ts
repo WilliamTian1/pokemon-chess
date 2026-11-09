@@ -1,17 +1,16 @@
 /**
- * Training data for the value network (src/ai/value.ts): self-play positions labelled by how often
- * the Attacker wins when the game is played out from them.
+ * Training data for the value network (src/ai/value.ts): positions from Hard self-play, labelled
+ * with the game's result (and optionally with playouts).
  *
- *   npx tsx scripts/gen-values.ts --games 2000 --rollouts 8 --out values.jsonl [--threads 30] [--seed 1]
+ *   npx tsx scripts/gen-values.ts --games 20000 --out values.jsonl [--threads 30] [--seed 1]
  *
- * Games use random drafts (both maps, with and without legendaries), Hard placement or random
- * placement, and the Hard battle search with a light budget that sometimes plays its 2nd–4th choice,
- * so positions vary. Recorded per game:
+ * Each game picks its map, legendaries on/off, a random or Hard draft, and Hard or random placement
+ * from its seed. The battle is played by the Hard search, which plays its 2nd–4th choice
+ * `--explore` of the time (default 0.15) so the positions vary. Recorded per game:
  *  - 'turn': the position at the start of every team turn,
- *  - 'leaf': a few of the positions the search compared before choosing (what the value network
- *    has to rank in play).
- * Each is labelled by `--rollouts` playouts to the end of the game (Medium policy, real dice), and
- * with the game's actual result.
+ *  - 'leaf' (with --leaves n): n of the positions the search compared before choosing.
+ * Every position gets the game's actual result `z`; with `--rollouts n` it also gets `y`, the
+ * Attacker's win rate over n Medium-vs-Medium playouts (otherwise y = z).
  */
 import fs from 'node:fs';
 import os from 'node:os';
@@ -27,7 +26,7 @@ export interface ValueRecord {
   g: number;
   k: 'turn' | 'leaf';
   r: number;
-  /** Attacker win rate over `n` playouts, and the actual game result (1 = Attacker won). */
+  /** Attacker win rate over `n` playouts (the game's result when n = 0), and the actual result (1 = Attacker won). */
   y: number;
   n: number;
   z: number;
@@ -36,26 +35,37 @@ export interface ValueRecord {
 
 const here = fileURLToPath(import.meta.url);
 
+/** Four decimals are plenty for features and keep the files small. */
+const round4 = (_k: string, v: unknown): unknown => (typeof v === 'number' && !Number.isInteger(v) ? Math.round(v * 1e4) / 1e4 : v);
+
 function arg(name: string, def: string): string {
   const i = process.argv.indexOf(`--${name}`);
   return i > 0 ? process.argv[i + 1] : def;
 }
 
-function playGame(seed: number, rollouts: number, leavesPerDecision: number): ValueRecord[] {
+interface Opts {
+  rollouts: number;
+  leaves: number;
+  explore: number;
+}
+
+function playGame(seed: number, o: Opts): ValueRecord[] {
   const rng = seededRng(seed);
   const botRng = seededRng(seed * 7919 + 13);
-  const mapId = seed % 2 ? 'river' : 'meadow';
-  let s = newGame({ rng, mapId, legendaries: seed % 4 < 2 });
+  const cfg = seededRng(seed * 104729 + 7);
+  const mapId = cfg.chance(0.5) ? 'river' : 'meadow';
+  const randomDraft = cfg.chance(0.5);
+  const randomPlacement = cfg.chance(1 / 3);
+  let s = newGame({ rng, mapId, legendaries: cfg.chance(0.5) });
   const positions: { k: 'turn' | 'leaf'; s: GameState }[] = [];
-  searchHooks.pick = (n) => (botRng.chance(0.15) ? 1 + botRng.int(Math.min(3, n - 1)) : 0);
-  searchHooks.onLeaves = (_side: Side, leaves: GameState[]) => {
+  searchHooks.pick = (n) => (botRng.chance(o.explore) ? 1 + botRng.int(Math.min(3, n - 1)) : 0);
+  searchHooks.onLeaves = o.leaves > 0 ? (_side: Side, leaves: GameState[]) => {
     const live = leaves.filter((l) => l.phase === 'battle');
-    for (let i = 0; i < leavesPerDecision && live.length; i++) positions.push({ k: 'leaf', s: live.splice(botRng.int(live.length), 1)[0] });
-  };
-  const randomPlacement = seed % 3 === 0;
+    for (let i = 0; i < o.leaves && live.length; i++) positions.push({ k: 'leaf', s: live.splice(botRng.int(live.length), 1)[0] });
+  } : null;
   for (let steps = 0; s.phase !== 'over' && steps < 3000; steps++) {
     const side = decider(s)!;
-    if (s.phase === 'draft') {
+    if (s.phase === 'draft' && randomDraft) {
       const free = draftOptions(s);
       s = applyAction(s, { type: 'draftPick', cardId: free[botRng.int(free.length)] }, rng).state;
       continue;
@@ -87,20 +97,21 @@ function playGame(seed: number, rollouts: number, leavesPerDecision: number): Va
   searchHooks.onLeaves = null;
   searchHooks.pick = null;
   const z = s.winner === 'A' ? 1 : 0;
-  return positions.map(({ k, s: p }) => ({ g: seed, k, r: p.round, y: rolloutValue(p, 'A', rollouts), n: rollouts, z, f: positionFeatures(p) }));
+  return positions.map(({ k, s: p }) => ({
+    g: seed, k, r: p.round, y: o.rollouts > 0 ? rolloutValue(p, 'A', o.rollouts) : z, n: o.rollouts, z, f: positionFeatures(p),
+  }));
 }
 
 if (!isMainThread) {
-  const { seeds, rollouts, leaves, search } = workerData as { seeds: number[]; rollouts: number; leaves: number; search: object };
+  const { seeds, opts, search } = workerData as { seeds: number[]; opts: Opts; search: object };
   Object.assign(SEARCH, search);
-  for (const seed of seeds) parentPort!.postMessage(playGame(seed, rollouts, leaves));
+  for (const seed of seeds) parentPort!.postMessage(playGame(seed, opts));
 } else {
   const games = Number(arg('games', '100'));
   const start = Number(arg('seed', '1'));
-  const rollouts = Number(arg('rollouts', '8'));
-  const leaves = Number(arg('leaves', '2'));
+  const opts: Opts = { rollouts: Number(arg('rollouts', '0')), leaves: Number(arg('leaves', '0')), explore: Number(arg('explore', '0.15')) };
   const threads = Math.min(games, Number(arg('threads', String(os.cpus().length - 2))));
-  const search = JSON.parse(arg('search', '{"beam":8,"perUnit":3,"replies":8,"replyBeam":2}'));
+  const search = JSON.parse(arg('search', '{}'));
   const out = fs.createWriteStream(arg('out', 'values.jsonl'));
   const buckets: number[][] = Array.from({ length: threads }, () => []);
   for (let i = 0; i < games; i++) buckets[i % threads].push(start + i);
@@ -109,12 +120,12 @@ if (!isMainThread) {
   const t0 = Date.now();
   await Promise.all(buckets.map((seeds) => new Promise<void>((resolve, reject) => {
     const boot = `import('tsx/esm/api').then((m) => { m.register(); return import(${JSON.stringify(pathToFileURL(here).href)}); })`;
-    const w = new Worker(boot, { eval: true, workerData: { seeds, rollouts, leaves, search } });
+    const w = new Worker(boot, { eval: true, workerData: { seeds, opts, search } });
     w.on('message', (rs: ValueRecord[]) => {
-      for (const r of rs) out.write(`${JSON.stringify(r)}\n`);
+      for (const r of rs) out.write(`${JSON.stringify(r, round4)}\n`);
       records += rs.length;
       done += 1;
-      if (done % 20 === 0) process.stderr.write(`  ${done}/${games} games, ${records} positions, ${((Date.now() - t0) / 1000).toFixed(0)}s\n`);
+      if (done % 100 === 0) process.stderr.write(`  ${done}/${games} games, ${records} positions, ${((Date.now() - t0) / 1000).toFixed(0)}s\n`);
     });
     w.on('error', reject);
     w.on('exit', (code) => (code === 0 ? resolve() : reject(new Error(`worker exited ${code}`))));
