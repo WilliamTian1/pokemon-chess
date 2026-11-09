@@ -64,9 +64,9 @@ export function App() {
     if (location.search) history.replaceState(null, '', location.pathname);
     setScreen({ name: 'home' });
   };
-  // Menus play the title theme; games and online rooms choose their own music.
+  // Menus play the title theme (the Draft Lab its own); games and online rooms choose their own music.
   const menu = screen.name !== 'game' && screen.name !== 'online';
-  useMusic(menu ? 'menu' : undefined);
+  useMusic(screen.name === 'lab' ? 'lab' : menu ? 'menu' : undefined);
   return (
     <>
       {renderScreen()}

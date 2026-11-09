@@ -1,6 +1,6 @@
-# v1.1 rules interpretations
+# v1.1.1 rules interpretations
 
-The README spec, `Conquest Rules.pdf` and `Conquest Cards.pdf` leave some behaviour open. This page lists what v1.1 actually does, so the group can agree on (or change) each call. Each item names the card or rule so it is easy to find in `src/engine/`.
+The README spec, `Conquest Rules.pdf` and `Conquest Cards.pdf` leave some behaviour open. This page lists what v1.1.1 actually does, so the group can agree on (or change) each call. Each item names the card or rule so it is easy to find in `src/engine/`.
 
 ## Maps
 

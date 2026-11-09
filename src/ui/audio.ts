@@ -1,8 +1,11 @@
 /**
- * Sound: synthesized effects and chiptune music (Web Audio, no audio files — every tune here is
- * original), plus recorded trainer voicelines. Browsers only allow
- * sound after the player has interacted with the page, so nothing plays before the first click.
+ * Sound: the Pokémon Conquest soundtrack (public/music, looped seamlessly; see soundtrack.json and
+ * scripts/soundtrack/) with its jingles for victories, defeats, Special Moves and form changes;
+ * synthesized effects; and recorded trainer voicelines. The original chiptune music and effects are
+ * kept: they're the "Chiptune" soundtrack option, and the fallback if a track can't load. Browsers only
+ * allow sound after the player has interacted with the page, so nothing plays before the first click.
  */
+import SOUNDTRACK from './soundtrack.json';
 
 export interface AudioSettings {
   music: boolean;
@@ -10,6 +13,8 @@ export interface AudioSettings {
   voice: boolean;
   /** 0–1. */
   volume: number;
+  /** Pokémon Conquest's music and jingles, or the original chiptune. */
+  soundtrack: 'conquest' | 'chiptune';
 }
 
 const KEY = 'pcc-audio';
@@ -17,7 +22,7 @@ let settings: AudioSettings = load();
 const listeners = new Set<() => void>();
 
 function load(): AudioSettings {
-  const base: AudioSettings = { music: true, sfx: true, voice: true, volume: 0.7 };
+  const base: AudioSettings = { music: true, sfx: true, voice: true, volume: 0.7, soundtrack: 'conquest' };
   try {
     return { ...base, ...JSON.parse(localStorage.getItem(KEY) ?? '{}') };
   } catch {
@@ -28,6 +33,7 @@ function load(): AudioSettings {
 export const getAudioSettings = (): AudioSettings => settings;
 
 export function setAudioSettings(next: Partial<AudioSettings>): void {
+  const switched = next.soundtrack !== undefined && next.soundtrack !== settings.soundtrack;
   settings = { ...settings, ...next };
   try {
     localStorage.setItem(KEY, JSON.stringify(settings));
@@ -39,6 +45,7 @@ export function setAudioSettings(next: Partial<AudioSettings>): void {
     bus.music.gain.value = settings.music ? MUSIC_LEVEL : 0;
   }
   if (!settings.voice && typeof speechSynthesis !== 'undefined') speechSynthesis.cancel();
+  if (switched && wanted) playMusic(wanted, true);
   listeners.forEach((f) => f());
 }
 
@@ -51,7 +58,8 @@ export function onAudioSettings(f: () => void): () => void {
 
 const MUSIC_LEVEL = 0.22;
 let ctx: AudioContext | null = null;
-let bus: { master: GainNode; music: GainNode; sfx: GainNode } | null = null;
+/** music → duck → master: `duck` dips the music while a jingle plays. */
+let bus: { master: GainNode; music: GainNode; duck: GainNode; sfx: GainNode } | null = null;
 let noiseBuf: AudioBuffer | null = null;
 const waves = new Map<string, PeriodicWave>();
 
@@ -63,13 +71,15 @@ function audio(): AudioContext | null {
   const master = ctx.createGain();
   master.gain.value = settings.volume;
   master.connect(ctx.destination);
+  const duck = ctx.createGain();
+  duck.connect(master);
   const music = ctx.createGain();
   music.gain.value = settings.music ? MUSIC_LEVEL : 0;
-  music.connect(master);
+  music.connect(duck);
   const sfx = ctx.createGain();
   sfx.gain.value = 0.55;
   sfx.connect(master);
-  bus = { master, music, sfx };
+  bus = { master, music, duck, sfx };
   noiseBuf = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
   const d = noiseBuf.getChannelData(0);
   for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
@@ -171,10 +181,22 @@ function freq(name: string): number {
 export type Sfx =
   | 'hit' | 'bigHit' | 'heal' | 'miss' | 'faint' | 'statUp' | 'statDown' | 'burn' | 'paralysis' | 'poison' | 'sleep'
   | 'freeze' | 'confuse' | 'flinch' | 'special' | 'sun' | 'rain' | 'sand' | 'hail' | 'screen' | 'wind' | 'taunt' | 'flowers'
-  | 'turn' | 'pick' | 'place' | 'step' | 'trebuchet' | 'click' | 'victory' | 'defeat' | 'count' | 'go';
+  | 'turn' | 'pick' | 'place' | 'step' | 'trebuchet' | 'click' | 'victory' | 'defeat' | 'count' | 'go' | 'evolve';
+
+/** Effects that are Conquest jingles with the Conquest soundtrack (victory and defeat open the results music). */
+const JINGLE_SFX: Partial<Record<Sfx, JingleId>> = {
+  special: 'jingleSpecial', evolve: 'jingleEvolve', victory: 'jingleWin', defeat: 'jingleLose',
+};
 
 export function sfx(name: Sfx, delay = 0): void {
   if (!settings.sfx || !unlocked) return;
+  const jingle = settings.soundtrack === 'conquest' ? JINGLE_SFX[name] : undefined;
+  if (jingle) {
+    // The results music already starts with the victory/defeat jingle.
+    if ((name === 'victory' || name === 'defeat') && settings.music) return;
+    playJingle(jingle, delay);
+    return;
+  }
   const at = delay;
   switch (name) {
     case 'hit':
@@ -295,6 +317,10 @@ export function sfx(name: Sfx, delay = 0): void {
       [['E5', 0], ['D5', 0.3], ['C5', 0.6], ['B4', 0.9], ['A4', 1.2]].forEach(([n, t]) =>
         tone(freq(n as string), (t as number) >= 1.2 ? 1.0 : 0.32, { at: at + (t as number), wave: 'triangle', vol: 0.22 }));
       break;
+    case 'evolve':
+      ['C5', 'E5', 'G5', 'C6', 'E6', 'G6'].forEach((n, i) => tone(freq(n), 0.12, { at: at + i * 0.07, wave: 'pulse25', vol: 0.16 }));
+      tone(freq('C7'), 0.5, { at: at + 0.42, wave: 'triangle', vol: 0.14 });
+      break;
   }
 }
 
@@ -332,6 +358,9 @@ const VOICE_CLIPS: Record<string, string[]> = {
 
 const lastVoiceClip = new Map<string, number>();
 
+/** Voices sit a little above the master volume, then 20% down so they don't drown the game. */
+const voiceVolume = (): number => Math.min(1, settings.volume + 0.2) * 0.8;
+
 /** A random clip for `trainer`, never the same one twice in a row. */
 function randomVoiceClip(trainer: string): string | null {
   const clips = VOICE_CLIPS[trainer];
@@ -351,7 +380,7 @@ export function speakTrainer(trainer: string): void {
     return;
   }
   const a = new Audio(url);
-  a.volume = Math.min(1, settings.volume + 0.2);
+  a.volume = voiceVolume();
   // A clip that can't load or play (offline, unsupported format) falls back to the synthesized line.
   void a.play().catch(() => synthLine(trainer));
 }
@@ -363,14 +392,23 @@ function synthLine(trainer: string): void {
   const u = new SpeechSynthesisUtterance(v.line);
   u.pitch = v.pitch;
   u.rate = v.rate;
-  u.volume = Math.min(1, settings.volume + 0.2);
+  u.volume = voiceVolume();
   speechSynthesis.speak(u);
 }
 
 // ---------------------------------------------------------------- music
 
-/** Battle music is per map: `battle` (Trebuchet Meadow) and `battleRiver` (Winding River). */
-export type Track = 'menu' | 'draft' | 'battle' | 'battleRiver' | 'victory' | 'defeat';
+/**
+ * Battle music is per map: `battle` (Trebuchet Meadow) and `battleRiver` (Winding River); `climax` takes
+ * over for the final round or when a side is down to its last Pokémon.
+ */
+export type Track = 'menu' | 'draft' | 'lab' | 'battle' | 'battleRiver' | 'climax' | 'victory' | 'defeat';
+
+type SongId = 'menu' | 'draft' | 'battle' | 'battleRiver' | 'victory' | 'defeat';
+/** The chiptune song for each track (the chiptune soundtrack has no Lab or climax songs of its own). */
+const CHIPTUNE: Record<Track, SongId> = {
+  menu: 'menu', draft: 'draft', lab: 'menu', battle: 'battle', battleRiver: 'battleRiver', climax: 'battle', victory: 'victory', defeat: 'defeat',
+};
 
 interface Song {
   bpm: number;
@@ -386,7 +424,7 @@ interface Song {
 }
 
 // All original compositions.
-const SONGS: Record<Track, Song> = {
+const SONGS: Record<SongId, Song> = {
   menu: {
     bpm: 108,
     loop: true,
@@ -453,7 +491,156 @@ export function playMusic(track: Track | null, force = false): void {
   if (!track || !unlocked) return;
   const c = audio();
   if (!c || !bus) return;
-  playing = { track, stop: startSong(c, bus.music, SONGS[track]) };
+  const chiptune = () => startSong(c, bus!.music, SONGS[CHIPTUNE[track]]);
+  playing = { track, stop: settings.soundtrack === 'conquest' ? startRecorded(c, bus.music, CONQUEST[track], chiptune) : chiptune() };
+}
+
+// ---------------------------------------------------------------- Pokémon Conquest soundtrack
+
+type TrackId = keyof typeof SOUNDTRACK;
+type JingleId = 'jingleWin' | 'jingleLose' | 'jingleSpecial' | 'jingleEvolve';
+interface TrackInfo {
+  file: string;
+  gain: number;
+  /** Seconds; the file holds the intro and one pass of the loop. */
+  loopStart?: number;
+  loopEnd?: number;
+}
+const TRACK_INFO: Record<TrackId, TrackInfo> = SOUNDTRACK;
+
+/** Conquest track for each game track; victory and defeat open with their jingle. */
+const CONQUEST: Record<Track, { intro?: JingleId; loop: TrackId }> = {
+  menu: { loop: 'title' },
+  draft: { loop: 'draft' },
+  lab: { loop: 'lab' },
+  battle: { loop: 'battle' },
+  battleRiver: { loop: 'battleRiver' },
+  climax: { loop: 'climax' },
+  victory: { intro: 'jingleWin', loop: 'resultsWin' },
+  defeat: { intro: 'jingleLose', loop: 'resultsLose' },
+};
+
+/** Recorded music is mastered louder than the chiptune; this brings it to the same place in the mix. */
+const RECORDED_LEVEL = 0.5;
+const encoded = new Map<TrackId, Promise<ArrayBuffer | null>>();
+const jingleBuffers = new Map<TrackId, Promise<AudioBuffer | null>>();
+
+function fetchTrack(id: TrackId): Promise<ArrayBuffer | null> {
+  let p = encoded.get(id);
+  if (!p) {
+    p = fetch(`${import.meta.env.BASE_URL}music/${TRACK_INFO[id].file}`)
+      .then((r) => (r.ok && (r.headers.get('content-type') ?? '').startsWith('audio') ? r.arrayBuffer() : null))
+      .catch(() => null);
+    encoded.set(id, p);
+  }
+  return p;
+}
+
+/** Decodes a track (decoded buffers are big, so only jingles are kept decoded). */
+async function decodeTrack(c: AudioContext, id: TrackId): Promise<AudioBuffer | null> {
+  const data = await fetchTrack(id);
+  if (!data) return null;
+  try {
+    return await c.decodeAudioData(data.slice(0));
+  } catch {
+    return null;
+  }
+}
+
+function jingleBuffer(c: AudioContext, id: TrackId): Promise<AudioBuffer | null> {
+  let p = jingleBuffers.get(id);
+  if (!p) {
+    p = decodeTrack(c, id);
+    jingleBuffers.set(id, p);
+  }
+  return p;
+}
+
+/**
+ * Plays a Conquest track (after an optional jingle), looping between its loop points. If it can't be
+ * loaded, falls back to `fallback` (the chiptune). Returns a function that fades it out.
+ */
+function startRecorded(c: AudioContext, out: AudioNode, spec: { intro?: JingleId; loop: TrackId }, fallback: () => () => void): () => void {
+  const fade = c.createGain();
+  fade.gain.value = RECORDED_LEVEL;
+  fade.connect(out);
+  const sources: AudioScheduledSourceNode[] = [];
+  let stopped = false;
+  let stopFallback: (() => void) | null = null;
+  const play = (b: AudioBuffer, info: TrackInfo, when: number, loop: boolean) => {
+    const src = c.createBufferSource();
+    src.buffer = b;
+    if (loop && info.loopEnd !== undefined) {
+      src.loop = true;
+      src.loopStart = info.loopStart ?? 0;
+      src.loopEnd = info.loopEnd;
+    }
+    const g = c.createGain();
+    g.gain.value = info.gain;
+    src.connect(g).connect(fade);
+    src.start(Math.max(when, c.currentTime));
+    sources.push(src);
+  };
+  void (async () => {
+    let at = c.currentTime + 0.05;
+    if (spec.intro) {
+      const j = await jingleBuffer(c, spec.intro);
+      if (stopped) return;
+      if (j) {
+        play(j, TRACK_INFO[spec.intro], at, false);
+        at += j.duration;
+      }
+    } else {
+      // Ease in, as the chiptune does.
+      fade.gain.setValueAtTime(0.0001, c.currentTime);
+      fade.gain.exponentialRampToValueAtTime(RECORDED_LEVEL, c.currentTime + 0.6);
+    }
+    const b = await decodeTrack(c, spec.loop);
+    if (stopped) return;
+    if (b) play(b, TRACK_INFO[spec.loop], at, true);
+    else stopFallback = fallback();
+  })();
+  return () => {
+    stopped = true;
+    stopFallback?.();
+    const t = c.currentTime;
+    fade.gain.cancelScheduledValues(t);
+    fade.gain.setValueAtTime(Math.max(fade.gain.value, 0.0001), t);
+    fade.gain.exponentialRampToValueAtTime(0.0001, t + 0.6);
+    window.setTimeout(() => {
+      for (const src of sources) {
+        try {
+          src.stop();
+        } catch {
+          // Already finished.
+        }
+      }
+      fade.disconnect();
+    }, 700);
+  };
+}
+
+/** A Conquest jingle as a sound effect; the music dips while it plays. */
+function playJingle(id: JingleId, delay = 0): void {
+  const c = audio();
+  if (!c || !bus) return;
+  const b = bus;
+  void jingleBuffer(c, id).then((buf) => {
+    if (!buf) return;
+    const at = c.currentTime + delay + 0.02;
+    const src = c.createBufferSource();
+    src.buffer = buf;
+    const g = c.createGain();
+    g.gain.value = TRACK_INFO[id].gain * RECORDED_LEVEL * 1.6;
+    src.connect(g).connect(b.sfx);
+    src.start(at);
+    const d = b.duck.gain;
+    d.cancelScheduledValues(at - 0.15);
+    d.setValueAtTime(1, at - 0.15);
+    d.linearRampToValueAtTime(0.2, at);
+    d.setValueAtTime(0.2, at + buf.duration - 0.3);
+    d.linearRampToValueAtTime(1, at + buf.duration + 0.6);
+  });
 }
 
 /** Schedules a song a little ahead of time; returns a function that fades it out and stops it. */

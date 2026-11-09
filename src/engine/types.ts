@@ -340,6 +340,8 @@ export type GameEvent =
   | { t: 'stage'; unitId: string; stat: StatId; delta: number }
   /** A trainer's Special Move. */
   | { t: 'special'; side: Side; trainer: string }
+  /** A Pokémon changed form (Cherrim's Sunshine form, Minior's Core). */
+  | { t: 'transform'; unitId: string; cardId: string }
   /** A move or ability that affects the whole field (weather, Light Screen, Taunt…). */
   | { t: 'field'; kind: 'sun' | 'rain' | 'sand' | 'hail' | 'screen' | 'wind' | 'taunt' | 'flowers'; side: Side }
   | { t: 'text'; text: string };

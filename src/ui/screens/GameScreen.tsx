@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { SIDE_NAME } from '../../engine';
+import { SIDE_NAME, liveUnits } from '../../engine';
 import { sfx } from '../audio';
 import { Modal, SIDE_TEXT } from '../components/bits';
 import { Confetti, DraftTransition, SoundButton, useMusic } from '../components/Effects';
@@ -18,7 +18,9 @@ export function GameScreen({ ctl, onExit, title }: { ctl: Controller; onExit: ()
   const inProgress = s.phase !== 'over';
   // Victory for the player on this screen (any finished game counts in hot-seat and spectating).
   const won = s.phase === 'over' && (ctl.mySides.length !== 1 || ctl.mySides[0] === s.winner);
-  useMusic(s.phase === 'draft' ? 'draft' : s.phase === 'over' ? null : s.mapId === 'river' ? 'battleRiver' : 'battle');
+  // The boss theme takes over for the final round, or once either side is down to its last Pokémon.
+  const climax = s.phase === 'battle' && (s.round >= s.maxRounds || (['A', 'D'] as const).some((side) => liveUnits(s, side).length === 1));
+  useMusic(s.phase === 'draft' ? 'draft' : s.phase === 'over' ? (won ? 'victory' : 'defeat') : climax ? 'climax' : s.mapId === 'river' ? 'battleRiver' : 'battle');
   useEffect(() => {
     if (s.phase === 'over') sfx(won ? 'victory' : 'defeat');
   }, [s.phase === 'over']); // eslint-disable-line react-hooks/exhaustive-deps

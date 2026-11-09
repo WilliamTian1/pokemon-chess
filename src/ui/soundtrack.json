@@ -1,0 +1,66 @@
+{
+  "title": {
+    "file": "title.mp3",
+    "loopStart": 6.79828,
+    "loopEnd": 76.63615,
+    "gain": 0.889
+  },
+  "draft": {
+    "file": "draft.mp3",
+    "loopStart": 13.88014,
+    "loopEnd": 109.90789,
+    "gain": 0.823
+  },
+  "lab": {
+    "file": "lab.mp3",
+    "loopStart": 4.45288,
+    "loopEnd": 98.23,
+    "gain": 0.561
+  },
+  "battle": {
+    "file": "battle.mp3",
+    "loopStart": 16.45619,
+    "loopEnd": 107.45122,
+    "gain": 0.835
+  },
+  "battleRiver": {
+    "file": "battleRiver.mp3",
+    "loopStart": 11.3346,
+    "loopEnd": 110.93635,
+    "gain": 0.88
+  },
+  "climax": {
+    "file": "climax.mp3",
+    "loopStart": 12.00635,
+    "loopEnd": 94.9522,
+    "gain": 0.695
+  },
+  "resultsWin": {
+    "file": "resultsWin.mp3",
+    "loopStart": 6.49034,
+    "loopEnd": 39.22381,
+    "gain": 1.445
+  },
+  "resultsLose": {
+    "file": "resultsLose.mp3",
+    "loopStart": 1.58317,
+    "loopEnd": 35.4732,
+    "gain": 1.579
+  },
+  "jingleWin": {
+    "file": "jingleWin.mp3",
+    "gain": 0.722
+  },
+  "jingleLose": {
+    "file": "jingleLose.mp3",
+    "gain": 1.072
+  },
+  "jingleSpecial": {
+    "file": "jingleSpecial.mp3",
+    "gain": 1.155
+  },
+  "jingleEvolve": {
+    "file": "jingleEvolve.mp3",
+    "gain": 1.009
+  }
+}

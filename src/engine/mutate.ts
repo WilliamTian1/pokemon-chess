@@ -100,13 +100,14 @@ export function heal(ctx: Ctx, u: Unit, amount: number, label?: string): number 
 }
 
 /** Changes form. `full` restores max HP; otherwise damage taken is preserved. */
-export function transform(_ctx: Ctx, u: Unit, cardId: string, full: boolean): void {
+export function transform(ctx: Ctx, u: Unit, cardId: string, full: boolean): void {
   const next = getCard(cardId);
   const taken = u.maxHp - u.hp;
   u.cardId = cardId;
   u.maxHp = next.hp;
   u.hp = full ? next.hp : Math.max(1, next.hp - taken);
   if (next.ability === 'shieldsDownMeteor') u.status = null;
+  emit(ctx, { t: 'transform', unitId: u.id, cardId });
 }
 
 export function faint(ctx: Ctx, u: Unit, source: Unit | null): void {

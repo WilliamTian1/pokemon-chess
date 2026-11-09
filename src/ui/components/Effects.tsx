@@ -41,6 +41,8 @@ function sfxFor(e: GameEvent): Sfx | null {
       return e.kind;
     case 'special':
       return 'special';
+    case 'transform':
+      return 'evolve';
     default:
       return null;
   }
@@ -286,6 +288,10 @@ export function SoundButton({ className = '', up = false }: { className?: string
               <input type="checkbox" checked={s[k]} onChange={(e) => setAudioSettings({ [k]: e.target.checked })} className="h-4 w-4 accent-amber-400" />
             </label>
           ))}
+          <label className="flex cursor-pointer items-center justify-between gap-2" title="Off: the original chiptune music and effects">
+            <span>Conquest soundtrack</span>
+            <input type="checkbox" checked={s.soundtrack === 'conquest'} onChange={(e) => setAudioSettings({ soundtrack: e.target.checked ? 'conquest' : 'chiptune' })} className="h-4 w-4 accent-amber-400" />
+          </label>
           <label className="block">
             <span className="text-xs text-slate-400">Volume</span>
             <input type="range" min={0} max={1} step={0.05} value={s.volume} onChange={(e) => setAudioSettings({ volume: Number(e.target.value) })} className="w-full accent-amber-400" />
