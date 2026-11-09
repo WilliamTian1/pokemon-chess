@@ -11,7 +11,7 @@ import {
 } from './mutate';
 import type { Dir, GameState, MoveDef, PType, Pos, StatId, StatusId, Unit } from './types';
 import { DIRS, otherSide } from './types';
-import { DIR_VEC, addPos, cheb } from './util';
+import { DIR_VEC, addPos, cheb, steps } from './util';
 
 export interface Targeting {
   ok: boolean;
@@ -48,7 +48,7 @@ export function targeting(s: GameState, u: Unit, move: MoveDef, opts: TargetOpts
     case 'range': {
       const tgt = opts.targetId ? s.units.find((x) => x.id === opts.targetId) : undefined;
       if (!tgt || !onBoard(tgt) || tgt.id === u.id) return fail('Choose a Pokémon to hit');
-      if (cheb(origin, tgt.pos) > t.range) return fail(`Target must be within ${t.range} tiles`);
+      if (steps(origin, tgt.pos) > t.range) return fail(`Target must be within ${t.range} tiles`);
       return { ok: true, zone: [tgt.pos], dashTo: null, targets: [tgt], substitute: false };
     }
     case 'ally': {
@@ -116,7 +116,7 @@ export function canTargetFrom(s: GameState, u: Unit, origin: Pos, target: Unit):
     const m = moveOf(u, idx);
     if (isSupportOnly(m)) continue;
     if (m.target.kind === 'range') {
-      if (cheb(origin, target.pos) <= m.target.range) return true;
+      if (steps(origin, target.pos) <= m.target.range) return true;
     } else if (m.target.kind === 'grid') {
       for (const d of DIRS) {
         const tg = targeting(s, u, m, { dir: d, origin });
@@ -205,7 +205,7 @@ function selfMove(ctx: Ctx, u: Unit, move: MoveDef): void {
     log(ctx, `${nameOf(u)} became the centre of attention!`, 'info', u.side);
   }
   if (fx.special === 'futureSight') {
-    ctx.s.futureSight.push({ userId: u.id, side: u.side, pos: { ...u.pos! } });
+    ctx.s.futureSight.push({ userId: u.id, side: u.side });
     log(ctx, `${nameOf(u)} foresaw an attack! It lands at the start of its next turn.`, 'info', u.side);
   }
 }
@@ -511,12 +511,15 @@ function queueLiquidVoice(ctx: Ctx, u: Unit, move: MoveDef, moveIndex: 0 | 1): v
   }
 }
 
-/** Trebuchet: base 40 in one of the user's types, any single Pokémon anywhere, ignores stat stages. */
-export function trebuchetAttack(ctx: Ctx, u: Unit, t: Unit, type: PType): ExecResult {
+/**
+ * Trebuchet: a flat 40 at any single Pokémon anywhere, carrying all of the user's types at once
+ * (effectiveness multiplies across them), ignoring stat stages.
+ */
+export function trebuchetAttack(ctx: Ctx, u: Unit, t: Unit): ExecResult {
   const s = ctx.s;
-  log(ctx, `${nameOf(u)} fired the trebuchet at ${nameOf(t)}! (${type})`, 'info', u.side);
+  const ac = makeAttackCtx(u, null);
+  log(ctx, `${nameOf(u)} fired the trebuchet at ${nameOf(t)}! (${ac.types.join('/')})`, 'info', u.side);
   emit(ctx, { t: 'attack', unitId: u.id, name: 'Trebuchet', tiles: [t.pos!] });
-  const ac = makeAttackCtx(u, null, { moveType: type });
   const imm = isImmune(ac, t);
   if (imm.absorbed) {
     log(ctx, `${nameOf(t)}'s Storm Drain absorbed the shot!`, 'info', t.side);
@@ -532,7 +535,7 @@ export function trebuchetAttack(ctx: Ctx, u: Unit, t: Unit, type: PType): ExecRe
   const dmg = computeDamage(s, ac, t, 40, null);
   const dealt = dealDamage(ctx, t, dmg.damage, { source: u, attack: true, ignoreAbilities: ac.ignoreAbilities, label: typeEffectLabel(dmg.mult) ?? undefined });
   triggerLeech(ctx, u, posBefore, t.id, dealt);
-  if (!ac.ignoreAbilities) reactiveAbilities(ctx, u, t, u.pos!, posBefore, type);
+  if (!ac.ignoreAbilities) reactiveAbilities(ctx, u, t, u.pos!, posBefore, ac.types.includes('Dark') ? 'Dark' : ac.moveType);
   if (!t.fainted && abilityOf(t) === 'emergencyExit' && hpBefore >= 100 && t.hp < 100) queueEmergencyExit(ctx, t);
   return { hits: 1, kos: t.fainted ? 1 : 0 };
 }

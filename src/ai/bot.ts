@@ -1,8 +1,8 @@
 import {
-  type Action, type CardDef, type Dir, type GameState, type Pos, type Rng, type Side, type Unit,
+  type Action, CARD_LIST, type CardDef, type Dir, type GameState, type Pos, type Rng, type Side, type Unit,
   basePower, cardOf, cheb, computeDamage, decider, effectiveMov, expectedRng, getCard, getMap, getUnit, grazeApplies,
   canPass, draftOptions, isImmune, isSupportOnly, isTrebuchet, liveUnits, makeAttackCtx, mapOf, moveOf, moveOptions, moveTargets, onBoard,
-  otherSide, parseGrid, posKey, reachable, simulate, terrainAt, trebuchetOption, typeMultiplier, waitBlock, zoneTiles,
+  otherSide, parseGrid, posKey, reachable, seededRng, simulate, steps, terrainAt, terrainBonus, trebuchetOption, waitBlock, zoneTiles,
 } from '../engine';
 import { bestDraftPick, hasDraftModel } from './draft';
 import { matchup, rateCard } from './rating';
@@ -59,28 +59,46 @@ function placeNext(s: GameState, side: Side, level: Difficulty, rng: Rng): Actio
   return simplePlacement(s, side, level, rng);
 }
 
+/** Every legal placement for the side placing next in `s`. */
+function placements(s: GameState): Action[] {
+  const side = decider(s)!;
+  const spawns = getMap(s.mapId).spawns[side].filter((p) => !liveUnits(s).some((u) => u.pos && u.pos.x === p.x && u.pos.y === p.y));
+  return s.units.filter((u) => u.side === side && !u.pos).flatMap((u) => spawns.map((pos): Action => ({ type: 'place', unitId: u.id, pos })));
+}
+
+/** Finishes the placement with the simple rule for both sides and scores the opening for `side`. */
+function openingValue(s0: GameState, side: Side, rng: Rng): number {
+  let n: GameState | null = s0;
+  for (let guard = 0; n && n.phase === 'placement' && guard < 8; guard++) {
+    n = simulate(n, simplePlacement(n, decider(n)!, 'medium', rng), expectedRng);
+  }
+  return n ? new Evaluator(n, side, 'hard').evaluate(n) : -Infinity;
+}
+
 /**
- * Tries each unplaced Pokémon on each free spawn, finishes the placement with the simple rule for
- * both sides, and keeps the choice whose opening position evaluates best.
+ * Tries each unplaced Pokémon on each free spawn and assumes the opponent answers with the
+ * placement that is worst for us (one step of minimax); the rest is filled in with the simple
+ * rule, and the resulting opening position is scored.
  */
 function bestPlacement(s: GameState, side: Side, rng: Rng): Action {
-  const units = s.units.filter((u) => u.side === side && !u.pos);
-  const spawns = getMap(s.mapId).spawns[side].filter((p) => !liveUnits(s).some((u) => u.pos && u.pos.x === p.x && u.pos.y === p.y));
   let bestAct: Action | null = null;
   let bestScore = -Infinity;
-  for (const u of units) {
-    for (const pos of spawns) {
-      const act: Action = { type: 'place', unitId: u.id, pos };
-      let n = simulate(s, act, expectedRng);
-      for (let guard = 0; n && n.phase === 'placement' && guard < 8; guard++) {
-        n = simulate(n, simplePlacement(n, decider(n)!, 'medium', rng), expectedRng);
+  for (const act of placements(s)) {
+    const n = simulate(s, act, expectedRng);
+    if (!n) continue;
+    let score = Infinity;
+    if (n.phase === 'placement' && decider(n) !== side) {
+      for (const reply of placements(n)) {
+        const r = simulate(n, reply, expectedRng);
+        if (r) score = Math.min(score, openingValue(r, side, rng));
+        if (score <= bestScore) break; // Can't beat the best choice so far.
       }
-      if (!n) continue;
-      const score = new Evaluator(n, side, 'hard').evaluate(n);
-      if (score > bestScore) {
-        bestScore = score;
-        bestAct = act;
-      }
+    } else {
+      score = openingValue(n, side, rng);
+    }
+    if (score > bestScore) {
+      bestScore = score;
+      bestAct = act;
     }
   }
   return bestAct ?? simplePlacement(s, side, 'medium', rng);
@@ -106,6 +124,31 @@ function simplePlacement(s: GameState, side: Side, level: Difficulty, rng: Rng):
 const DEF_ALIVE = [0, 420, 540, 620, 680];
 const ATT_ENEMY_ALIVE = [0, 160, 280, 380, 460];
 
+/**
+ * Multipliers on the parts of the Hard evaluation, tuned by self-play (scripts/tune-eval.ts).
+ * 1 everywhere reproduces the hand-set evaluation.
+ */
+export const EVAL = {
+  /** Bonus for Pokémon still standing (Defender) / penalty per standing enemy (Attacker). */
+  alive: 1,
+  /** Value of a faint beyond the HP it removes. */
+  ko: 1,
+  /** Own and opposing HP. */
+  ownHp: 1,
+  oppHp: 1,
+  /** Stat stages and status conditions. */
+  stages: 1,
+  status: 1,
+  /** Attacker's pull towards the nearest reachable Defender. */
+  approach: 1,
+  /** Penalty for standing where the opponent can hit next turn, per role. */
+  atkThreat: 1,
+  defThreat: 1,
+  /** Bonus for standing where this Pokémon can hit next turn, per role. */
+  atkOpp: 1,
+  defOpp: 1,
+};
+
 interface Weights {
   threat: number;
   opportunity: number;
@@ -128,15 +171,44 @@ class Evaluator {
   private readonly width: number;
   /** The side whose next turn is round 1, which is move-only (it threatens nothing). */
   private readonly idle: Side | null;
+  /** Hard applies the self-play-tuned EVAL multipliers; Medium keeps the hand-set evaluation. */
+  private readonly tuned: boolean;
   readonly w: Weights;
 
-  constructor(readonly s0: GameState, readonly side: Side, level: Difficulty) {
+  constructor(readonly s0: GameState, readonly side: Side, level: Difficulty, shareWith?: Evaluator) {
     this.w = WEIGHTS[level];
+    this.tuned = level === 'hard';
     this.width = mapOf(s0).width;
     this.idle = s0.round === 1 && s0.side === 'A' ? 'D' : null;
-    if (this.w.threat > 0 || this.w.opportunity > 0) {
+    if (shareWith) {
+      // Same position, other point of view: the threat masks don't depend on the side.
+      for (const [k, v] of shareWith.threatMasks) this.threatMasks.set(k, v);
+    } else if (this.w.threat > 0 || this.w.opportunity > 0) {
       for (const e of liveUnits(s0)) this.threatMasks.set(e.id, this.computeMask(s0, e));
     }
+  }
+
+  gapToPublic(s: GameState, u: Unit, e: Unit): number {
+    return this.gapTo(s, u, e);
+  }
+
+  /** How many opponents could aim an attack at `u`'s tile next turn. */
+  threatCount(s: GameState, u: Unit): number {
+    const idx = u.pos!.y * this.width + u.pos!.x;
+    return liveUnits(s).filter((e) => e.side !== u.side && this.actWeight(e) > 0 && (this.threatMasks.get(e.id)?.[idx] ?? 0) !== 0).length;
+  }
+
+  /** Whether `u` could faint some opponent with one attack from a tile it can reach next turn. */
+  canKo(s: GameState, u: Unit): boolean {
+    if (this.actWeight(u) === 0) return false;
+    const mask = this.threatMasks.get(u.id);
+    if (!mask) return false;
+    return liveUnits(s).some((e) => {
+      if (e.side === u.side) return false;
+      const bits = mask[e.pos!.y * this.width + e.pos!.x];
+      for (const i of [0, 1, 2] as const) if (bits & (1 << i) && this.expDamage(s, u, i, e) >= e.hp) return true;
+      return false;
+    });
   }
 
   /** Bitmask per tile of which of `e`'s attacks (bit 0/1) or the trebuchet (bit 2) could land there next turn. */
@@ -156,7 +228,7 @@ class Evaluator {
         const r = mv.target.range;
         for (let y = 0; y < m.height; y++) {
           for (let x = 0; x < m.width; x++) {
-            if (tiles.some((p) => Math.max(Math.abs(p.x - x), Math.abs(p.y - y)) <= r)) mask[y * m.width + x] |= bit;
+            if (tiles.some((p) => Math.abs(p.x - x) + Math.abs(p.y - y) <= r)) mask[y * m.width + x] |= bit;
           }
         }
       }
@@ -210,7 +282,7 @@ class Evaluator {
   }
 
   koValue(u: Unit): number {
-    return 95 + 0.45 * this.offense(u) + 0.15 * u.maxHp;
+    return (95 + 0.45 * this.offense(u) + 0.15 * u.maxHp) * (this.tuned ? EVAL.ko : 1);
   }
 
   /** Expected damage of attacker `a`'s move `idx` (2 = trebuchet) against `t` in state `s`. */
@@ -220,9 +292,7 @@ class Evaluator {
     if (hit !== undefined) return hit;
     let dmg = 0;
     if (idx === 2) {
-      const types = cardOf(a).types;
-      const type = [...types].sort((x, y) => typeMultiplier(y, cardOf(t).types) - typeMultiplier(x, cardOf(t).types))[0];
-      const ac = makeAttackCtx(a, null, { moveType: type });
+      const ac = makeAttackCtx(a, null);
       if (!isImmune(ac, t).immune) dmg = computeDamage(s, ac, t, 40, null).damage;
     } else {
       const mv = moveOf(a, idx);
@@ -335,7 +405,8 @@ class Evaluator {
         v -= ab === 'poisonHeal' ? -30 : 20 + 20 * Math.min(4, u.toxicN + 1);
         break;
     }
-    v += u.stages.atk * (off > 40 ? 15 : 4) + u.stages.def * 12 + u.stages.mov * 6;
+    if (this.tuned) v *= EVAL.status;
+    v += (u.stages.atk * (off > 40 ? 15 : 4) + u.stages.def * 12 + u.stages.mov * 6) * (this.tuned ? EVAL.stages : 1);
     if (u.flinched) v -= 0.5 * off;
     if (u.nextTurn.noAct) v -= 0.6 * off;
     else if (u.nextTurn.noMove) v -= 12;
@@ -387,12 +458,13 @@ class Evaluator {
     // aggressive each round; the Defender only has to keep one Pokémon alive.
     const rf = s.round / s.maxRounds;
     const atk = me === 'A';
-    const ownHpW = atk ? 0.7 : 1;
+    const tw = this.tuned ? EVAL : null;
+    const ownHpW = (atk ? 0.7 : 1) * (tw ? tw.ownHp : 1);
     const ownKoW = atk ? 0.8 : 1.3;
-    const oppHpW = atk ? 1 + 0.6 * rf : 0.8;
+    const oppHpW = (atk ? 1 + 0.6 * rf : 0.8) * (tw ? tw.oppHp : 1);
     const oppKoW = atk ? 1.2 + 0.8 * rf : 1;
-    const threatW = atk ? 0.45 - 0.2 * rf : 1;
-    const oppW = atk ? 0.5 + 0.3 * rf : 0.2;
+    const threatW = (atk ? 0.45 - 0.2 * rf : 1) * (tw ? (atk ? tw.atkThreat : tw.defThreat) : 1);
+    const oppW = (atk ? 0.5 + 0.3 * rf : 0.2) * (tw ? (atk ? tw.atkOpp : tw.defOpp) : 1);
     let score = 0;
     let ownAlive = 0;
     let oppAlive = 0;
@@ -408,7 +480,7 @@ class Evaluator {
       const v = u.hp * (mine ? ownHpW : oppHpW) + this.stateValue(u);
       score += mine ? v : -v;
     }
-    score += atk ? -ATT_ENEMY_ALIVE[oppAlive] : DEF_ALIVE[ownAlive];
+    score += (atk ? -ATT_ENEMY_ALIVE[oppAlive] : DEF_ALIVE[ownAlive]) * (tw ? tw.alive : 1);
 
     const enemies = liveUnits(s, otherSide(me));
     for (const u of liveUnits(s, me)) {
@@ -420,11 +492,11 @@ class Evaluator {
       }
       if (this.w.opportunity > 0) score += this.w.opportunity * oppW * this.opportunity(s, u);
       if (this.w.positional) {
-        const t = terrainAt(s, u.pos!);
+        const t = terrainBonus(s, u);
         if (t === 'bush') score += 10;
         if (t === 'flower' && u.hp < u.maxHp) score += 12;
         if (isTrebuchet(s, u.pos!)) score += 8;
-        if (atk && enemies.length) score -= this.approach(s, u, rf);
+        if (atk && enemies.length) score -= this.approach(s, u, rf) * (tw ? tw.approach : 1);
       }
     }
     for (const h of s.hazards) {
@@ -441,9 +513,10 @@ class Evaluator {
     }
     for (const f of s.futureSight) {
       const user = s.units.find((u) => u.id === f.userId);
-      const c = user?.pos ?? f.pos;
+      if (!user || !onBoard(user)) continue; // Fizzles if Slowbro has fainted.
+      const c = user.pos;
       for (const x of liveUnits(s)) {
-        if (x.id === f.userId || cheb(x.pos!, c) > 3) continue;
+        if (x.id === f.userId || steps(x.pos!, c) > 3) continue;
         const v = Math.min(100, x.hp) + (x.hp <= 100 ? 0.4 * this.koValue(x) : 0);
         score += (x.side === f.side) === (f.side === me) ? -0.8 * v : 0.8 * v;
       }
@@ -451,6 +524,73 @@ class Evaluator {
     if (s.substitute) score += getUnit(s, s.substitute.ownerId).side === me ? 25 : -25;
     return score;
   }
+}
+
+// ---------------------------------------------------------------- value-network features
+
+const CARD_INDEX = new Map(CARD_LIST.map((c, i) => [c.id, i]));
+export const CARD_COUNT = CARD_LIST.length;
+const STATUSES = ['psn', 'tox', 'brn', 'par', 'slp', 'frz'] as const;
+
+/** Per-Pokémon numeric features, in order (the card itself is passed as an index). */
+export const UNIT_FEATURES = [
+  'hpFrac', 'hp', 'maxHp', 'x', 'y', 'atk', 'def', 'mov', 'effMov',
+  'psn', 'tox', 'brn', 'par', 'slp', 'frz', 'toxicN', 'flinched', 'noAct', 'noMove', 'confused', 'sturdyBroken', 'decoy',
+  'bush', 'flower', 'water', 'trebuchet', 'threat', 'threatKo', 'threatCount', 'opportunity', 'oppKo', 'gap', 'nearEnemy', 'nearAlly',
+] as const;
+/** Whole-position features, in order. */
+export const GLOBAL_FEATURES = [
+  'round', 'aToMove', 'meadow', 'river', 'aliveA', 'aliveD', 'hpA', 'hpD', 'clock', 'clockT', 'evalA', 'evalD',
+  'subA', 'subD', 'fsA', 'fsD', 'spikes', 'webs',
+] as const;
+
+export interface PositionFeatures {
+  /** Live Pokémon per side: card index and numeric features. */
+  units: Record<Side, { card: number; x: number[] }[]>;
+  global: number[];
+}
+
+/**
+ * Features of a position for the value network: each live Pokémon's card, state and tactical
+ * situation (who can hit it next turn, what it can hit), plus global facts such as the clock.
+ */
+export function positionFeatures(s: GameState): PositionFeatures {
+  const evA = new Evaluator(s, 'A', 'hard');
+  const evD = new Evaluator(s, 'D', 'hard', evA);
+  const m = mapOf(s);
+  const units: PositionFeatures['units'] = { A: [], D: [] };
+  for (const u of liveUnits(s)) {
+    const enemies = liveUnits(s, otherSide(u.side));
+    const allies = liveUnits(s, u.side).filter((x) => x.id !== u.id);
+    const threat = evA.threatOn(s, u);
+    let gap = 9;
+    for (const e of enemies) gap = Math.min(gap, evA.gapToPublic(s, u, e));
+    const opp = evA.opportunity(s, u);
+    const t = terrainBonus(s, u);
+    const nearest = (list: Unit[]) => list.reduce((d, x) => Math.min(d, steps(x.pos!, u.pos!)), 20);
+    const x = [
+      u.hp / u.maxHp, u.hp / 200, u.maxHp / 200, u.pos!.x / (m.width - 1), u.pos!.y / (m.height - 1),
+      u.stages.atk / 3, u.stages.def / 3, u.stages.mov / 3, effectiveMov(s, u) / 5,
+      ...STATUSES.map((k) => (u.status === k ? 1 : 0)), u.toxicN / 4,
+      u.flinched ? 1 : 0, u.nextTurn.noAct ? 1 : 0, u.nextTurn.noMove ? 1 : 0, u.confused ? 1 : 0, u.sturdyBroken ? 1 : 0, u.followMe ? 1 : 0,
+      t === 'bush' ? 1 : 0, t === 'flower' ? 1 : 0, terrainAt(s, u.pos!) === 'water' ? 1 : 0, isTrebuchet(s, u.pos!) ? 1 : 0,
+      Math.min(threat, 400) / 200, threat >= u.hp ? 1 : 0, evA.threatCount(s, u) / 4, Math.min(opp, 400) / 200, evA.canKo(s, u) ? 1 : 0,
+      gap / 5, nearest(enemies) / 10, nearest(allies) / 10,
+    ];
+    units[u.side].push({ card: CARD_INDEX.get(u.cardId) ?? 0, x });
+  }
+  const side = (sd: Side) => s.units.filter((u) => u.side === sd);
+  const hpFrac = (sd: Side) => side(sd).reduce((a, u) => a + u.hp, 0) / Math.max(1, side(sd).reduce((a, u) => a + u.maxHp, 0));
+  const clock = s.phase === 'battle' ? evA.clockMargin(s) : 0;
+  const global = [
+    s.round / 10, s.side === 'A' ? 1 : 0, s.mapId === 'meadow' ? 1 : 0, s.mapId === 'river' ? 1 : 0,
+    units.A.length / 4, units.D.length / 4, hpFrac('A'), hpFrac('D'), Math.max(-8, Math.min(8, clock)) / 5, Math.tanh(clock / 2),
+    Math.max(-3, Math.min(3, evA.evaluate(s) / 1000)), Math.max(-3, Math.min(3, evD.evaluate(s) / 1000)),
+    s.substitute && getUnit(s, s.substitute.ownerId).side === 'A' ? 1 : 0, s.substitute && getUnit(s, s.substitute.ownerId).side === 'D' ? 1 : 0,
+    s.futureSight.filter((f) => f.side === 'A').length, s.futureSight.filter((f) => f.side === 'D').length,
+    s.hazards.filter((h) => h.kind === 'spikes').length / 5, s.hazards.filter((h) => h.kind === 'web').length / 5,
+  ];
+  return { units, global };
 }
 
 // ---------------------------------------------------------------- battle planning
@@ -500,8 +640,7 @@ function actionCandidates(s: GameState, u: Unit): Action[] {
     for (const id of tr.targets) {
       const t = getUnit(s, id);
       if (t.side === u.side) continue;
-      const type = [...tr.types].sort((a, b) => typeMultiplier(b, cardOf(t).types) - typeMultiplier(a, cardOf(t).types))[0];
-      out.push({ type: 'trebuchet', unitId: u.id, targetId: id, attackType: type });
+      out.push({ type: 'trebuchet', unitId: u.id, targetId: id });
     }
   }
   out.push({ type: 'wait', unitId: u.id });
@@ -665,11 +804,26 @@ interface TurnNode {
 
 export const SEARCH = {
   /** Partial turns kept after each activation. */
-  beam: 6,
+  beam: 16,
   /** Best plans per Pokémon expanded from each partial turn. */
-  perUnit: 3,
+  perUnit: 5,
   /** Finished turns checked against the opponent's reply. */
-  replies: 5,
+  replies: 16,
+  /**
+   * The opponent's reply: 0 = greedy (best single Pokémon plan at a time); otherwise a whole-turn
+   * beam search of this width, so the bot expects coordinated focus fire like a human's.
+   */
+  replyBeam: 4,
+  replyPerUnit: 2,
+  /** After the opponent's reply, also play out the bot's own next turn before scoring (3-ply). */
+  followUp: true,
+
+  /**
+   * Experimental: score each candidate's line by this many playouts to the end of the game (Medium
+   * policy for both sides, real dice) instead of the static evaluation. 0 = off.
+   */
+  leafRollouts: 0,
+
   /** Soft time limit per search. */
   budgetMs: 2500,
   /** Draft with the self-play team model (otherwise the heuristic ratings). */
@@ -694,14 +848,11 @@ function hardBattle(s: GameState, side: Side): Action[] {
 }
 
 /**
- * Beam search over whole turns: each partial turn is extended by the best few plans of every
- * Pokémon that hasn't activated, keeping the best partial turns. Finished turns are then scored by
- * letting the opponent answer with its greedy best reply, so plans that leave a Pokémon open to a
- * focused counter-attack lose out.
+ * Beam search over one whole turn for `side`: each partial turn is extended by the best few plans of
+ * every Pokémon that hasn't activated, keeping the best partial turns by `ev`. Returns the finished
+ * turns (ended, so the opponent is to move), best first.
  */
-function searchTurn(s0: GameState, side: Side): Step[] {
-  const deadline = performance.now() + SEARCH.budgetMs;
-  const ev = new Evaluator(s0, side, 'hard');
+function beamTurn(s0: GameState, side: Side, ev: Evaluator, width: number, perUnit: number, deadline: number): TurnNode[] {
   let beam: TurnNode[] = [{ s: s0, steps: [], score: ev.evaluate(s0) }];
   const finished: TurnNode[] = [];
   const end = (n: TurnNode): void => {
@@ -733,7 +884,7 @@ function searchTurn(s0: GameState, side: Side): Step[] {
         const plans = planFor(ev, s, u).sort((a, b) => b.score - a.score);
         let kept = 0;
         for (const p of plans) {
-          if (kept >= SEARCH.perUnit) break;
+          if (kept >= perUnit) break;
           const sig = signature(p.state);
           if (seen.has(sig)) continue;
           seen.add(sig);
@@ -748,37 +899,95 @@ function searchTurn(s0: GameState, side: Side): Step[] {
       if (seen.has(k)) return false;
       seen.add(k);
       return true;
-    }).slice(0, SEARCH.beam);
+    }).slice(0, width);
     if (performance.now() > deadline) {
       // Out of time: finish the best partial turns as they stand.
       for (const n of beam) end(n);
       beam = [];
     }
   }
-  if (!finished.length) return [];
-  finished.sort((a, b) => b.score - a.score);
-  const candidates = finished.slice(0, SEARCH.replies);
-  let bestNode = candidates[0];
-  let bestValue = -Infinity;
-  for (const c of candidates) {
-    const v = replyValue(c.s, side, deadline + SEARCH.budgetMs);
-    if (v > bestValue) {
-      bestValue = v;
-      bestNode = c;
-    }
-  }
-  return bestNode.steps;
+  return finished.sort((a, b) => b.score - a.score);
 }
 
-/** Value of a finished turn for `side` after the opponent's greedy reply. */
-function replyValue(s0: GameState, side: Side, deadline: number): number {
-  let s = settle(s0);
-  if (s.phase === 'battle' && s.side !== side) {
-    s = greedyTurn(s, s.side, deadline);
-    const e = s.phase === 'battle' && decider(s) === s.side ? simulate(s, { type: 'endTurn' }, expectedRng) : null;
-    if (e) s = settle(e);
+/**
+ * The bot's turn: beam search over whole turns, then each of the best finished turns is scored by
+ * letting the opponent answer (greedily, or with its own whole-turn search) and, optionally, the
+ * bot play its next turn too. Plans that leave a Pokémon open to a coordinated counter lose out.
+ */
+function searchTurn(s0: GameState, side: Side): Step[] {
+  const deadline = performance.now() + SEARCH.budgetMs;
+  const finished = beamTurn(s0, side, new Evaluator(s0, side, 'hard'), SEARCH.beam, SEARCH.perUnit, deadline);
+  if (!finished.length) return [];
+  const replyDeadline = deadline + SEARCH.budgetMs;
+  const scored = finished.slice(0, SEARCH.replies)
+    .map((c) => {
+      const leaf = replyLeaf(c.s, side, replyDeadline);
+      return { c, leaf, v: leafValue(leaf, side) };
+    })
+    .sort((a, b) => b.v - a.v);
+  searchHooks.onLeaves?.(side, scored.map((x) => x.leaf));
+  const pick = searchHooks.pick ? Math.min(scored.length - 1, searchHooks.pick(scored.length)) : 0;
+  return scored[pick].c.steps;
+}
+
+/** For data generation (scripts/gen-values.ts): see the positions the search compared, and vary its choice. */
+export const searchHooks: {
+  onLeaves: ((side: Side, leaves: GameState[]) => void) | null;
+  /** Index of the candidate to play (0 = best), given how many there are. */
+  pick: ((n: number) => number) | null;
+} = { onLeaves: null, pick: null };
+
+/** Plays `side`'s turn with its own evaluation and ends it. */
+function playTurn(s0: GameState, side: Side, beamWidth: number, perUnit: number, deadline: number): GameState {
+  if (beamWidth > 0) {
+    const best = beamTurn(s0, side, new Evaluator(s0, side, 'hard'), beamWidth, perUnit, deadline)[0];
+    return best ? settle(best.s) : s0;
   }
+  const s = greedyTurn(s0, side, deadline);
+  const e = s.phase === 'battle' && decider(s) === side ? simulate(s, { type: 'endTurn' }, expectedRng) : null;
+  return e ? settle(e) : s;
+}
+
+/** A finished turn for `side` after the opponent's reply (and optionally its own next turn). */
+function replyLeaf(s0: GameState, side: Side, deadline: number): GameState {
+  let s = settle(s0);
+  if (s.phase === 'battle' && s.side !== side) s = playTurn(s, s.side, SEARCH.replyBeam, SEARCH.replyPerUnit, deadline);
+  if (SEARCH.followUp && s.phase === 'battle' && s.side === side) s = playTurn(s, side, 0, 0, deadline);
+  return s;
+}
+
+function leafValue(s: GameState, side: Side): number {
+  if (SEARCH.leafRollouts > 0) return rolloutValue(s, side, SEARCH.leafRollouts);
   return new Evaluator(s, side, 'hard').evaluate(s);
+}
+
+let rolloutSeed = 1;
+
+/** Fraction of `n` Medium-vs-Medium playouts from `s0` (real dice) that `side` wins. */
+export function rolloutValue(s0: GameState, side: Side, n: number): number {
+  let wins = 0;
+  for (let i = 0; i < n; i++) {
+    const rng = seededRng(rolloutSeed++ * 2654435761);
+    let s = s0;
+    for (let guard = 0; s.phase !== 'over' && guard < 2000; guard++) {
+      const who = decider(s)!;
+      const acts = decide(s, who, 'medium', rng);
+      let moved = false;
+      for (const a of acts) {
+        if (decider(s) !== who) break;
+        const next = simulate(s, a, rng);
+        if (!next) break;
+        s = next;
+        moved = true;
+      }
+      if (!moved) {
+        const fb = legalFallback(s, who)[0];
+        s = simulate(s, fb, rng) ?? s;
+      }
+    }
+    if (s.phase === 'over' && s.winner === side) wins += 1;
+  }
+  return wins / n;
 }
 
 // ---------------------------------------------------------------- pending choices

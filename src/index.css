@@ -10,6 +10,7 @@
   --tile-dirt: #b88a5c;
   --tile-dirt-2: #ae8155;
   --tile-grass: #5f9c3c;
+  --tile-bridge: #a0703f;
   --tile-water: #3f97d6;
   --tile-water-2: #4ea6e3;
 }
@@ -71,6 +72,19 @@ body {
     repeating-linear-gradient(115deg, rgba(255, 255, 255, 0.07) 0 3px, transparent 3px 9px),
     var(--tile-grass);
 }
+/* Wooden planks laid across the direction of travel (set per tile by the board). */
+.tile-bridge {
+  background:
+    repeating-linear-gradient(0deg, rgba(60, 30, 10, 0.45) 0 1.5px, transparent 1.5px 20%),
+    linear-gradient(90deg, rgba(60, 30, 10, 0.5) 0 6%, transparent 6% 94%, rgba(60, 30, 10, 0.5) 94%),
+    var(--tile-bridge);
+}
+.tile-bridge.across {
+  background:
+    repeating-linear-gradient(90deg, rgba(60, 30, 10, 0.45) 0 1.5px, transparent 1.5px 20%),
+    linear-gradient(0deg, rgba(60, 30, 10, 0.5) 0 6%, transparent 6% 94%, rgba(60, 30, 10, 0.5) 94%),
+    var(--tile-bridge);
+}
 .tile-water {
   background:
     radial-gradient(ellipse 60% 22% at 30% 35%, rgba(255, 255, 255, 0.28), transparent 70%),
@@ -92,33 +106,4 @@ body {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
   }
-}
-
-/* Placement coin flip: the coin lands showing the side that places first. */
-@keyframes coin-A {
-  0% { transform: translateY(0) rotateY(0deg); }
-  45% { transform: translateY(-70px) rotateY(900deg); }
-  100% { transform: translateY(0) rotateY(1800deg); }
-}
-@keyframes coin-D {
-  0% { transform: translateY(0) rotateY(0deg); }
-  45% { transform: translateY(-70px) rotateY(990deg); }
-  100% { transform: translateY(0) rotateY(1980deg); }
-}
-@keyframes coin-result {
-  0%, 70% { opacity: 0; transform: translateY(6px); }
-  100% { opacity: 1; transform: none; }
-}
-.coin {
-  transform-style: preserve-3d;
-  animation: 1.5s cubic-bezier(0.3, 0.6, 0.4, 1) forwards;
-}
-.coin-A { animation-name: coin-A; }
-.coin-D { animation-name: coin-D; }
-.coin-face { backface-visibility: hidden; }
-.coin-back { transform: rotateY(180deg); }
-.coin-result { animation: coin-result 2s ease-out forwards; }
-@media (prefers-reduced-motion: reduce) {
-  .coin { animation-duration: 0.01s; }
-  .coin-result { animation-duration: 0.01s; }
 }

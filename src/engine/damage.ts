@@ -1,7 +1,7 @@
 import { typeMultiplier } from './data/typechart';
 import {
   abilityOf, adjacentToType, alliesOf, cardOf, effectiveMov, isNormalTerrain, liveUnits,
-  terrainAt, withAbility,
+  terrainAt, terrainBonus, withAbility,
 } from './query';
 import type { GameState, MoveDef, PType, Pos, Unit } from './types';
 import { cheb, clamp, roundUp5 } from './util';
@@ -12,6 +12,8 @@ export interface AttackCtx {
   attackerPos: Pos;
   move: MoveDef | null;
   moveType: PType;
+  /** Every type the hit carries: the move's type, or all of the user's types for the trebuchet. */
+  types: PType[];
   moveName: string;
   isTrebuchet: boolean;
   /** Moongeist Beam, Teravolt, Turboblaze. */
@@ -26,11 +28,13 @@ export function makeAttackCtx(attacker: Unit, move: MoveDef | null, opts: {
   targetCount?: number;
 } = {}): AttackCtx {
   const ab = abilityOf(attacker);
+  const moveType = opts.moveType ?? (move ? move.type ?? 'Normal' : cardOf(attacker).types[0]);
   return {
     attacker,
     attackerPos: opts.attackerPos ?? attacker.pos!,
     move,
-    moveType: opts.moveType ?? move?.type ?? 'Normal',
+    moveType,
+    types: move ? [moveType] : cardOf(attacker).types,
     moveName: move?.name ?? 'Trebuchet',
     isTrebuchet: move === null,
     ignoreAbilities: !!move?.fx.ignoreAbilities || ab === 'teravolt' || ab === 'turboblaze',
@@ -106,11 +110,16 @@ export interface DamageResult {
   absorbed: boolean;
 }
 
+/** Type effectiveness of the hit: the product over every type it carries. */
+export function hitTypeMultiplier(ac: AttackCtx, target: Unit): number {
+  return ac.types.reduce((m, t) => m * typeMultiplier(t, cardOf(target).types), 1);
+}
+
 export function isImmune(ac: AttackCtx, target: Unit): { immune: boolean; absorbed: boolean } {
   const dAb = ac.ignoreAbilities ? null : abilityOf(target);
-  if (dAb === 'stormDrain' && ac.moveType === 'Water') return { immune: true, absorbed: true };
-  if (dAb === 'levitate' && ac.moveType === 'Ground') return { immune: true, absorbed: false };
-  if (typeMultiplier(ac.moveType, cardOf(target).types) === 0) return { immune: true, absorbed: false };
+  if (dAb === 'stormDrain' && ac.types.includes('Water')) return { immune: true, absorbed: true };
+  if (dAb === 'levitate' && ac.types.includes('Ground')) return { immune: true, absorbed: false };
+  if (hitTypeMultiplier(ac, target) === 0) return { immune: true, absorbed: false };
   return { immune: false, absorbed: false };
 }
 
@@ -128,13 +137,13 @@ export function computeDamage(s: GameState, ac: AttackCtx, target: Unit, base: n
   const grazed = grazePower !== null;
   const dist = cheb(ac.attackerPos, target.pos!);
 
-  let mult = typeMultiplier(ac.moveType, cardOf(target).types);
+  let mult = hitTypeMultiplier(ac, target);
   if (aAb === 'tintedLens' && mult < 1) mult = 1;
 
   // The trebuchet is a flat 40 before type effectiveness: no stages, ability, terrain or burn modifiers.
   if (ac.isTrebuchet) {
     let raw = 40 * mult;
-    if (dAb === 'thickFat' && (ac.moveType === 'Fire' || ac.moveType === 'Ice')) raw *= 0.5;
+    if (dAb === 'thickFat' && (ac.types.includes('Fire') || ac.types.includes('Ice'))) raw *= 0.5;
     return { damage: roundUp5(raw), mult, immune: false, absorbed: false };
   }
 
@@ -180,7 +189,7 @@ export function computeDamage(s: GameState, ac: AttackCtx, target: Unit, base: n
   }
   if (dAb === 'resistance' && dist <= 1) mod += 20;
   if (!ac.ignoreAbilities && !defBoostsIgnored && flowerGiftAdjacent(s, target)) mod -= 30;
-  if (aAb !== 'airLock' && terrainAt(s, target.pos!) === 'bush') mod -= 30;
+  if (aAb !== 'airLock' && terrainBonus(s, target) === 'bush') mod -= 30;
 
   // ---- status
   if (A.status === 'brn' && aAb !== 'guts') mod -= 30;

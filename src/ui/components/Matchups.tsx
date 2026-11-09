@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   type CardDef, type GameState, type PType, type Side, TYPES, TYPE_COLORS, attackTypes, bestHit, cardOf, defenseProfile, hitMultiplier,
-  liveUnits, multLabel, typeMultiplier,
+  multLabel, typeMultiplier,
 } from '../../engine';
 import { Art, Modal, SIDE_TEXT, TypeBadge } from './bits';
 
@@ -95,10 +95,12 @@ export function matchupTitle(a: CardDef, b: CardDef): string {
   return `${a.name}'s best attack vs ${b.name}: ${ab ? `${ab.type} ${multLabel(ab.mult)}` : 'none'} · ${b.name}'s best vs ${a.name}: ${ba ? `${ba.type} ${multLabel(ba.mult)}` : 'none'}`;
 }
 
-/** Both teams' best type matchups against each other, live Pokémon only. */
+/** Both teams' best type matchups against each other (fainted Pokémon left out). */
 export function MatchupMatrix({ state, rows, onHover }: { state: GameState; rows: Side; onHover?: (ids: string[] | null) => void }) {
-  const mine = liveUnits(state, rows);
-  const theirs = liveUnits(state, rows === 'A' ? 'D' : 'A');
+  // Every Pokémon still in the match, placed or not: both teams are known once the draft ends.
+  const team = (side: Side) => state.units.filter((u) => u.side === side && !u.fainted);
+  const mine = team(rows);
+  const theirs = team(rows === 'A' ? 'D' : 'A');
   if (!mine.length || !theirs.length) return <div className="text-xs text-slate-500">Nothing to compare.</div>;
   return (
     <div className="overflow-x-auto" onMouseLeave={() => onHover?.(null)}>

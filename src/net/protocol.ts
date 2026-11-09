@@ -5,7 +5,7 @@ export type ClientMsg =
   | { t: 'create' }
   | { t: 'join'; code: string }
   | { t: 'seat'; side: Side | null }
-  | { t: 'start'; randomRoles: boolean; mapId?: string }
+  | { t: 'start'; randomRoles: boolean; mapId?: string; legendaries?: boolean }
   | { t: 'action'; action: Action }
   | { t: 'rematch'; swapRoles: boolean }
   | { t: 'leave' };
@@ -24,6 +24,8 @@ export interface RoomView {
   game: GameState | null;
   /** Map for the next match (the host's choice). */
   mapId: string;
+  /** Whether the next match drafts legendaries (the host's choice). */
+  legendaries: boolean;
   events: GameEvent[];
   eventSeq: number;
 }

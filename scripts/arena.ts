@@ -9,8 +9,11 @@
  * export `decide` with the same signature). `--swap` also plays every seed with the roles
  * reversed, which cancels out the side's own advantage. `--draft random` replaces both drafts
  * with uniform random picks from the pool, which is what scripts/train-draft.ts learns from.
- * `--map river` plays on another map (default meadow).
- * `--tune '{"weights":{"clock":0},"search":{"beam":3}}'` overrides the repo bot's Hard settings.
+ * `--map river` plays on another map (default meadow). `--legends off` drafts without legendaries, and
+ * `--legends mix` alternates (training data for both modes). `--usage` records how often each move is chosen
+ * when it is usable (in --out records).
+ * `--tune '{"weights":{"clock":0},"search":{"beam":3},"eval":{"ko":1.2}}'` overrides the repo bot's Hard
+ * settings, and `--tune-other` the --other bot's (if it exports them).
  */
 import fs from 'node:fs';
 import os from 'node:os';
@@ -18,7 +21,8 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { Worker, isMainThread, parentPort, workerData } from 'node:worker_threads';
 import {
-  type Action, type GameState, type Rng, type Side, RuleError, applyAction, decider, draftOptions, newGame, seededRng,
+  type Action, type GameState, type Rng, type Side, RuleError, applyAction, cardOf, decider, draftOptions, moveOptions, newGame,
+  seededRng, trebuchetOption,
 } from '../src/engine';
 
 type Decide = (s: GameState, side: Side, level: string, rng: Rng) => Action[];
@@ -28,6 +32,8 @@ interface Job {
   players: Record<Side, string>;
   draft: 'bot' | 'random';
   mapId: string;
+  legends: boolean;
+  usage: boolean;
 }
 
 export interface GameRecord {
@@ -43,6 +49,11 @@ export interface GameRecord {
   ms: Record<Side, number>;
   decisions: Record<Side, number>;
   replans: number;
+  /**
+   * With --usage: per "card|move" (moves named, plus Trebuchet and wait), how often it was usable
+   * when that card acted, and how often it was chosen.
+   */
+  usage?: Record<string, { avail: number; used: number }>;
 }
 
 const here = fileURLToPath(import.meta.url);
@@ -54,19 +65,27 @@ function arg(name: string, def?: string): string | undefined {
   return v === undefined || v.startsWith('--') ? 'true' : v;
 }
 
-let tune: { weights?: object; search?: object } | null = null;
+type Tune = { weights?: object; search?: object; eval?: object };
+let tune: Tune | null = null;
+let tuneOther: Tune | null = null;
+
+function applyTune(mod: Record<string, unknown>, t: Tune | null): void {
+  if (!t) return;
+  const target = (name: string) => mod[name] as Record<string, unknown> | undefined;
+  if (t.weights) Object.assign((target('WEIGHTS') as Record<string, object>).hard, t.weights);
+  if (t.search) Object.assign(target('SEARCH')!, t.search);
+  if (t.eval) Object.assign(target('EVAL')!, t.eval);
+}
 
 async function loadDecide(spec: string, other: string | undefined): Promise<{ decide: Decide; level: string }> {
   if (spec.startsWith('other:')) {
     if (!other) throw new Error('--other is required for other:<level> players');
     const mod = await import(pathToFileURL(path.resolve(other)).href);
+    applyTune(mod, tuneOther);
     return { decide: mod.decide as Decide, level: spec.slice(6) };
   }
   const mod = await import('../src/ai/bot');
-  if (tune) {
-    Object.assign(mod.WEIGHTS.hard, tune.weights ?? {});
-    Object.assign(mod.SEARCH, tune.search ?? {});
-  }
+  applyTune(mod as unknown as Record<string, unknown>, tune);
   return { decide: mod.decide as Decide, level: spec };
 }
 
@@ -74,11 +93,16 @@ async function playGame(job: Job, other: string | undefined): Promise<GameRecord
   const players = { A: await loadDecide(job.players.A, other), D: await loadDecide(job.players.D, other) };
   const rng = seededRng(job.seed);
   const botRng = seededRng(job.seed * 7919 + 13);
-  let s = newGame({ rng, mapId: job.mapId });
+  let s = newGame({ rng, mapId: job.mapId, legendaries: job.legends });
   const ms = { A: 0, D: 0 };
   const decisions = { A: 0, D: 0 };
   let replans = 0;
   let steps = 0;
+  const usage: Record<string, { avail: number; used: number }> = {};
+  const note = (key: string, field: 'avail' | 'used') => {
+    usage[key] ??= { avail: 0, used: 0 };
+    usage[key][field] += 1;
+  };
   while (s.phase !== 'over') {
     if (++steps > 4000) throw new Error(`seed ${job.seed}: game did not terminate`);
     const side = decider(s)!;
@@ -95,6 +119,17 @@ async function playGame(job: Job, other: string | undefined): Promise<GameRecord
     if (!plan.length) throw new Error(`seed ${job.seed}: ${job.players[side]} returned no action in ${s.phase}`);
     for (const a of plan) {
       if (decider(s) !== side) break;
+      if (job.usage && s.phase === 'battle' && (a.type === 'useMove' || a.type === 'trebuchet' || a.type === 'wait')) {
+        const u = s.units.find((x) => x.id === a.unitId)!;
+        const c = cardOf(u);
+        const usable = moveOptions(s, u).filter((o) => o.usable);
+        for (const o of usable) note(`${c.name}|${o.move.name}`, 'avail');
+        if (trebuchetOption(s, u).usable) note(`${c.name}|Trebuchet`, 'avail');
+        if (usable.length) note(`${c.name}|wait`, 'avail');
+        if (a.type === 'useMove') note(`${c.name}|${c.moves[a.moveIndex].name}`, 'used');
+        else if (a.type === 'trebuchet') note(`${c.name}|Trebuchet`, 'used');
+        else if (usable.length) note(`${c.name}|wait`, 'used');
+      }
       try {
         s = applyAction(s, a, rng).state;
       } catch (e) {
@@ -117,12 +152,14 @@ async function playGame(job: Job, other: string | undefined): Promise<GameRecord
   return {
     seed: job.seed, players: job.players, winner: s.winner!, round: s.round, teams: { A: s.draft.picks.A, D: s.draft.picks.D },
     pool: s.draft.pool, fainted: { A: a.fainted, D: d.fainted }, hpFrac: { A: a.hpFrac, D: d.hpFrac }, ms, decisions, replans,
+    ...(job.usage ? { usage } : {}),
   };
 }
 
 if (!isMainThread) {
-  const { jobs, other, tuneJson } = workerData as { jobs: Job[]; other?: string; tuneJson?: string };
+  const { jobs, other, tuneJson, tuneOtherJson } = workerData as { jobs: Job[]; other?: string; tuneJson?: string; tuneOtherJson?: string };
   tune = tuneJson ? JSON.parse(tuneJson) : null;
+  tuneOther = tuneOtherJson ? JSON.parse(tuneOtherJson) : null;
   for (const job of jobs) parentPort!.postMessage(await playGame(job, other));
 } else {
   const a = arg('a', 'hard')!;
@@ -132,14 +169,17 @@ if (!isMainThread) {
   const swap = arg('swap') === 'true';
   const draft = (arg('draft', 'bot') as Job['draft']);
   const mapId = arg('map', 'meadow')!;
+  const usage = arg('usage') === 'true';
+  const legendMode = arg('legends', 'on')!;
   const other = arg('other');
   const out = arg('out');
   const threads = Math.max(1, Math.min(Number(arg('threads', String(os.cpus().length - 2))), games * (swap ? 2 : 1)));
 
   const jobs: Job[] = [];
   for (let i = 0; i < games; i++) {
-    jobs.push({ seed: start + i, players: { A: a, D: d }, draft, mapId });
-    if (swap) jobs.push({ seed: start + i, players: { A: d, D: a }, draft, mapId });
+    const legends = legendMode === 'mix' ? i % 2 === 0 : legendMode !== 'off';
+    jobs.push({ seed: start + i, players: { A: a, D: d }, draft, mapId, legends, usage });
+    if (swap) jobs.push({ seed: start + i, players: { A: d, D: a }, draft, mapId, legends, usage });
   }
   const buckets: Job[][] = Array.from({ length: threads }, () => []);
   jobs.forEach((j, i) => buckets[i % threads].push(j));
@@ -149,7 +189,7 @@ if (!isMainThread) {
   await Promise.all(buckets.map((bucket) => new Promise<void>((resolve, reject) => {
     // Workers don't inherit tsx's loader, so each one registers it before loading this file.
     const boot = `import('tsx/esm/api').then((m) => { m.register(); return import(${JSON.stringify(pathToFileURL(here).href)}); })`;
-    const w = new Worker(boot, { eval: true, workerData: { jobs: bucket, other, tuneJson: arg('tune') } });
+    const w = new Worker(boot, { eval: true, workerData: { jobs: bucket, other, tuneJson: arg('tune'), tuneOtherJson: arg('tune-other') } });
     w.on('message', (r: GameRecord) => {
       records.push(r);
       sink?.write(`${JSON.stringify(r)}\n`);

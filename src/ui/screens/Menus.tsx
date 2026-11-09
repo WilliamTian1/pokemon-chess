@@ -3,17 +3,19 @@ import { DIFFICULTIES, type Difficulty } from '../../ai/bot';
 import { CARD_LIST, type CardDef, type Side } from '../../engine';
 import { Art, Modal } from '../components/bits';
 import { CardDetail, MiniGrid } from '../components/CardView';
-import { MapPicker, savedMapId } from '../components/MapPicker';
+import { LegendaryToggle, MapPicker, savedLegendaries, savedMapId } from '../components/MapPicker';
 import { TypeChartModal } from '../components/Matchups';
 import { CardGrid, useCardFilter } from './DraftView';
 
 const SHOWCASE = ['charizard', 'blastoise', 'venusaur', 'pikachu', 'mewtwo', 'gengar', 'lapras', 'dragonite'];
 
-export function Home({ onBot, onLocal, onOnline, onCards, onRules }: {
+export function Home({ onBot, onLocal, onOnline, onCards, onLab, onRules }: {
   onBot: () => void;
   onLocal: () => void;
   onOnline: () => void;
   onCards: () => void;
+  /** Only for the owner (see useLabAccess in App.tsx). */
+  onLab?: () => void;
   onRules: () => void;
 }) {
   return (
@@ -36,6 +38,7 @@ export function Home({ onBot, onLocal, onOnline, onCards, onRules }: {
       </div>
       <div className="flex gap-3">
         <button type="button" className="btn-ghost" onClick={onCards}>Card gallery</button>
+        {onLab && <button type="button" className="btn-ghost" onClick={onLab}>Draft analysis</button>}
         <button type="button" className="btn-ghost" onClick={onRules}>How to play</button>
       </div>
     </div>
@@ -55,23 +58,26 @@ function MenuButton({ title, sub, onClick, primary }: { title: string; sub: stri
   );
 }
 
-export function LocalSetup({ onStart, onBack }: { onStart: (mapId: string) => void; onBack: () => void }) {
+export function LocalSetup({ onStart, onBack }: { onStart: (mapId: string, legendaries: boolean) => void; onBack: () => void }) {
   const [mapId, setMapId] = useState(savedMapId);
+  const [legendaries, setLegendaries] = useState(savedLegendaries);
   return (
     <div className="mx-auto max-w-2xl px-4 py-10">
       <button type="button" className="btn-ghost mb-4" onClick={onBack}>← Back</button>
       <div className="panel space-y-5 p-5">
         <h2 className="text-2xl font-bold">Hot-seat: choose a map</h2>
         <MapPicker value={mapId} onChange={setMapId} />
-        <button type="button" className="btn-primary w-full py-3 text-base" onClick={() => onStart(mapId)}>Start draft</button>
+        <LegendaryToggle value={legendaries} onChange={setLegendaries} />
+        <button type="button" className="btn-primary w-full py-3 text-base" onClick={() => onStart(mapId, legendaries)}>Start draft</button>
       </div>
     </div>
   );
 }
 
-export function BotSetup({ onStart, onBack }: { onStart: (human: Side, level: Difficulty, mapId: string) => void; onBack: () => void }) {
+export function BotSetup({ onStart, onBack }: { onStart: (human: Side, level: Difficulty, mapId: string, legendaries: boolean) => void; onBack: () => void }) {
   const [level, setLevel] = useState<Difficulty>('medium');
   const [mapId, setMapId] = useState(savedMapId);
+  const [legendaries, setLegendaries] = useState(savedLegendaries);
   const [role, setRole] = useState<Side | 'R'>('A');
   const desc: Record<Difficulty, string> = {
     easy: 'Plays loosely and often picks something random. Good for learning the rules.',
@@ -111,10 +117,11 @@ export function BotSetup({ onStart, onBack }: { onStart: (human: Side, level: Di
           <div className="mb-2 text-sm font-semibold text-slate-300">Map</div>
           <MapPicker value={mapId} onChange={setMapId} />
         </div>
+        <LegendaryToggle value={legendaries} onChange={setLegendaries} />
         <button
           type="button"
           className="btn-primary w-full py-3 text-base"
-          onClick={() => onStart(role === 'R' ? (Math.random() < 0.5 ? 'A' : 'D') : role, level, mapId)}
+          onClick={() => onStart(role === 'R' ? (Math.random() < 0.5 ? 'A' : 'D') : role, level, mapId, legendaries)}
         >
           Start draft
         </button>
@@ -165,8 +172,8 @@ export function HowToPlay({ onBack }: { onBack: () => void }) {
       <section className="panel space-y-2 p-4">
         <h3 className="font-bold text-white">Match flow</h3>
         <ol className="list-decimal space-y-1 pl-5">
-          <li><b>Draft:</b> each match deals 15 random Pokémon and 4 random legendaries. The Attacker and Defender alternate picking 3 Pokémon each, then each picks one legendary.</li>
-          <li><b>Placement:</b> players alternate placing Pokémon on their spawn tiles (Attackers at the bottom, Defenders at the top).</li>
+          <li><b>Draft:</b> each match deals 15 random Pokémon and 4 random legendaries. The Attacker and Defender alternate picking 3 Pokémon each, then each picks one legendary. With <b>No legendaries</b> chosen at setup, the pool is 20 Pokémon and both players pick all 4 from it.</li>
+          <li><b>Placement:</b> the Attacker places first, then players alternate placing Pokémon on their spawn tiles. Like a chessboard, the board is turned so your own side is at the bottom.</li>
           <li><b>Battle:</b> up to 10 rounds. Each round the Attacker takes a full team turn, then the Defender. Round 1 is movement only: nobody can use a move or the trebuchet.</li>
         </ol>
         <p><b className="text-rose-300">Attacker</b> wins by fainting all 4 Defenders before round 10 ends. <b className="text-sky-300">Defender</b> wins by wiping the Attackers or simply surviving round 10.</p>
@@ -174,7 +181,8 @@ export function HowToPlay({ onBack }: { onBack: () => void }) {
       <section className="panel space-y-2 p-4">
         <h3 className="font-bold text-white">Your turn</h3>
         <p>Activate each of your Pokémon once, in any order: <b>move</b> up to its Mov (orthogonal steps, through allies but not enemies), then take <b>one action</b> — use a move, fire the trebuchet, or wait. Then press <b>End turn</b>.</p>
-        <p>Select a Pokémon, tap a blue tile to move, pick a move and aim it in one of four directions. Previews show the damage range and KO chance on every Pokémon hit — allies included!</p>
+        <p>Select a Pokémon, tap a blue tile to move, pick a move and aim it in one of four directions (or just click the Pokémon you want to hit). Previews show the damage range and KO chance on every Pokémon hit — allies included!</p>
+        <p><b>Reach:</b> click an opposing Pokémon to see every tile it can attack on its next turn, after moving. Its first move's range is filled red, its second move's is outlined in yellow. Click it again or press Esc to hide it.</p>
       </section>
       <section className="panel space-y-2 p-4">
         <h3 className="font-bold text-white">Reading the move grids</h3>
@@ -187,7 +195,7 @@ export function HowToPlay({ onBack }: { onBack: () => void }) {
             <Legend color="bg-red-500">Targets are knocked back onto these tiles</Legend>
           </div>
         </div>
-        <p>A move can only be used if it hits at least one Pokémon, ally or opponent. Adjacent means all 8 surrounding tiles; “within N tiles” counts the same way.</p>
+        <p>A move can only be used if it hits at least one Pokémon, ally or opponent. Adjacent means all 8 surrounding tiles, diagonals included. “Within N tiles” counts steps like movement, so a diagonal tile is 2 away.</p>
       </section>
       <section className="panel space-y-2 p-4">
         <h3 className="font-bold text-white">The maps</h3>
@@ -195,9 +203,9 @@ export function HowToPlay({ onBack }: { onBack: () => void }) {
         <div className="grid gap-1.5 sm:grid-cols-2">
           <Legend color="tile-water">Water: only Water, Flying and Levitate Pokémon can enter.</Legend>
           <Legend color="tile-dirt">Dirt paths are cosmetic — they play like grass.</Legend>
-          <Legend color="bg-yellow-300">Flowers: +30 HP when a Pokémon ends its activation there.</Legend>
-          <Legend color="bg-red-500">Berry bushes: Pokémon standing there take 30 less damage.</Legend>
-          <Legend color="bg-stone-600">Trebuchet: stand on it to hit any Pokémon for a flat 40 before type effectiveness.</Legend>
+          <Legend color="bg-yellow-300">Flowers: +30 HP when a Pokémon ends its activation there (Flying and Levitate Pokémon hover over them: no bonus).</Legend>
+          <Legend color="bg-red-500">Berry bushes: Pokémon standing there take 30 less damage (not Flying or Levitate Pokémon).</Legend>
+          <Legend color="bg-stone-600">Trebuchet: stand on it to hit any Pokémon for a flat 40, carrying all of the user's types at once (effectiveness multiplies).</Legend>
         </div>
       </section>
       <section className="panel space-y-2 p-4">

@@ -95,9 +95,9 @@ function nextActivation(s: GameState, e: Unit): number | null {
 
 /**
  * Every tile `side`'s Pokémon could hit with either of their moves in their next activation:
- * from any tile they can walk to, aimed in any direction.
+ * from any tile they can walk to, aimed in any direction. `onlyId` limits it to one Pokémon.
  */
-export function dangerZone(s: GameState, side: Side): DangerZone {
+export function dangerZone(s: GameState, side: Side, onlyId?: string): DangerZone {
   const tiles = new Map<string, DangerSource[]>();
   const trebuchet: string[] = [];
   const m = mapOf(s);
@@ -110,6 +110,7 @@ export function dangerZone(s: GameState, side: Side): DangerZone {
     else tiles.set(k, [src]);
   };
   for (const e of liveUnits(s, side)) {
+    if (onlyId && e.id !== onlyId) continue;
     const budget = nextActivation(s, e);
     if (budget === null) continue;
     const origins: Pos[] = [e.pos!, ...[...reachable(s, e, budget).values()].map((r) => r.pos)];
@@ -123,7 +124,7 @@ export function dangerZone(s: GameState, side: Side): DangerZone {
         const r = mv.target.range;
         for (let y = 0; y < m.height; y++) {
           for (let x = 0; x < m.width; x++) {
-            if (origins.some((o) => Math.max(Math.abs(o.x - x), Math.abs(o.y - y)) <= r && (o.x !== x || o.y !== y))) add({ x, y }, src, seen);
+            if (origins.some((o) => Math.abs(o.x - x) + Math.abs(o.y - y) <= r && (o.x !== x || o.y !== y))) add({ x, y }, src, seen);
           }
         }
         continue;

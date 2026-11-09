@@ -8,16 +8,18 @@ import {
 } from './mutate';
 import {
   abilityOf, adjacentToType, alliesOf, cardOf, effectiveMov, enemiesOf, getUnit, hasType, hazardAt, isFlier,
-  isTrebuchet, liveUnits, moveOf, onBoard, reachable, terrainAt, unitAt, withAbility,
+  isTrebuchet, liveUnits, moveOf, onBoard, reachable, terrainAt, terrainBonus, unitAt, withAbility,
 } from './query';
 import type { Action, ActiveActivation, Dir, GameEvent, GameState, Pos, Rng, Side, Unit } from './types';
 import { SIDE_NAME, otherSide } from './types';
-import { cheb, posKey, samePos } from './util';
+import { cheb, posKey, samePos, steps } from './util';
 
 export { RuleError } from './mutate';
 
 const ALTERNATE: Side[] = ['A', 'D', 'A', 'D', 'A', 'D', 'A', 'D'];
 export const DRAFT_POOL_SIZE = 15;
+/** Without legendaries the pool is bigger, and all four picks per side come from it. */
+export const NO_LEGEND_POOL_SIZE = 20;
 export const LEGEND_POOL_SIZE = 4;
 /** Picks per side from the normal pool; each side's last pick is a legendary. */
 export const NORMAL_PICKS = 3;
@@ -32,9 +34,9 @@ function shuffled(ids: string[], rng: Rng): string[] {
   return out;
 }
 
-/** `DRAFT_POOL_SIZE` distinct non-legendary draftable card ids, chosen uniformly at random. */
-export function randomPool(rng: Rng): string[] {
-  return shuffled(DRAFTABLE.filter((c) => !c.legendary).map((c) => c.id), rng).slice(0, DRAFT_POOL_SIZE);
+/** `size` distinct non-legendary draftable card ids, chosen uniformly at random. */
+export function randomPool(rng: Rng, size = DRAFT_POOL_SIZE): string[] {
+  return shuffled(DRAFTABLE.filter((c) => !c.legendary).map((c) => c.id), rng).slice(0, size);
 }
 
 /** `LEGEND_POOL_SIZE` distinct legendaries, chosen uniformly at random. */
@@ -42,18 +44,22 @@ export function randomLegendPool(rng: Rng): string[] {
   return shuffled(DRAFTABLE.filter((c) => c.legendary).map((c) => c.id), rng).slice(0, LEGEND_POOL_SIZE);
 }
 
-/** Whether pick number `index` (0-based, both sides) is a legendary pick. */
-export const isLegendPick = (index: number): boolean => index >= 2 * NORMAL_PICKS;
+/**
+ * Whether pick number `index` (0-based, both sides) is a legendary pick. Without legendaries (an empty
+ * legendary pool) all eight picks come from the normal pool.
+ */
+export const isLegendPick = (s: GameState, index = s.draft.index): boolean =>
+  s.draft.legendPool.length > 0 && index >= 2 * NORMAL_PICKS;
 
 /** Card ids the side on the clock may draft right now. */
 export function draftOptions(s: GameState): string[] {
   if (s.phase !== 'draft') return [];
   const taken = new Set([...s.draft.picks.A, ...s.draft.picks.D]);
-  return (isLegendPick(s.draft.index) ? s.draft.legendPool : s.draft.pool).filter((id) => !taken.has(id));
+  return (isLegendPick(s) ? s.draft.legendPool : s.draft.pool).filter((id) => !taken.has(id));
 }
 
-/** A new match. The draft pools are drawn from `rng` unless given. */
-export function newGame(opts: { rng: Rng; mapId?: string; pool?: string[]; legendPool?: string[] }): GameState {
+/** A new match. The draft pools are drawn from `rng` unless given; `legendaries: false` drafts without them. */
+export function newGame(opts: { rng: Rng; mapId?: string; pool?: string[]; legendPool?: string[]; legendaries?: boolean }): GameState {
   return {
     version: 1,
     mapId: opts.mapId ?? DEFAULT_MAP_ID,
@@ -63,9 +69,10 @@ export function newGame(opts: { rng: Rng; mapId?: string; pool?: string[]; legen
     side: 'A',
     draft: {
       order: [...ALTERNATE], index: 0, picks: { A: [], D: [] },
-      pool: opts.pool ?? randomPool(opts.rng), legendPool: opts.legendPool ?? randomLegendPool(opts.rng),
+      pool: opts.pool ?? randomPool(opts.rng, opts.legendaries === false ? NO_LEGEND_POOL_SIZE : DRAFT_POOL_SIZE),
+      legendPool: opts.legendPool ?? (opts.legendaries === false ? [] : randomLegendPool(opts.rng)),
     },
-    placement: { order: [...ALTERNATE], index: 0, first: null },
+    placement: { order: [...ALTERNATE], index: 0 },
     units: [],
     hazards: [],
     substitute: null,
@@ -106,7 +113,7 @@ export function cloneState(s: GameState, shareLog = false): GameState {
     })),
     hazards: s.hazards.map((h) => ({ kind: h.kind, pos: { ...h.pos } })),
     substitute: s.substitute && { pos: { ...s.substitute.pos }, ownerId: s.substitute.ownerId },
-    futureSight: s.futureSight.map((f) => ({ ...f, pos: { ...f.pos } })),
+    futureSight: s.futureSight.map((f) => ({ ...f })),
     active: s.active && { ...s.active, from: { ...s.active.from } },
     pending: s.pending.map((p) => ({ ...p, options: [...p.options] }) as typeof p),
     log: shareLog ? s.log : [...s.log],
@@ -184,10 +191,11 @@ function draftPick(ctx: Ctx, cardId: string): void {
   const c = CARDS[cardId];
   if (!c || !c.draftable) throw new RuleError('That card cannot be drafted.');
   if (s.draft.picks.A.includes(cardId) || s.draft.picks.D.includes(cardId)) throw new RuleError(`${c.name} was already drafted.`);
-  const legend = isLegendPick(s.draft.index);
+  const legend = isLegendPick(s);
   if (legend && !s.draft.legendPool.includes(cardId)) throw new RuleError(`This pick must be one of this match's legendaries.`);
   if (!legend && !s.draft.pool.includes(cardId)) {
-    throw new RuleError(c.legendary ? 'Legendaries are drafted last.' : `${c.name} is not in this match's draft pool.`);
+    if (!c.legendary) throw new RuleError(`${c.name} is not in this match's draft pool.`);
+    throw new RuleError(s.draft.legendPool.length ? 'Legendaries are drafted last.' : 'This match is played without legendaries.');
   }
   s.draft.picks[side].push(cardId);
   log(ctx, `${SIDE_NAME[side]} drafted ${c.name}.`, 'info', side);
@@ -196,17 +204,16 @@ function draftPick(ctx: Ctx, cardId: string): void {
   else s.side = s.draft.order[s.draft.index];
 }
 
-/** Turns the picks into units, then flips a coin for who places first. */
+/** Turns the picks into units; placement follows, Attacker first. */
 function finishDraft(ctx: Ctx): void {
   const s = ctx.s;
   for (const sd of ['A', 'D'] as const) {
     s.draft.picks[sd].forEach((id, i) => s.units.push(makeUnit(`${sd}${i}`, sd, id)));
   }
   s.phase = 'placement';
-  const first: Side = ctx.rng.chance(0.5) ? 'A' : 'D';
-  s.placement = { order: ALTERNATE.map((x) => (first === 'A' ? x : otherSide(x))), index: 0, first };
-  s.side = first;
-  log(ctx, `Draft complete. Coin flip: the ${SIDE_NAME[first]} places first.`, 'system');
+  s.placement = { order: [...ALTERNATE], index: 0 };
+  s.side = 'A';
+  log(ctx, 'Draft complete. The Attacker places first.', 'system');
 }
 
 function place(ctx: Ctx, unitId: string, pos: Pos): void {
@@ -265,11 +272,16 @@ function startTurn(ctx: Ctx, side: Side): void {
   s.futureSight = s.futureSight.filter((f) => f.side !== side);
   for (const f of due) {
     const user = getUnit(s, f.userId);
-    const center = onBoard(user) ? user.pos : f.pos;
+    // The attack is Slowbro's own: if Slowbro has fainted since, it never arrives.
+    if (!onBoard(user)) {
+      log(ctx, `${nameOf(user)} fainted, so its Future Sight fizzles.`, 'info', side);
+      continue;
+    }
+    const center = user.pos;
     log(ctx, `${nameOf(user)}'s Future Sight strikes!`, 'info', side);
-    emit(ctx, { t: 'attack', unitId: user.id, name: 'Future Sight', tiles: liveUnits(s).filter((x) => cheb(x.pos!, center) <= 3).map((x) => x.pos!) });
+    emit(ctx, { t: 'attack', unitId: user.id, name: 'Future Sight', tiles: liveUnits(s).filter((x) => steps(x.pos!, center) <= 3).map((x) => x.pos!) });
     for (const x of liveUnits(s)) {
-      if (x.id !== user.id && cheb(x.pos!, center) <= 3) dealDamage(ctx, x, 100, { source: user, label: 'Future Sight' });
+      if (x.id !== user.id && steps(x.pos!, center) <= 3) dealDamage(ctx, x, 100, { source: user, label: 'Future Sight' });
     }
     if (checkWin(ctx)) return;
   }
@@ -461,7 +473,6 @@ function useTrebuchet(ctx: Ctx, a: Extract<Action, { type: 'trebuchet' }>): void
   const act = activationFor(s, u);
   if (!canActNow(u)) throw new RuleError(`${cardOf(u).name} can't act this turn.`);
   if (!isTrebuchet(s, u.pos!)) throw new RuleError('Stand on the trebuchet to fire it.');
-  if (!cardOf(u).types.includes(a.attackType)) throw new RuleError('The trebuchet takes one of the user’s types.');
   const t = getUnit(s, a.targetId);
   if (!onBoard(t) || t.id === u.id) throw new RuleError('Choose a Pokémon to fire at.');
   enforceFollowMe(s, u, [t.id]);
@@ -473,7 +484,7 @@ function useTrebuchet(ctx: Ctx, a: Extract<Action, { type: 'trebuchet' }>): void
     afterAction(ctx, u, 0, 0);
     return;
   }
-  const res = trebuchetAttack(ctx, u, t, a.attackType);
+  const res = trebuchetAttack(ctx, u, t);
   afterAction(ctx, u, 0, res.kos);
 }
 
@@ -565,10 +576,10 @@ function endOfActivation(ctx: Ctx, u: Unit, moved: boolean): void {
   const ab = abilityOf(u);
   const enemies = enemiesOf(s, u);
   if (ab === 'rainDish' && (terrainAt(s, u.pos) === 'water' || adjacentToType(s, u, 'Water'))) heal(ctx, u, 30, 'Rain Dish');
-  if (ab === 'regenerator' && !enemies.some((e) => cheb(e.pos!, u.pos!) <= 3)) heal(ctx, u, 30, 'Regenerator');
-  if (ab === 'naturalCure' && u.status && enemies.every((e) => cheb(e.pos!, u.pos!) > 3)) cureStatus(ctx, u, 'Natural Cure');
+  if (ab === 'regenerator' && !enemies.some((e) => steps(e.pos!, u.pos!) <= 3)) heal(ctx, u, 30, 'Regenerator');
+  if (ab === 'naturalCure' && u.status && enemies.every((e) => steps(e.pos!, u.pos!) > 3)) cureStatus(ctx, u, 'Natural Cure');
   if (ab === 'hospitality') for (const a of alliesOf(s, u)) if (cheb(a.pos!, u.pos!) === 1) heal(ctx, a, 30, 'Hospitality');
-  if (onBoard(u) && terrainAt(s, u.pos) === 'flower') heal(ctx, u, 30, 'flowers');
+  if (onBoard(u) && terrainBonus(s, u) === 'flower') heal(ctx, u, 30, 'flowers');
   if (u.confused) {
     u.confused = false;
     log(ctx, `${nameOf(u)} snapped out of its confusion.`, 'info', u.side);

@@ -4,8 +4,10 @@ export const posKey = (p: Pos): string => `${p.x},${p.y}`;
 export const samePos = (a: Pos | null | undefined, b: Pos | null | undefined): boolean =>
   !!a && !!b && a.x === b.x && a.y === b.y;
 export const addPos = (a: Pos, b: Pos): Pos => ({ x: a.x + b.x, y: a.y + b.y });
-/** Chebyshev distance — adjacency and "within N tiles" are 8-way. */
+/** Chebyshev distance: adjacency ("next to", "up close") is 8-way, diagonals included (rules p.2). */
 export const cheb = (a: Pos, b: Pos): number => Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
+/** Steps between tiles counted like movement (no diagonals): "within N tiles / spaces". */
+export const steps = (a: Pos, b: Pos): number => Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
 export const clamp = (v: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, v));
 export const roundUp5 = (v: number): number => Math.ceil(v / 5 - 1e-9) * 5;
 

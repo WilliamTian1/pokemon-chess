@@ -176,7 +176,6 @@ function koChanceOf(t: Unit, outcomes: Outcome[], ignoreAbilities: boolean): num
 export interface PreviewOpts {
   dir?: Dir;
   targetId?: string;
-  attackType?: PType;
   /** Liquid Voice: preview a copied move as Water. */
   copyOf?: MoveDef;
 }
@@ -189,7 +188,7 @@ export function previewAction(s0: GameState, unitId: string, which: 0 | 1 | 'tre
   if (which === 'treb') {
     const t = opts.targetId ? getUnit(s, opts.targetId) : null;
     if (!t || !onBoard(t)) return [];
-    const ac = makeAttackCtx(u, null, { moveType: opts.attackType ?? cardOf(u).types[0] });
+    const ac = makeAttackCtx(u, null);
     const imm = isImmune(ac, t);
     if (imm.immune) return [{ unitId: t.id, kind: imm.absorbed ? 'absorb' : 'immune', min: 0, max: 0, expected: 0, koChance: 0, notes: [imm.absorbed ? 'Storm Drain' : 'No effect'] }];
     const r = computeDamage(s, ac, t, 40, null);

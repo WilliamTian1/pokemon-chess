@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { Suspense, lazy, useEffect, useState } from 'react';
 import type { Difficulty } from '../ai/bot';
 import type { Side } from '../engine';
 import { type LocalConfig, useLocalGame } from './controller';
@@ -6,11 +6,30 @@ import { GameScreen } from './screens/GameScreen';
 import { BotSetup, CardGallery, Home, HowToPlay, LocalSetup } from './screens/Menus';
 import { Online } from './screens/Online';
 
+// The draft lab is private to the owner. It's a separate code file that the game server only sends to
+// a browser holding the lab cookie (see server/index.ts); static builds (VITE_DRAFT_LAB=off) leave it out.
+const DraftLab = import.meta.env.VITE_DRAFT_LAB === 'off'
+  ? null
+  : lazy(() => import('./screens/DraftLab').then((m) => ({ default: m.DraftLab })));
+
+/** Whether this browser may open the draft lab: always in development, otherwise if the server says so. */
+function useLabAccess(): boolean {
+  const [ok, setOk] = useState<boolean>(import.meta.env.DEV && !!DraftLab);
+  useEffect(() => {
+    if (!DraftLab || import.meta.env.DEV) return;
+    fetch(`${import.meta.env.BASE_URL}api/lab`, { cache: 'no-store' })
+      .then((r) => setOk(r.ok))
+      .catch(() => setOk(false));
+  }, []);
+  return ok;
+}
+
 type Screen =
   | { name: 'home' }
   | { name: 'botSetup' }
   | { name: 'localSetup' }
   | { name: 'cards' }
+  | { name: 'lab' }
   | { name: 'rules' }
   | { name: 'online' }
   | { name: 'game'; cfg: LocalConfig; key: number };
@@ -19,6 +38,11 @@ export function App() {
   const [screen, setScreen] = useState<Screen>(() =>
     new URLSearchParams(location.search).has('room') ? { name: 'online' } : { name: 'home' },
   );
+  const lab = useLabAccess();
+  // /lab?key=… redirects to /?lab once the cookie is set: open the lab straight away.
+  useEffect(() => {
+    if (lab && new URLSearchParams(location.search).has('lab')) setScreen({ name: 'lab' });
+  }, [lab]);
   const home = () => {
     if (location.search) history.replaceState(null, '', location.pathname);
     setScreen({ name: 'home' });
@@ -32,6 +56,7 @@ export function App() {
           onLocal={() => setScreen({ name: 'localSetup' })}
           onOnline={() => setScreen({ name: 'online' })}
           onCards={() => setScreen({ name: 'cards' })}
+          onLab={lab ? () => setScreen({ name: 'lab' }) : undefined}
           onRules={() => setScreen({ name: 'rules' })}
         />
       );
@@ -39,13 +64,15 @@ export function App() {
       return (
         <BotSetup
           onBack={home}
-          onStart={(human: Side, level: Difficulty, mapId: string) => setScreen({ name: 'game', cfg: { mode: 'bot', human, level, mapId }, key: Date.now() })}
+          onStart={(human: Side, level: Difficulty, mapId: string, legendaries: boolean) => setScreen({ name: 'game', cfg: { mode: 'bot', human, level, mapId, legendaries }, key: Date.now() })}
         />
       );
     case 'localSetup':
-      return <LocalSetup onBack={home} onStart={(mapId) => setScreen({ name: 'game', cfg: { mode: 'local', mapId }, key: Date.now() })} />;
+      return <LocalSetup onBack={home} onStart={(mapId, legendaries) => setScreen({ name: 'game', cfg: { mode: 'local', mapId, legendaries }, key: Date.now() })} />;
     case 'cards':
       return <CardGallery onBack={home} />;
+    case 'lab':
+      return DraftLab && lab ? <Suspense fallback={null}><DraftLab onBack={home} /></Suspense> : null;
     case 'rules':
       return <HowToPlay onBack={home} />;
     case 'online':

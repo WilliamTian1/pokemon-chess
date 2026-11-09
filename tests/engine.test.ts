@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   CARD_LIST, DRAFTABLE, DRAFT_POOL_SIZE, MAPS, applyAction, bestHit, canStand, dangerZone, decider, defenseProfile,
-  draftOptions, getCard, getUnit, hitMultiplier, moveOptions, newGame, parseGrid, previewAction, quickGame, reachable,
+  draftOptions, getCard, getUnit, hitMultiplier, isLegendPick, isNormalTerrain, moveOptions, newGame, parseGrid, previewAction, quickGame, reachable,
   seededRng, terrainAt, typeMultiplier, zoneTiles,
 } from '../src/engine';
 import { act, noLuck, park, scriptedRng, setup, unit } from './helpers';
@@ -251,8 +251,6 @@ describe('full flow', () => {
     expect(s.phase).toBe('placement');
     expect(() => applyAction(s, { type: 'draftPick', cardId: 'pikachu' }, rng)).toThrow();
     const m = MAPS.meadow;
-    const first = s.placement.first!;
-    expect(s.placement.order).toEqual([0, 1, 2, 3, 4, 5, 6, 7].map((i) => (i % 2 === 0 ? first : first === 'A' ? 'D' : 'A')));
     for (let i = 0; i < 8; i++) {
       const side = s.placement.order[i];
       const n = Math.floor(i / 2);
@@ -285,10 +283,18 @@ describe('full flow', () => {
     const tauros = getUnit(s, 'A0');
     tauros.stages.atk = 3;
     getUnit(s, 'D1').stages.def = 3;
-    const [hit] = previewAction(s, 'A0', 'treb', { targetId: 'D1', attackType: 'Normal' });
+    const [hit] = previewAction(s, 'A0', 'treb', { targetId: 'D1' });
     expect(hit.max).toBe(40);
-    const [ghost] = previewAction(s, 'A0', 'treb', { targetId: 'D0', attackType: 'Normal' });
+    const [ghost] = previewAction(s, 'A0', 'treb', { targetId: 'D0' });
     expect(ghost.kind).toBe('immune');
+  });
+
+  it('the trebuchet carries all of the user\'s types at once', () => {
+    const s = setup(['charizard'], ['lurantis', 'blastoise'], { A0: { x: 10, y: 4 }, D0: { x: 3, y: 3 }, D1: { x: 6, y: 2 } });
+    // Fire ×2 and Flying ×2 against Grass: 40 × 4.
+    expect(previewAction(s, 'A0', 'treb', { targetId: 'D0' })[0].max).toBe(160);
+    // Fire ×½ and Flying ×1 against Water: 40 × ½.
+    expect(previewAction(s, 'A0', 'treb', { targetId: 'D1' })[0].max).toBe(20);
   });
 
   it('noLuck helper never procs', () => {
@@ -308,16 +314,13 @@ describe('draft pool and coin flip', () => {
     expect(() => applyAction(a, { type: 'draftPick', cardId: outside.id }, noLuck())).toThrow(/not in this match's draft pool/);
   });
 
-  it('flips a coin for who places first', () => {
+  it('the Attacker places first, then placement alternates', () => {
     const picks = ['tyranitar', 'charizard', 'sudowoodo', 'furret', 'tauros', 'snorlax', 'mewtwo', 'kyogre'];
-    for (const [flip, first] of [[true, 'A'], [false, 'D']] as const) {
-      const rng = scriptedRng([flip]);
-      let s = newGame({ rng, pool: picks.slice(0, 6), legendPool: picks.slice(6) });
-      for (const c of picks) s = applyAction(s, { type: 'draftPick', cardId: c }, rng).state;
-      expect(s.placement.first).toBe(first);
-      expect(decider(s)).toBe(first);
-      expect(s.placement.order.slice(0, 2)).toEqual([first, first === 'A' ? 'D' : 'A']);
-    }
+    const rng = seededRng(4);
+    let s = newGame({ rng, pool: picks.slice(0, 6), legendPool: picks.slice(6) });
+    for (const c of picks) s = applyAction(s, { type: 'draftPick', cardId: c }, rng).state;
+    expect(decider(s)).toBe('A');
+    expect(s.placement.order).toEqual(['A', 'D', 'A', 'D', 'A', 'D', 'A', 'D']);
   });
 
   it('drafts three from the normal pool each, then one legendary each', () => {
@@ -371,8 +374,11 @@ describe('Winding River map', () => {
     expect(m.height).toBe(10);
     for (const p of [...m.spawns.A, ...m.spawns.D]) expect(m.tiles[p.y][p.x]).toBe('normal');
     expect(m.trebuchets).toEqual([{ x: 4, y: 4 }]);
-    // Bridges are plain ground: (10,1), (4,2), (7,2), (1,3), (1,5), (4,6), (7,7), (8,7), (10,8).
-    for (const [x, y] of [[10, 1], [4, 2], [7, 2], [1, 3], [1, 5], [4, 6], [7, 7], [8, 7], [10, 8]]) expect(m.tiles[y][x]).toBe('normal');
+    // Bridges are drawn as wood but play as plain ground: (10,1), (4,2), (7,2), (1,3), (1,5), (4,6), (7,7), (8,7), (10,8).
+    for (const [x, y] of [[10, 1], [4, 2], [7, 2], [1, 3], [1, 5], [4, 6], [7, 7], [8, 7], [10, 8]]) {
+      expect(m.tiles[y][x]).toBe('bridge');
+      expect(isNormalTerrain(m.tiles[y][x])).toBe(true);
+    }
   });
 
   it('lets a land Pokémon walk from the Attackers to the Defenders over the bridges', () => {
@@ -380,5 +386,20 @@ describe('Winding River map', () => {
     const u = getUnit(s, 'A0');
     u.pos = { x: 3, y: 9 };
     expect(reachable(s, u, 30).has('3,1')).toBe(true);
+  });
+});
+
+describe('draft without legendaries', () => {
+  it('drafts all eight picks from the normal pool and refuses legendaries', () => {
+    let s = newGame({ rng: seededRng(4), legendaries: false });
+    expect(s.draft.legendPool).toEqual([]);
+    expect(s.draft.pool).toHaveLength(20);
+    expect(() => applyAction(s, { type: 'draftPick', cardId: 'mewtwo' }, noLuck())).toThrow(/without legendaries/);
+    for (let i = 0; i < 8; i++) {
+      expect(isLegendPick(s)).toBe(false);
+      s = applyAction(s, { type: 'draftPick', cardId: draftOptions(s)[0] }, noLuck()).state;
+    }
+    expect(s.phase).toBe('placement');
+    expect([...s.draft.picks.A, ...s.draft.picks.D].every((id) => s.draft.pool.includes(id))).toBe(true);
   });
 });

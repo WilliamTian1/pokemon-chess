@@ -1,7 +1,7 @@
 import { DEFAULT_MAP_ID, MAPS, MAP_LIST, type MapDef, type Terrain } from '../../engine';
 
 const TILE: Record<Terrain, string> = {
-  normal: 'var(--tile-normal)', dirt: 'var(--tile-dirt)', grass: 'var(--tile-grass)', water: 'var(--tile-water)',
+  normal: 'var(--tile-normal)', dirt: 'var(--tile-dirt)', grass: 'var(--tile-grass)', bridge: 'var(--tile-bridge)', water: 'var(--tile-water)',
   flower: 'var(--tile-normal)', bush: 'var(--tile-normal)', wall: '#57534e', magma: '#c2410c', ice: '#bae6fd', pit: '#1c1917',
 };
 
@@ -23,6 +23,44 @@ function saveMapId(id: string): void {
   } catch {
     // Storage can be unavailable; the choice still applies to this game.
   }
+}
+
+const LEGENDS_KEY = 'pcc-legendaries';
+
+/** Whether legendaries were on last time on this device (on by default). */
+export function savedLegendaries(): boolean {
+  try {
+    return localStorage.getItem(LEGENDS_KEY) !== '0';
+  } catch {
+    return true;
+  }
+}
+
+/** Legendaries on (3 picks from the pool, then 1 legendary each) or off (4 picks from the pool each). */
+export function LegendaryToggle({ value, onChange }: { value: boolean; onChange: (on: boolean) => void }) {
+  const choose = (on: boolean) => {
+    try {
+      localStorage.setItem(LEGENDS_KEY, on ? '1' : '0');
+    } catch {
+      // Storage can be unavailable; the choice still applies to this game.
+    }
+    onChange(on);
+  };
+  return (
+    <div>
+      <div className="mb-2 text-sm font-semibold text-slate-300">Legendaries</div>
+      <div className="grid grid-cols-2 gap-2">
+        {([true, false] as const).map((on) => (
+          <button key={String(on)} type="button" aria-pressed={value === on} onClick={() => choose(on)} className={`btn ${value === on ? 'bg-amber-400 text-slate-950' : 'bg-slate-800 hover:bg-slate-700'}`}>
+            {on ? 'With legendaries' : 'No legendaries'}
+          </button>
+        ))}
+      </div>
+      <p className="mt-2 text-xs text-slate-400">
+        {value ? 'Each player drafts 3 Pokémon from the pool of 15, then 1 of 4 random legendaries.' : 'No legendaries: a bigger pool of 20, and each player drafts all 4 Pokémon from it.'}
+      </p>
+    </div>
+  );
 }
 
 /** A small drawing of a map: terrain, flowers, bushes, the trebuchet and both sides' spawns. */

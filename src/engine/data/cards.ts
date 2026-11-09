@@ -598,7 +598,7 @@ export const CARD_LIST: CardDef[] = [
   card({
     id: 'volcarona', name: 'Volcarona', types: ['Fire', 'Bug'], hp: 160, mov: 3, page: 8,
     moves: [
-      atk('Fire Spin', 'Fire', 45, grid('O.O/OOO/.G.'), 'Roll a 6 sided die and add the result * 10 to this move’s power.', { dice: true }),
+      atk('Fire Spin', 'Fire', 45, grid('OOO/O.O/OOO/.G.'), 'Roll a 6 sided die and add the result * 10 to this move’s power.', { dice: true }),
       QUIVER_DANCE,
     ],
     ability: ['leech', 'Leech', 'When damage is done by a different pokemon to a target within 3 spaces of the user, the user recovers ½ of the damage dealt.'],

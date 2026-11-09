@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useState } from 'react';
+import { type CSSProperties, memo, useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import {
   type Dir, type GameState, type Pos, type TargetPreview, type Terrain, type Unit, cardOf, getMap, multLabel, onBoard, posKey,
 } from '../../engine';
@@ -15,7 +15,7 @@ export interface Overlay {
   targetable?: Set<string>;
   spawns?: { tiles: Pos[]; side: 'A' | 'D' };
   arrows?: { dir: Dir; pos: Pos; active: boolean }[];
-  /** Opponent danger zone: tile key → number of (Pokémon, move) pairs that reach it. */
+  /** One opposing Pokémon's reach: tile key → which of its moves reach it (bit 1: first move, bit 2: second). */
   danger?: Map<string, number>;
   /** Everything a hovered move could hit from here, over all directions. */
   hoverZone?: Set<string>;
@@ -23,11 +23,13 @@ export interface Overlay {
   matchups?: Map<string, number>;
   /** Units to ring (e.g. a hovered matchup-table cell). */
   highlight?: Set<string>;
+  /** A short note drawn over the board, on the half away from `avoid` (e.g. the hovered tile). */
+  note?: { text: string; avoid: Pos | null };
 }
 
 interface Props {
   state: GameState;
-  rotated: boolean;
+  view: BoardView;
   overlay: Overlay;
   previews: Map<string, TargetPreview>;
   selectedId: string | null;
@@ -38,13 +40,41 @@ interface Props {
 }
 
 const TERRAIN_LABEL: Record<Terrain, string> = {
-  normal: 'Grass', dirt: 'Dirt path', grass: 'Grass bridge', water: 'Water — only Water, Flying and Levitate Pokémon',
-  flower: 'Flowers — +30 HP at the end of a Pokémon’s activation', bush: 'Berry bush — takes 30 less damage',
+  normal: 'Grass', dirt: 'Dirt path', grass: 'Grass bridge', bridge: 'Bridge — ordinary ground', water: 'Water — only Water, Flying and Levitate Pokémon',
+  flower: 'Flowers — +30 HP at the end of a Pokémon’s activation (not Flying or Levitate)', bush: 'Berry bush — takes 30 less damage (not Flying or Levitate)',
   wall: 'Wall', magma: 'Magma', ice: 'Ice', pit: 'Pit',
 };
 
-const ARROW: Record<Dir, string> = { N: '▲', E: '▶', S: '▼', W: '◀' };
-const ROT_ARROW: Record<Dir, string> = { N: '▶', E: '▼', S: '◀', W: '▲' };
+/**
+ * How the board is turned on screen. `flipped`: half a turn, so the Defender sees its own side at the
+ * bottom (like chess). `rotated`: a further quarter turn clockwise for portrait phones.
+ */
+export interface BoardView {
+  rotated: boolean;
+  flipped: boolean;
+}
+
+/**
+ * A Pokémon's reach, one style per move so both read on any terrain: the first move fills tiles red,
+ * the second outlines them in bright yellow, and a tile both reach gets both.
+ */
+export const MOVE_RANGE: [CSSProperties, CSSProperties] = [
+  { backgroundColor: 'rgba(239, 68, 68, 0.55)', boxShadow: 'inset 0 0 0 1px rgba(254, 202, 202, 0.8)' },
+  { backgroundColor: 'rgba(253, 224, 71, 0.16)', boxShadow: 'inset 0 0 0 3px rgba(253, 224, 71, 0.95)' },
+];
+
+function rangeStyle(mask: number): CSSProperties {
+  if (mask === 3) return { backgroundColor: MOVE_RANGE[0].backgroundColor, boxShadow: MOVE_RANGE[1].boxShadow };
+  return MOVE_RANGE[mask === 2 ? 1 : 0];
+}
+
+const DIR_ORDER: Dir[] = ['N', 'E', 'S', 'W'];
+export const ARROW: Record<Dir, string> = { N: '▲', E: '▶', S: '▼', W: '◀' };
+
+/** The on-screen direction that map direction `dir` points in. */
+export function screenDir(dir: Dir, v: BoardView): Dir {
+  return DIR_ORDER[(DIR_ORDER.indexOf(dir) + (v.rotated ? 1 : 0) + (v.flipped ? 2 : 0)) % 4];
+}
 
 interface Floater {
   key: string;
@@ -54,13 +84,17 @@ interface Floater {
   pos: Pos;
 }
 
-function BoardImpl({ state, rotated, overlay, previews, selectedId, hoverId, events, onTile, onHover }: Props) {
+function BoardImpl({ state, view, overlay, previews, selectedId, hoverId, events, onTile, onHover }: Props) {
+  const { rotated, flipped } = view;
   const map = getMap(state.mapId);
   const W = map.width;
   const H = map.height;
   const cols = rotated ? H : W;
   const rows = rotated ? W : H;
-  const disp = (p: Pos): Pos => (rotated ? { x: H - 1 - p.y, y: p.x } : p);
+  const disp = (p: Pos): Pos => {
+    const f = flipped ? { x: W - 1 - p.x, y: H - 1 - p.y } : p;
+    return rotated ? { x: H - 1 - f.y, y: f.x } : f;
+  };
 
   // Floating numbers and attack flashes from the latest event batch.
   const [floaters, setFloaters] = useState<Floater[]>([]);
@@ -86,6 +120,39 @@ function BoardImpl({ state, rotated, overlay, previews, selectedId, hoverId, eve
     setFlash(lastAttack ? { key: `f${events.seq}`, tiles: lastAttack } : null);
   }, [events.seq]);
 
+  // Moving Pokémon walk their path tile by tile, so it's clear they went around whatever blocked them.
+  const [walk, setWalk] = useState<{ at: Map<string, Pos>; stepMs: number } | null>(null);
+  // Layout effect: the first step is in place before paint, so the token never flashes to the end tile.
+  useLayoutEffect(() => {
+    const walks = events.list.flatMap((e) => (e.t === 'move' && e.path.length > 1 ? [e] : []));
+    if (!walks.length) {
+      setWalk(null);
+      return;
+    }
+    const longest = Math.max(...walks.map((w) => w.path.length));
+    const stepMs = Math.min(110, Math.floor(480 / longest));
+    let step = 0;
+    let done: ReturnType<typeof setTimeout> | undefined;
+    const tick = () => {
+      const at = new Map<string, Pos>();
+      for (const w of walks) if (step < w.path.length - 1) at.set(w.unitId, w.path[step]);
+      setWalk({ at, stepMs });
+      step += 1;
+    };
+    tick();
+    const id = setInterval(() => {
+      tick();
+      if (step >= longest) {
+        clearInterval(id);
+        done = setTimeout(() => setWalk(null), stepMs);
+      }
+    }, stepMs);
+    return () => {
+      clearInterval(id);
+      clearTimeout(done);
+    };
+  }, [events.seq]);
+
   const zoneKeys = useMemo(() => new Set((overlay.zone ?? []).map(posKey)), [overlay.zone]);
   const knockKeys = useMemo(() => new Set((overlay.knock ?? []).map(posKey)), [overlay.knock]);
   const spawnKeys = useMemo(() => new Set((overlay.spawns?.tiles ?? []).map(posKey)), [overlay.spawns]);
@@ -103,6 +170,15 @@ function BoardImpl({ state, rotated, overlay, previews, selectedId, hoverId, eve
       const t = map.tiles[y][x];
       const base = t === 'flower' || t === 'bush' ? 'normal' : t;
       const alt = (x + y) % 2 === 1 ? 'alt' : '';
+      // Bridge planks run across the crossing: a bridge (possibly several tiles wide) with water to its
+      // left and right is crossed vertically (on screen, after any quarter turn of the board).
+      const beyond = (dx: number): Terrain | undefined => {
+        let bx = x + dx;
+        while (map.tiles[y][bx] === 'bridge') bx += dx;
+        return map.tiles[y][bx];
+      };
+      const crossedVertically = t === 'bridge' && beyond(-1) === 'water' && beyond(1) === 'water';
+      const across = t === 'bridge' && crossedVertically === rotated ? 'across' : '';
       const hz = hazardAt.get(k);
       const arrow = arrowAt.get(k);
       tiles.push(
@@ -113,7 +189,7 @@ function BoardImpl({ state, rotated, overlay, previews, selectedId, hoverId, eve
           aria-label={`Tile ${x},${y}: ${TERRAIN_LABEL[t]}`}
           onClick={() => onTile(p)}
           onMouseEnter={() => onHover(p)}
-          className={`tile-${base} ${alt} relative flex items-center justify-center outline-none ring-inset ring-black/10 focus-visible:ring-2 focus-visible:ring-amber-300`}
+          className={`tile-${base} ${alt} ${across} relative flex items-center justify-center outline-none ring-inset ring-black/10 focus-visible:ring-2 focus-visible:ring-amber-300`}
           style={{ gridColumn: d.x + 1, gridRow: d.y + 1, boxShadow: 'inset 0 0 0 0.5px rgba(0,0,0,.18)' }}
         >
           {t === 'flower' && <FlowerIcon />}
@@ -126,14 +202,11 @@ function BoardImpl({ state, rotated, overlay, previews, selectedId, hoverId, eve
           )}
           {spawnKeys.has(k) && (
             <span className={`absolute inset-[6%] flex animate-pulse items-center justify-center rounded-md border-2 ${overlay.spawns!.side === 'A' ? 'border-rose-300 bg-rose-500/35' : 'border-sky-300 bg-sky-500/35'} text-lg font-black text-white`}>
-              {overlay.spawns!.side === 'A' ? (rotated ? '▶' : '▲') : rotated ? '◀' : '▼'}
+              {ARROW[screenDir(overlay.spawns!.side === 'A' ? 'N' : 'S', view)]}
             </span>
           )}
           {overlay.danger?.has(k) && (
-            <span
-              className="pointer-events-none absolute inset-0"
-              style={{ backgroundColor: `rgba(239, 68, 68, ${Math.min(0.62, 0.2 + 0.1 * (overlay.danger.get(k)! - 1))})`, boxShadow: 'inset 0 0 0 1px rgba(254, 202, 202, .45)' }}
-            />
+            <span className="pointer-events-none absolute inset-0" style={rangeStyle(overlay.danger.get(k)!)} />
           )}
           {overlay.hoverZone?.has(k) && <span className="pointer-events-none absolute inset-[4%] rounded-sm border-2 border-dashed border-orange-200/90 bg-orange-400/30" />}
           {overlay.reach?.has(k) && <span className="pointer-events-none absolute inset-0 bg-sky-400/35 shadow-[inset_0_0_0_1.5px_rgba(186,230,253,.8)]" />}
@@ -143,7 +216,7 @@ function BoardImpl({ state, rotated, overlay, previews, selectedId, hoverId, eve
           {knockKeys.has(k) && <span className="pointer-events-none absolute inset-[10%] rounded border-2 border-dashed border-red-400" />}
           {arrow && (
             <span className={`pointer-events-none absolute inset-0 flex items-center justify-center text-base font-black ${arrow.active ? 'text-white' : 'text-white/60'}`} style={{ textShadow: '0 0 4px rgba(0,0,0,.9)' }}>
-              {rotated ? ROT_ARROW[arrow.dir] : ARROW[arrow.dir]}
+              {ARROW[screenDir(arrow.dir, view)]}
             </span>
           )}
           {flash?.tiles.some((f) => posKey(f) === k) && (
@@ -167,7 +240,7 @@ function BoardImpl({ state, rotated, overlay, previews, selectedId, hoverId, eve
       </div>
       {hedges.map((h, i) => {
         const d = disp(h);
-        const edge: Dir = rotated ? ({ N: 'E', E: 'S', S: 'W', W: 'N' } as const)[h.edge] : h.edge;
+        const edge = screenDir(h.edge, view);
         const left = (d.x / cols) * 100;
         const top = (d.y / rows) * 100;
         const style =
@@ -177,12 +250,18 @@ function BoardImpl({ state, rotated, overlay, previews, selectedId, hoverId, eve
           : { right: 0, top: `${top}%`, width: '5px', height: `${100 / rows}%` };
         return <span key={i} className="pointer-events-none absolute rounded-full bg-gradient-to-r from-green-600 to-green-500 opacity-90" style={style} />;
       })}
+      {overlay.note && (
+        <div className={`pointer-events-none absolute inset-x-0 z-40 flex justify-center px-2 ${overlay.note.avoid && disp(overlay.note.avoid).y < rows / 2 ? 'bottom-1' : 'top-1'}`}>
+          <span className="max-w-full rounded-md bg-slate-950/85 px-2 py-0.5 text-center text-xs leading-snug text-slate-100 shadow-lg">{overlay.note.text}</span>
+        </div>
+      )}
       <div className="pointer-events-none absolute inset-0">
         {state.units.filter(onBoard).map((u) => (
           <Token
             key={u.id}
             unit={u}
-            pos={disp(u.pos!)}
+            pos={disp(walk?.at.get(u.id) ?? u.pos!)}
+            stepMs={walk ? walk.stepMs : undefined}
             cols={cols}
             rows={rows}
             selected={u.id === selectedId}
@@ -212,9 +291,11 @@ function BoardImpl({ state, rotated, overlay, previews, selectedId, hoverId, eve
   );
 }
 
-function Token({ unit, pos, cols, rows, selected, hovered, targetable, preview, matchup, highlighted, done, foresight }: {
+function Token({ unit, pos, stepMs, cols, rows, selected, hovered, targetable, preview, matchup, highlighted, done, foresight }: {
   unit: Unit;
   pos: Pos;
+  /** While Pokémon are walking a path: the time per tile (linear steps instead of one slide). */
+  stepMs?: number;
   cols: number;
   rows: number;
   selected: boolean;
@@ -232,7 +313,10 @@ function Token({ unit, pos, cols, rows, selected, hovered, targetable, preview, 
   return (
     <div
       className="absolute z-10 flex flex-col items-center justify-center transition-[left,top] duration-300 ease-out"
-      style={{ left: `${(pos.x / cols) * 100}%`, top: `${(pos.y / rows) * 100}%`, width: `${100 / cols}%`, height: `${100 / rows}%` }}
+      style={{
+        left: `${(pos.x / cols) * 100}%`, top: `${(pos.y / rows) * 100}%`, width: `${100 / cols}%`, height: `${100 / rows}%`,
+        ...(stepMs ? { transitionDuration: `${stepMs}ms`, transitionTimingFunction: 'linear' } : {}),
+      }}
     >
       <div
         className={`relative aspect-square w-[80%] rounded-full ring-[2.5px] ${ring} ${done ? 'opacity-55 grayscale-[60%]' : ''} ${selected ? 'animate-pulseRing !ring-amber-300' : ''} ${(hovered || highlighted) && !selected ? 'ring-white' : ''} ${targetable ? 'outline outline-2 outline-offset-1 outline-amber-300' : ''} bg-slate-800 shadow-md shadow-black/50`}

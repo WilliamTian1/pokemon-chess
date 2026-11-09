@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { decider, previewAction } from '../src/engine';
+import { decider, getCard, previewAction, reachable, terrainBonus } from '../src/engine';
 import { act, park, setup, unit } from './helpers';
 
 const P = (x: number, y: number) => ({ x, y });
@@ -32,7 +32,7 @@ describe('field objects', () => {
     park(s, ['A0', 'D0']);
     unit(s, 'A0').stages.atk = 3;
     unit(s, 'D0').stages.def = 3;
-    const n = act(s, { type: 'trebuchet', unitId: 'A0', targetId: 'D0', attackType: 'Normal' });
+    const n = act(s, { type: 'trebuchet', unitId: 'A0', targetId: 'D0' });
     expect(unit(n, 'D0').hp).toBe(220);
   });
 });
@@ -148,5 +148,67 @@ describe('interrupt choices', () => {
     expect(unit(n, 'A0').hp).toBe(15);
     expect(unit(n, 'D1').hp).toBe(110);
     expect(n.pending).toHaveLength(0);
+  });
+
+  it('Future Sight fizzles if Slowbro faints before it lands', () => {
+    let s = setup(['slowbro'], ['snorlax'], { A0: P(6, 5), D0: P(6, 3) });
+    park(s, ['A0', 'D0']);
+    const fs = getCard('slowbro').moves.findIndex((m) => m.name === 'Future Sight') as 0 | 1;
+    s = act(s, { type: 'useMove', unitId: 'A0', moveIndex: fs });
+    expect(s.futureSight).toHaveLength(1);
+    s = act(s, { type: 'endTurn' });
+    // Slowbro faints during the Defender's turn.
+    const slowbro = unit(s, 'A0');
+    slowbro.hp = 0;
+    slowbro.fainted = true;
+    slowbro.pos = null;
+    const hp = unit(s, 'D0').hp;
+    s = act(s, { type: 'endTurn' });
+    expect(unit(s, 'D0').hp).toBe(hp);
+    expect(s.futureSight).toHaveLength(0);
+    expect(s.log.some((l) => /fizzles/.test(l.text))).toBe(true);
+  });
+});
+
+describe('distance, terrain and grids', () => {
+  it('"within 4 tiles" counts steps like movement, so diagonals cost 2', () => {
+    const s = setup(['breloom'], ['snorlax', 'tauros'], { A0: P(5, 5), D0: P(7, 7), D1: P(8, 8) });
+    park(s, ['A0', 'D0', 'D1']);
+    // (7,7) is 2 + 2 = 4 steps away; (8,8) is 6 (only 3 tiles on the diagonal).
+    expect(previewAction(s, 'A0', 1, { targetId: 'D0' })).toHaveLength(1);
+    expect(() => act(s, { type: 'useMove', unitId: 'A0', moveIndex: 1, targetId: 'D1' })).toThrow(/within 4 tiles/);
+  });
+
+  it('Flying and Levitate Pokémon get no berry bush or flower bonus', () => {
+    // Meadow: a berry bush at (7,4), flowers at (4,3).
+    const s = setup(['breloom'], ['snorlax', 'dodrio', 'weezing'], { A0: P(7, 6), D0: P(7, 4), D1: P(11, 5), D2: P(4, 3) });
+    park(s, ['A0', 'D0', 'D1', 'D2']);
+    expect(terrainBonus(s, unit(s, 'D0'))).toBe('bush');
+    expect(terrainBonus(s, unit(s, 'D2'))).toBeNull();
+    // Mach Punch + Technician = 60 Fighting: Snorlax on the bush takes (60 − 30) × 2.
+    expect(previewAction(s, 'A0', 1, { targetId: 'D0' })[0].min).toBe(60);
+    const onBush = setup(['breloom'], ['noivern'], { A0: P(7, 6), D0: P(7, 4) });
+    const offBush = setup(['breloom'], ['noivern'], { A0: P(7, 6), D0: P(9, 4) });
+    park(onBush, ['A0', 'D0']);
+    park(offBush, ['A0', 'D0']);
+    expect(previewAction(onBush, 'A0', 1, { targetId: 'D0' })[0].min).toBe(previewAction(offBush, 'A0', 1, { targetId: 'D0' })[0].min);
+  });
+
+  it('Fire Spin hits the 3×3 ring in front, three tiles deep', () => {
+    const s = setup(['volcarona'], ['snorlax', 'tauros', 'blissey'], { A0: P(5, 7), D0: P(5, 4), D1: P(4, 5), D2: P(5, 5) });
+    park(s, ['A0', 'D0', 'D1', 'D2']);
+    const hit = previewAction(s, 'A0', 0, { dir: 'N' }).map((p) => p.unitId).sort();
+    // (5,4) is 3 ahead and (4,5) is 2 ahead and 1 left; (5,5), 2 straight ahead, is the gap.
+    expect(hit).toEqual(['D0', 'D1']);
+  });
+
+  it('only Ghost types move through opponents', () => {
+    const s = setup(['tauros', 'gengar'], ['snorlax'], { A0: P(8, 7), A1: P(3, 7), D0: P(8, 6) });
+    park(s, ['A0', 'A1', 'D0']);
+    // Two steps straight through Snorlax; going around takes four.
+    expect(reachable(s, unit(s, 'A0'), 2).has('8,5')).toBe(false);
+    unit(s, 'D0').pos = P(3, 6);
+    unit(s, 'A0').pos = P(10, 7);
+    expect(reachable(s, unit(s, 'A1'), 2).has('3,5')).toBe(true);
   });
 });

@@ -3,7 +3,7 @@ import { getMap } from './data/maps';
 import type {
   AbilityId, CardDef, Dir, GameState, Hazard, MapDef, MoveDef, PType, Pos, Side, Terrain, Unit,
 } from './types';
-import { ORTHO, addPos, cheb, posKey, rotate, samePos } from './util';
+import { ORTHO, addPos, cheb, posKey, rotate, samePos, steps } from './util';
 
 // ---------------------------------------------------------------- units & cards
 
@@ -42,8 +42,15 @@ export const inBounds = (s: GameState, p: Pos): boolean => {
   return p.x >= 0 && p.y >= 0 && p.x < m.width && p.y < m.height;
 };
 export const terrainAt = (s: GameState, p: Pos): Terrain => mapOf(s).tiles[p.y][p.x];
-/** "Normal" terrain: no bonuses and no movement limitations (dirt and grass are cosmetic). */
-export const isNormalTerrain = (t: Terrain): boolean => t === 'normal' || t === 'dirt' || t === 'grass';
+/** "Normal" terrain: no bonuses and no movement limitations (dirt, grass and bridges are cosmetic). */
+export const isNormalTerrain = (t: Terrain): boolean => t === 'normal' || t === 'dirt' || t === 'grass' || t === 'bridge';
+/** Berry bushes and flowers only help Pokémon standing in them: Flying and Levitate Pokémon hover above. */
+export function terrainBonus(s: GameState, u: Unit, at?: Pos | null): 'bush' | 'flower' | null {
+  const p = at ?? u.pos;
+  if (!p || isFlier(u)) return null;
+  const t = terrainAt(s, p);
+  return t === 'bush' || t === 'flower' ? t : null;
+}
 export const isTrebuchet = (s: GameState, p: Pos): boolean => mapOf(s).trebuchets.some((t) => samePos(t, p));
 
 export const unitAt = (s: GameState, p: Pos): Unit | undefined =>
@@ -97,7 +104,7 @@ export function effectiveMov(s: GameState, u: Unit, at?: Pos): number {
         if (adjacentToType(s, u, 'Fire', p)) m += 2;
         break;
       case 'shadowDash':
-        if (!alliesOf(s, u).some((a) => cheb(a.pos!, p) <= 3)) m += 2;
+        if (!alliesOf(s, u).some((a) => steps(a.pos!, p) <= 3)) m += 2;
         break;
       case 'slushRush':
         if (adjacentToType(s, u, 'Ice', p) || terrainAt(s, p) === 'ice') m += 2;

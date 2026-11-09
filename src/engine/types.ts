@@ -22,6 +22,7 @@ export type Terrain =
   | 'normal'
   | 'dirt'
   | 'grass'
+  | 'bridge'
   | 'water'
   | 'flower'
   | 'bush'
@@ -240,12 +241,13 @@ export interface GameState {
   side: Side;
   /** `pool` and `legendPool` are this match's random selections of normal and legendary cards. */
   draft: { order: Side[]; index: number; picks: Record<Side, string[]>; pool: string[]; legendPool: string[] };
-  /** `first` is the winner of the coin flip at the end of the draft (null until then). */
-  placement: { order: Side[]; index: number; first: Side | null };
+  /** Placement alternates A, D, A, D…: the Attacker places first. */
+  placement: { order: Side[]; index: number };
   units: Unit[];
   hazards: Hazard[];
   substitute: { pos: Pos; ownerId: string } | null;
-  futureSight: { userId: string; side: Side; pos: Pos }[];
+  /** Pending Future Sights; each strikes around its user at the start of the user's next turn. */
+  futureSight: { userId: string; side: Side }[];
   active: ActiveActivation | null;
   pending: Pending[];
   winner: Side | null;
@@ -263,7 +265,7 @@ export type Action =
   | { type: 'move'; unitId: string; to: Pos }
   | { type: 'undoMove'; unitId: string }
   | { type: 'useMove'; unitId: string; moveIndex: 0 | 1; dir?: Dir; targetId?: string }
-  | { type: 'trebuchet'; unitId: string; targetId: string; attackType: PType }
+  | { type: 'trebuchet'; unitId: string; targetId: string }
   | { type: 'wait'; unitId: string }
   | { type: 'postMove'; unitId: string; to: Pos }
   | { type: 'skipPostMove'; unitId: string }

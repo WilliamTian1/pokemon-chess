@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  type Action, DIRS, DIR_VEC, type Dir, type GameState, type PType, type Pos, SIDE_NAME, type Side, type TargetPreview, type Unit,
-  addPos, bestHit, cardOf, dangerZone, decider, dirToward, followMeBlockers, getCard, getMap, inBounds, liveUnits, markedTiles,
-  moveOf, moveOptions, moveTargets, onBoard, otherSide, posKey, previewAction, selfEffectNotes, trebuchetOption, unitAt,
-  unitTurnInfo, waitBlock,
+  type Action, DIRS, DIR_VEC, type Dir, type GameState, type Pos, type Side, type TargetPreview, type Unit,
+  addPos, bestHit, cardOf, dangerZone, decider, dirToward, followMeBlockers, followMeUsers, getCard, getMap, inBounds, liveUnits,
+  markedTiles, moveOf, moveOptions, moveTargets, onBoard, otherSide, posKey, previewAction, selfEffectNotes, targeting, trebuchetOption,
+  unitAt, unitTurnInfo, waitBlock,
 } from '../../engine';
 import { Art, HpBar, Modal, SIDE_TEXT, StatusBadge, TypeBadge } from '../components/bits';
-import { Board, type Overlay } from '../components/Board';
+import { ARROW, Board, type BoardView, MOVE_RANGE, type Overlay, screenDir } from '../components/Board';
 import { MiniGrid } from '../components/CardView';
 import { MatchupMatrix, TypeChartModal } from '../components/Matchups';
 import { LogPanel } from '../components/Panels';
@@ -16,27 +16,13 @@ import { useBoxSize, usePortraitBoard, useTouch, useWideLayout } from '../hooks'
 
 type Aim = { kind: 'move'; index: 0 | 1 } | { kind: 'treb' };
 
-const DANGER_KEY = 'pcc-danger-zone';
-
-function readPref(key: string): boolean {
-  try {
-    return localStorage.getItem(key) === '1';
-  } catch {
-    return false;
-  }
-}
-
-function writePref(key: string, on: boolean): void {
-  try {
-    localStorage.setItem(key, on ? '1' : '0');
-  } catch {
-    // Storage can be unavailable (private mode); the toggle still works for this visit.
-  }
-}
-
 export function BattleView({ ctl }: { ctl: Controller }) {
   const s = ctl.state;
   const rotated = usePortraitBoard();
+  // Like chess, the board faces the player: the Defender sees its own side at the bottom. In hot-seat
+  // it faces whoever is acting; spectators get the Attacker's view.
+  const viewSide: Side = ctl.mySides.length === 1 ? ctl.mySides[0] : ctl.mySides.length === 2 ? decider(s) ?? s.side : 'A';
+  const view = useMemo<BoardView>(() => ({ rotated, flipped: viewSide === 'D' }), [rotated, viewSide]);
   const wide = useWideLayout();
   // Enlarged cards are shown over the board column, never over either team's cards.
   const mainRef = useRef<HTMLElement>(null);
@@ -50,12 +36,14 @@ export function BattleView({ ctl }: { ctl: Controller }) {
   const [aim, setAim] = useState<Aim | null>(null);
   const [aimDir, setAimDir] = useState<Dir | null>(null);
   const [aimTarget, setAimTarget] = useState<string | null>(null);
-  const [trebType, setTrebType] = useState<PType | null>(null);
+  // Why the direction under the cursor can't be used (e.g. Follow Me), so a dimmed arrow is explained.
+  const [aimBlocked, setAimBlocked] = useState<string | null>(null);
   const [hoverUnit, setHoverUnit] = useState<string | null>(null);
   const [inspect, setInspect] = useState<string | null>(null);
   const [confirmEnd, setConfirmEnd] = useState(false);
   const [placeSel, setPlaceSel] = useState<string | null>(null);
-  const [danger, setDanger] = useState(() => readPref(DANGER_KEY));
+  // An opposing Pokémon whose reach is shown, each move in its own colour (click it; click again or Esc to clear).
+  const [dangerUnit, setDangerUnit] = useState<string | null>(null);
   const [hoverMove, setHoverMove] = useState<0 | 1 | null>(null);
   const [hoverTile, setHoverTile] = useState<Pos | null>(null);
   const [matrixHover, setMatrixHover] = useState<string[] | null>(null);
@@ -63,25 +51,14 @@ export function BattleView({ ctl }: { ctl: Controller }) {
   const [boardBox, setBoardBox] = useState<HTMLDivElement | null>(null);
   const boardSize = useBoxSize(boardBox);
   const [chart, setChart] = useState(false);
-  const [coin, setCoin] = useState(() => s.phase === 'placement' && s.placement.index === 0 && s.placement.first !== null);
 
-  const toggleDanger = useCallback(() => {
-    setDanger((on) => {
-      writePref(DANGER_KEY, !on);
-      return !on;
-    });
-  }, []);
 
-  useEffect(() => {
-    if (!coin) return;
-    const t = setTimeout(() => setCoin(false), 2600);
-    return () => clearTimeout(t);
-  }, [coin]);
 
   const cancelAim = useCallback(() => {
     setAim(null);
     setAimDir(null);
     setAimTarget(null);
+    setAimBlocked(null);
   }, []);
 
   // Every new state invalidates aiming; an in-progress activation locks the selection.
@@ -98,15 +75,14 @@ export function BattleView({ ctl }: { ctl: Controller }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
+        setDangerUnit(null);
         if (aim) cancelAim();
         else if (!s.active) setSel(null);
       }
-      const typing = e.target instanceof HTMLElement && (e.target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName));
-      if (!typing && !e.ctrlKey && !e.metaKey && !e.altKey && e.key.toLowerCase() === 'd') toggleDanger();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [aim, cancelAim, s.active, toggleDanger]);
+  }, [aim, cancelAim, s.active]);
 
   const selUnit = sel ? s.units.find((u) => u.id === sel) ?? null : null;
   const controllable = !!selUnit && myBattleTurn && selUnit.side === s.side && onBoard(selUnit) && !selUnit.activated;
@@ -166,19 +142,29 @@ export function BattleView({ ctl }: { ctl: Controller }) {
     } else if (treb?.usable) {
       out.targetable = new Set(treb.targets);
       if (aimTarget && treb.targets.includes(aimTarget)) {
-        for (const p of previewAction(s, id, 'treb', { targetId: aimTarget, attackType: trebType ?? treb.types[0] })) out.previews.set(p.unitId, p);
+        for (const p of previewAction(s, id, 'treb', { targetId: aimTarget })) out.previews.set(p.unitId, p);
       }
     }
     return out;
-  }, [aim, aimDir, aimTarget, trebType, selUnit, opts, treb, s, hoverMove]);
+  }, [aim, aimDir, aimTarget, selUnit, opts, treb, s, hoverMove]);
 
   // ---------------------------------------------------------------- danger zone & matchups
   const dangerSide: Side = ctl.mySides.length === 1 ? otherSide(ctl.mySides[0]) : otherSide(s.side);
-  const dz = useMemo(
-    () => (danger && (s.phase === 'battle' || s.phase === 'placement') ? dangerZone(s, dangerSide) : null),
-    [danger, s, dangerSide],
+  const soloDanger = dangerUnit ? s.units.find((u) => u.id === dangerUnit && u.side === dangerSide && onBoard(u)) ?? null : null;
+  const dz = useMemo(() => {
+    if (s.phase !== 'battle' && s.phase !== 'placement') return null;
+    return soloDanger ? dangerZone(s, dangerSide, soloDanger.id) : null;
+  }, [soloDanger, s, dangerSide]);
+  /** Clicking an opponent shows its own danger zone; clicking it again goes back. */
+  const toggleSoloDanger = (u: Unit) => {
+    if (u.side === dangerSide && onBoard(u)) setDangerUnit((cur) => (cur === u.id ? null : u.id));
+  };
+  // Tile → which of the Pokémon's moves reach it (bit 1: first move, bit 2: second).
+  const dangerMoves = useMemo(
+    () => (dz ? new Map([...dz.tiles].map(([k, v]) => [k, v.reduce((m, src) => m | (1 << src.moveIndex), 0)])) : undefined),
+    [dz],
   );
-  const dangerCounts = useMemo(() => (dz ? new Map([...dz.tiles].map(([k, v]) => [k, v.length])) : undefined), [dz]);
+  const readout = dangerReadout(s, dz, hoverTile);
 
   const send = (a: Action) => {
     ctl.dispatch(a);
@@ -188,7 +174,7 @@ export function BattleView({ ctl }: { ctl: Controller }) {
   const fireAt = (targetId: string) => {
     if (!selUnit || !aim) return;
     if (aim.kind === 'move') send({ type: 'useMove', unitId: selUnit.id, moveIndex: aim.index, targetId });
-    else send({ type: 'trebuchet', unitId: selUnit.id, targetId, attackType: trebType ?? cardOf(selUnit).types[0] });
+    else send({ type: 'trebuchet', unitId: selUnit.id, targetId });
   };
 
   // ---------------------------------------------------------------- placement
@@ -200,6 +186,29 @@ export function BattleView({ ctl }: { ctl: Controller }) {
   const freeSpawns = placing && placeSide ? getMap(s.mapId).spawns[placeSide].filter((p) => !unitAt(s, p)) : [];
 
   // ---------------------------------------------------------------- board input
+  /**
+   * Which way to aim a direction move at tile `p`: straight at it when that covers it (or it's the
+   * arrow tile), otherwise any direction whose zone covers it, so clicking a target always works.
+   */
+  const aimDirFor = (index: 0 | 1, p: Pos): Dir | null => {
+    if (!selUnit?.pos) return null;
+    const dirs = opts[index]?.dirs ?? [];
+    const toward = dirToward(selUnit.pos, p);
+    const straight = dirs.find((d) => d.dir === toward);
+    const covers = (d: (typeof dirs)[number]) => d.tg.zone.some((z) => z.x === p.x && z.y === p.y);
+    if (straight && (covers(straight) || Math.abs(p.x - selUnit.pos.x) + Math.abs(p.y - selUnit.pos.y) === 1)) return straight.dir;
+    return dirs.find(covers)?.dir ?? straight?.dir ?? null;
+  };
+
+  /** Why a move can't be aimed `dir` (null if it can): nothing in the zone, or Follow Me. */
+  const dirBlockReason = (index: 0 | 1, dir: Dir | null): string | null => {
+    if (!selUnit || !dir || opts[index]?.dirs.some((d) => d.dir === dir)) return null;
+    const tg = targeting(s, selUnit, opts[index].move, { dir });
+    const decoys = followMeUsers(s, selUnit);
+    if (tg.ok && decoys.length) return `Follow Me: ${cardOf(selUnit).name} must hit ${decoys.map((f) => cardOf(f).name).join(' / ')}, and that direction doesn't.`;
+    return tg.reason ? `Can't aim that way: ${tg.reason[0].toLowerCase()}${tg.reason.slice(1)}.` : null;
+  };
+
   const onTile = (p: Pos) => {
     const u = unitAt(s, p);
     if (placing) {
@@ -210,7 +219,8 @@ export function BattleView({ ctl }: { ctl: Controller }) {
     if (aim && selUnit?.pos) {
       if (u?.id === selUnit.id) return cancelAim();
       if (aim.kind === 'move' && opts[aim.index]?.aim === 'dir') {
-        const d = dirToward(selUnit.pos, p);
+        const d = aimDirFor(aim.index, p);
+        setAimBlocked(dirBlockReason(aim.index, d ?? dirToward(selUnit.pos, p)));
         if (d && opts[aim.index].dirs.some((x) => x.dir === d)) {
           if (touch && aimDir !== d) setAimDir(d);
           else fireDir(d);
@@ -230,6 +240,7 @@ export function BattleView({ ctl }: { ctl: Controller }) {
         setInspect(null);
       } else {
         setInspect(u.id);
+        toggleSoloDanger(u);
       }
       return;
     }
@@ -239,6 +250,7 @@ export function BattleView({ ctl }: { ctl: Controller }) {
     }
     if (!lockedTo) setSel(null);
     setInspect(null);
+    setDangerUnit(null);
   };
 
   const onHover = (p: Pos | null) => {
@@ -247,8 +259,10 @@ export function BattleView({ ctl }: { ctl: Controller }) {
     setHoverTile(p);
     if (!p || touch || !aim || !selUnit?.pos) return;
     if (aim.kind === 'move' && opts[aim.index]?.aim === 'dir') {
-      const d = dirToward(selUnit.pos, p);
-      setAimDir(d && opts[aim.index].dirs.some((x) => x.dir === d) ? d : null);
+      const d = aimDirFor(aim.index, p);
+      const ok = d && opts[aim.index].dirs.some((x) => x.dir === d);
+      setAimDir(ok ? d : null);
+      setAimBlocked(ok ? null : dirBlockReason(aim.index, d ?? dirToward(selUnit.pos, p)));
     } else if (u && preview.targetable?.has(u.id)) {
       setAimTarget(u.id);
     }
@@ -263,7 +277,8 @@ export function BattleView({ ctl }: { ctl: Controller }) {
     targetable: preview.targetable,
     arrows: preview.arrows,
     spawns: myPlacement && placeSide ? { tiles: freeSpawns, side: placeSide } : undefined,
-    danger: dangerCounts,
+    danger: dangerMoves,
+    note: wide && readout ? { text: readout, avoid: hoverTile } : undefined,
     hoverZone: preview.hoverZone,
     highlight: matrixHover ? new Set(matrixHover) : undefined,
   };
@@ -286,7 +301,7 @@ export function BattleView({ ctl }: { ctl: Controller }) {
   const remaining = s.phase === 'battle' ? s.units.filter((u) => u.side === s.side && onBoard(u) && !u.activated) : [];
 
   return (
-    <div className="grid grid-cols-1 gap-3 md:grid-cols-2 wide:h-full wide:min-h-0 wide:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_minmax(0,1fr)] wide:grid-rows-[minmax(0,1fr)]">
+    <div className="grid grid-cols-1 gap-3 md:grid-cols-2 wide:h-full wide:min-h-0 wide:grid-cols-[minmax(0,1fr)_minmax(0,2.1fr)_minmax(0,1fr)] wide:grid-rows-[minmax(0,1fr)]">
       {([leftSide, otherSide(leftSide)] as const).map((side, i) => (
         <aside key={side} className={`min-w-0 wide:h-full wide:min-h-0 ${i === 0 ? 'order-2 wide:order-1' : 'order-3'}`}>
           <TeamCards
@@ -303,7 +318,10 @@ export function BattleView({ ctl }: { ctl: Controller }) {
               const u = s.units.find((x) => x.id === id)!;
               if (placing && myPlacement && !u.pos && u.side === placeSide) setPlaceSel(id);
               else if (myBattleTurn && u.side === s.side && onBoard(u) && !u.activated && (!lockedTo || lockedTo === id)) setSel(id);
-              else setInspect(id);
+              else {
+                setInspect(id);
+                if (!placing) toggleSoloDanger(u);
+              }
             }}
           />
         </aside>
@@ -312,23 +330,27 @@ export function BattleView({ ctl }: { ctl: Controller }) {
       {/* On one-screen layouts this column is a fixed-height stack: the board takes whatever room the
           banner, action bar and log leave, so End turn and the log never need scrolling to. */}
       <main ref={mainRef} className="order-1 min-w-0 space-y-3 md:col-span-2 wide:order-2 wide:col-span-1 wide:flex wide:min-h-0 wide:flex-col wide:gap-2 wide:space-y-0 wide:overflow-y-auto">
-        <TurnBanner ctl={ctl} remaining={remaining.length} />
-        <BoardTools
-          state={s}
-          names={ctl.names}
-          danger={danger}
-          dangerSide={dangerSide}
-          dz={dz}
-          hoverTile={hoverTile}
-          onToggleDanger={toggleDanger}
-          onChart={() => setChart(true)}
-          onMatchups={() => setMatchups(true)}
-        />
+        {/* One-screen layouts: banner and tools share a row, leaving the height to the board. */}
+        <div className="space-y-3 wide:flex wide:shrink-0 wide:flex-wrap wide:items-center wide:gap-2 wide:space-y-0">
+          <div className="min-w-0 wide:min-w-[260px] wide:flex-1">
+            <TurnBanner ctl={ctl} remaining={remaining.length} />
+          </div>
+          <BoardTools
+            state={s}
+            dangerSide={dangerSide}
+            solo={soloDanger}
+            onClearSolo={() => setDangerUnit(null)}
+            dz={dz}
+            readout={readout}
+            onChart={() => setChart(true)}
+            onMatchups={() => setMatchups(true)}
+          />
+        </div>
         <div ref={setBoardBox} className="wide:flex wide:min-h-[110px] wide:flex-1 wide:items-center wide:justify-center">
         <div className="mx-auto w-full" style={wide && boardSize.w > 0 ? { width: Math.min(boardSize.w, boardSize.h * boardAspect) } : undefined}>
           <Board
             state={s}
-            rotated={rotated}
+            view={view}
             overlay={overlay}
             previews={preview.previews}
             selectedId={sel}
@@ -339,6 +361,8 @@ export function BattleView({ ctl }: { ctl: Controller }) {
           />
         </div>
         </div>
+        {/* On phones the controls stay pinned to the bottom of the screen while the board scrolls. */}
+        <div className="sticky bottom-0 z-20 -mx-1 rounded-xl bg-slate-950/90 p-1 backdrop-blur wide:static wide:m-0 wide:bg-transparent wide:p-0 wide:backdrop-blur-none">
         {placing ? (
           <PlacementBar ctl={ctl} placeSide={placeSide} myPlacement={myPlacement} unplaced={unplaced} selected={placeUnit} onSelect={setPlaceSel} />
         ) : (
@@ -351,7 +375,7 @@ export function BattleView({ ctl }: { ctl: Controller }) {
             aim={aim}
             aimDir={aimDir}
             aimTarget={aimTarget}
-            trebType={trebType}
+            aimBlocked={aimBlocked}
             touch={touch}
             isPost={isPost}
             postBudget={isPost ? s.active!.postMove : 0}
@@ -362,9 +386,7 @@ export function BattleView({ ctl }: { ctl: Controller }) {
               setAim(a);
               setAimDir(null);
               setAimTarget(null);
-              if (a?.kind === 'treb' && selUnit) setTrebType(cardOf(selUnit).types[0]);
             }}
-            onTrebType={setTrebType}
             onFireDir={fireDir}
             onFireAt={fireAt}
             onSelfMove={(index) => selUnit && send({ type: 'useMove', unitId: selUnit.id, moveIndex: index })}
@@ -372,7 +394,8 @@ export function BattleView({ ctl }: { ctl: Controller }) {
             send={send}
           />
         )}
-        <LogPanel log={s.log} className="h-56 wide:h-[clamp(64px,12vh,110px)] wide:shrink-0" />
+        </div>
+        <LogPanel log={s.log} className="h-56 wide:h-[clamp(60px,10vh,110px)] wide:shrink-0" />
       </main>
       {matchups && (
         <Modal onClose={() => setMatchups(false)} wide>
@@ -384,79 +407,70 @@ export function BattleView({ ctl }: { ctl: Controller }) {
         </Modal>
       )}
 
-      <PendingModal ctl={ctl} rotated={rotated} />
+      <PendingModal ctl={ctl} view={view} />
       {chart && <TypeChartModal onClose={() => setChart(false)} cards={s.units.map((u) => cardOf(u))} />}
-      {coin && s.placement.first && <CoinFlip first={s.placement.first} name={ctl.names[s.placement.first]} onDone={() => setCoin(false)} />}
     </div>
   );
 }
 
 // ---------------------------------------------------------------- board tools
 
-function BoardTools({ state, names, danger, dangerSide, dz, hoverTile, onToggleDanger, onChart, onMatchups }: {
-  state: GameState;
-  names: Record<Side, string>;
-  danger: boolean;
-  dangerSide: Side;
-  dz: ReturnType<typeof dangerZone> | null;
-  hoverTile: Pos | null;
-  onToggleDanger: () => void;
-  onChart: () => void;
-  onMatchups: () => void;
-}) {
-  const here = dz && hoverTile ? dz.tiles.get(posKey(hoverTile)) : undefined;
+/** "In reach of …" for a danger-zone tile: who can hit it, with which moves (null if nobody). */
+function dangerReadout(state: GameState, dz: ReturnType<typeof dangerZone> | null, tile: Pos | null): string | null {
+  const here = dz && tile ? dz.tiles.get(posKey(tile)) : undefined;
+  if (!here?.length) return null;
   const byUnit = new Map<string, string[]>();
-  for (const src of here ?? []) {
+  for (const src of here) {
     const u = state.units.find((x) => x.id === src.unitId)!;
     const list = byUnit.get(u.id) ?? [];
     list.push(moveOf(u, src.moveIndex).name);
     byUnit.set(u.id, list);
   }
-  const when = state.phase === 'battle' && state.side === dangerSide ? 'this turn' : 'on their next turn';
-  const treb = dz?.trebuchet.map((id) => cardOf(state.units.find((x) => x.id === id)!).name) ?? [];
-  let text: string;
-  if (!danger) text = 'Danger zone shows every tile the opponent can attack (shortcut: D).';
-  else if (byUnit.size) text = `In reach of ${[...byUnit].map(([id, mv]) => `${cardOf(state.units.find((x) => x.id === id)!).name} (${mv.join(', ')})`).join(' · ')}`;
-  else text = `Red tiles: where the ${SIDE_NAME[dangerSide]} (${names[dangerSide]}) can attack ${when}, after moving. Darker red means more attacks overlap.`;
-  return (
-    <div className="flex flex-wrap items-center gap-2">
-      <button
-        type="button"
-        aria-pressed={danger}
-        onClick={onToggleDanger}
-        title="Toggle the opponent's danger zone (D)"
-        className={danger ? 'btn bg-rose-600 text-white hover:bg-rose-500' : 'btn-ghost'}
-      >
-        <span className={`inline-block h-3 w-3 rounded-sm border ${danger ? 'border-white bg-white/80' : 'border-rose-300 bg-rose-500/50'}`} />
-        Danger zone{danger ? ': on' : ''}
-      </button>
-      <button type="button" className="btn-ghost" onClick={onMatchups}>Matchups</button>
-      <button type="button" className="btn-ghost" onClick={onChart}>Type chart</button>
-      {/* Beside the buttons when there's room, otherwise on its own line; never more than two lines. */}
-      <div className="line-clamp-2 min-w-[min(100%,240px)] flex-1 text-xs leading-snug text-slate-400">
-        {text}
-        {danger && treb.length > 0 && <span className="text-rose-300"> {treb.join(', ')} can also reach the trebuchet, which hits anywhere (40 power).</span>}
-      </div>
-    </div>
-  );
+  return `In reach of ${[...byUnit].map(([id, mv]) => `${cardOf(state.units.find((x) => x.id === id)!).name} (${mv.join(', ')})`).join(' · ')}`;
 }
 
-function CoinFlip({ first, name, onDone }: { first: Side; name: string; onDone: () => void }) {
+function BoardTools({ state, dangerSide, solo, onClearSolo, dz, readout, onChart, onMatchups }: {
+  state: GameState;
+  dangerSide: Side;
+  solo: Unit | null;
+  onClearSolo: () => void;
+  dz: ReturnType<typeof dangerZone> | null;
+  /** Who can hit the hovered tile (shown on the board itself on one-screen layouts). */
+  readout: string | null;
+  onChart: () => void;
+  onMatchups: () => void;
+}) {
+  const when = state.phase === 'battle' && state.side === dangerSide ? 'this turn' : 'on their next turn';
+  const treb = dz?.trebuchet.map((id) => cardOf(state.units.find((x) => x.id === id)!).name) ?? [];
+  const soloIdle = solo && !dz?.tiles.size;
+  // Moves that reach at least one tile, for the colour key.
+  const shown = solo ? ([0, 1] as const).filter((i) => [...(dz?.tiles.values() ?? [])].some((srcs) => srcs.some((x) => x.moveIndex === i))) : [];
+  let text: string;
+  if (readout) text = readout;
+  else if (solo) text = soloIdle ? `${cardOf(solo).name} can't attack ${when}.` : `Where ${cardOf(solo).name} can attack ${when}, after moving: one colour per move.`;
+  else text = 'Click an opposing Pokémon to see where each of its moves can reach.';
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-4" onClick={onDone} role="status" aria-live="polite">
-      <div className="flex flex-col items-center gap-6 text-center">
-        <div className="text-xs font-bold uppercase tracking-[0.3em] text-slate-300">Coin flip for placement</div>
-        <div className="mt-20" style={{ perspective: '700px' }}>
-          <div className={`coin coin-${first} relative h-28 w-28`}>
-            <div className="coin-face absolute inset-0 flex items-center justify-center rounded-full border-4 border-amber-200 bg-gradient-to-br from-rose-400 to-rose-700 text-4xl font-black text-white shadow-xl shadow-black/50">A</div>
-            <div className="coin-face coin-back absolute inset-0 flex items-center justify-center rounded-full border-4 border-amber-200 bg-gradient-to-br from-sky-400 to-sky-700 text-4xl font-black text-white shadow-xl shadow-black/50">D</div>
-          </div>
-        </div>
-        <div className="coin-result">
-          <div className={`text-2xl font-black ${SIDE_TEXT[first]}`}>The {SIDE_NAME[first]} places first</div>
-          <div className="mt-1 text-sm text-slate-300">{name}</div>
-        </div>
-      </div>
+    <div className="flex max-w-full flex-wrap items-center gap-2 wide:justify-end">
+      {solo && (
+        <button type="button" className="btn bg-slate-800 text-slate-100 hover:bg-slate-700" onClick={onClearSolo} title="Hide its reach (Esc)">
+          <span className="font-bold">{cardOf(solo).name}</span>
+          {soloIdle && <span className="text-slate-400">can’t attack</span>}
+          {treb.length > 0 && <span className="text-xs text-rose-300" title="It can walk to the trebuchet, which hits any Pokémon on the map (40 power).">+ trebuchet</span>}
+          {shown.map((i) => (
+            <span key={i} className="flex items-center gap-1 text-xs font-semibold">
+              <span className="inline-block h-3.5 w-3.5 rounded-sm" style={{ ...MOVE_RANGE[i], boxShadow: i ? 'inset 0 0 0 2px rgba(253, 224, 71, 0.95)' : MOVE_RANGE[i].boxShadow }} />
+              {cardOf(solo).moves[i].name}
+            </span>
+          ))}
+          <span aria-hidden>✕</span>
+        </button>
+      )}
+      {!solo && <span className="hidden text-xs text-slate-400 min-[1400px]:wide:inline">Click an opponent to see its reach</span>}
+      <button type="button" className="btn-ghost" onClick={onMatchups}>Matchups</button>
+      <button type="button" className="btn-ghost" onClick={onChart}>Type chart</button>
+      {/* Phones: beside the buttons or on its own line. One-screen layouts keep the row slim (the
+          hover readout appears on the board instead). */}
+      <div className="line-clamp-2 min-w-[min(100%,240px)] flex-1 text-xs leading-snug text-slate-400 wide:hidden">{text}</div>
     </div>
   );
 }
@@ -473,8 +487,8 @@ function TurnBanner({ ctl, remaining }: { ctl: Controller; remaining: number }) 
           Placement · {ctl.mySides.includes(side) ? 'place a Pokémon on a glowing spawn tile' : `${ctl.names[side]} is placing…`}
         </div>
         <div className="text-xs text-slate-400">
-          {s.placement.first && <>The {SIDE_NAME[s.placement.first]} won the coin flip and placed first. </>}
-          Attackers start at the bottom, Defenders at the top.
+          The Attacker places first.{' '}
+          The board faces you: your spawn tiles are along the bottom edge.
         </div>
       </div>
     );
@@ -498,7 +512,7 @@ function TurnBanner({ ctl, remaining }: { ctl: Controller; remaining: number }) 
           </div>
         </div>
       </div>
-      <div className="text-right text-[11px] leading-tight text-slate-400 wide:hidden min-[1500px]:wide:block">
+      <div className="hidden text-right text-[11px] leading-tight text-slate-400 sm:block wide:hidden">
         Attacker wins by fainting all 4 Defenders.<br />Defender wins by surviving round {s.maxRounds}.
       </div>
     </div>
@@ -549,7 +563,7 @@ function ActionBar(props: {
   aim: Aim | null;
   aimDir: Dir | null;
   aimTarget: string | null;
-  trebType: PType | null;
+  aimBlocked: string | null;
   touch: boolean;
   isPost: boolean;
   postBudget: number;
@@ -557,14 +571,13 @@ function ActionBar(props: {
   confirmEnd: boolean;
   setConfirmEnd: (v: boolean) => void;
   onAim: (a: Aim | null) => void;
-  onTrebType: (t: PType) => void;
   onFireDir: (d: Dir) => void;
   onFireAt: (id: string) => void;
   onSelfMove: (i: 0 | 1) => void;
   onHoverMove: (i: 0 | 1 | null) => void;
   send: (a: Action) => void;
 }) {
-  const { ctl, unit, myTurn, opts, treb, aim, aimDir, aimTarget, trebType, touch, isPost, postBudget, remaining, confirmEnd, setConfirmEnd, onAim, onTrebType, onFireDir, onFireAt, onSelfMove, onHoverMove, send } = props;
+  const { ctl, unit, myTurn, opts, treb, aim, aimDir, aimTarget, aimBlocked, touch, isPost, postBudget, remaining, confirmEnd, setConfirmEnd, onAim, onFireDir, onFireAt, onSelfMove, onHoverMove, send } = props;
   const s = ctl.state;
   if (s.phase === 'over') return null;
   if (!myTurn) {
@@ -638,18 +651,13 @@ function ActionBar(props: {
             <button type="button" className="btn-ghost" onClick={() => onAim(null)}>Cancel</button>
           </div>
         </div>
-        {isTreb && treb && treb.types.length > 1 && (
-          <div className="flex items-center gap-2 text-xs text-slate-300">
-            Type:
-            {treb.types.map((t) => (
-              <button key={t} type="button" onClick={() => onTrebType(t)} className={`rounded ${(trebType ?? treb.types[0]) === t ? 'ring-2 ring-amber-300' : 'opacity-60'}`}>
-                <TypeBadge type={t} />
-              </button>
-            ))}
+        {isTreb && treb && (
+          <div className="flex items-center gap-1.5 text-xs text-slate-300">
+            Fires as {treb.types.map((t) => <TypeBadge key={t} type={t} small />)}{treb.types.length > 1 ? ' at once' : ''}
           </div>
         )}
-        <p className="text-xs text-slate-400">{move?.text || (isTreb ? 'A flat 40 in one of the user’s types, before type effectiveness: stat stages, abilities, terrain and burns don’t change it.' : '')}</p>
-        <p className="text-xs text-amber-200/90">{hint}</p>
+        <p className="text-xs text-slate-400">{move?.text || (isTreb ? 'A flat 40 carrying all of the user’s types at once: type effectiveness multiplies across them. Stat stages, abilities, terrain and burns don’t change it.' : '')}</p>
+        <p className={`text-xs ${aimBlocked ? 'text-rose-300' : 'text-amber-200/90'}`}>{aimBlocked ?? hint}</p>
       </div>
     );
   }
@@ -733,7 +741,7 @@ function ActionBar(props: {
 
 // ---------------------------------------------------------------- pending choices
 
-function PendingModal({ ctl, rotated }: { ctl: Controller; rotated: boolean }) {
+function PendingModal({ ctl, view }: { ctl: Controller; view: BoardView }) {
   const s = ctl.state;
   const p = s.pending[0];
   const [hoverDir, setHoverDir] = useState<Dir | null>(null);
@@ -761,9 +769,11 @@ function PendingModal({ ctl, rotated }: { ctl: Controller; rotated: boolean }) {
   const src = getCard(p.source.cardId).moves[p.source.moveIndex];
   const pv = hoverDir ? previewAction(s, u.id, 0, { dir: hoverDir, copyOf: src }) : [];
   // Labels follow the board as drawn (it is turned a quarter turn on portrait phones).
-  const label: Record<Dir, string> = rotated
-    ? { N: '▶ Right', E: '▼ Down', S: '◀ Left', W: '▲ Up' }
-    : { N: '▲ Up', E: '▶ Right', S: '▼ Down', W: '◀ Left' };
+  const word: Record<Dir, string> = { N: 'Up', E: 'Right', S: 'Down', W: 'Left' };
+  const label = (d: Dir): string => {
+    const sd = screenDir(d, view);
+    return `${ARROW[sd]} ${word[sd]}`;
+  };
   return (
     <Modal>
       <h3 className="text-lg font-bold">Liquid Voice</h3>
@@ -780,7 +790,7 @@ function PendingModal({ ctl, rotated }: { ctl: Controller; rotated: boolean }) {
             onFocus={() => setHoverDir(d)}
             onClick={() => ctl.dispatch({ type: 'choose', option: d })}
           >
-            {label[d]}
+            {label(d)}
           </button>
         ))}
       </div>

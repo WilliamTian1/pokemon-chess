@@ -28,8 +28,8 @@ export interface Controller {
 }
 
 export type LocalConfig =
-  | { mode: 'local'; mapId: string }
-  | { mode: 'bot'; human: Side; level: Difficulty; mapId: string };
+  | { mode: 'local'; mapId: string; legendaries: boolean }
+  | { mode: 'bot'; human: Side; level: Difficulty; mapId: string; legendaries: boolean };
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -38,7 +38,7 @@ const LEVEL_NAME: Record<Difficulty, string> = { easy: 'Easy', medium: 'Medium',
 /** Hot-seat and vs-bot games: the engine runs in the browser. */
 export function useLocalGame(cfg: LocalConfig): Controller {
   const rng = useRef(seededRng(randomSeed()));
-  const [state, setState] = useState<GameState>(() => newGame({ rng: rng.current, mapId: cfg.mapId }));
+  const [state, setState] = useState<GameState>(() => newGame({ rng: rng.current, mapId: cfg.mapId, legendaries: cfg.legendaries }));
   const [events, setEvents] = useState<EventBatch>({ seq: 0, list: [] });
   const [error, setError] = useState<string | null>(null);
   const [thinking, setThinking] = useState(false);
@@ -76,8 +76,7 @@ export function useLocalGame(cfg: LocalConfig): Controller {
     void (async () => {
       try {
         const acts = await requestBotActions(s, botSide, level);
-        // Let the coin-flip animation play before the bot places its first Pokémon.
-        const pace = s.phase === 'battle' ? 380 : s.phase === 'placement' && s.placement.index === 0 ? 2600 : 450;
+        const pace = s.phase === 'battle' ? 380 : 450;
         await sleep(Math.max(0, pace - (performance.now() - started)));
         let applied = 0;
         for (let i = 0; i < acts.length; i++) {
@@ -108,12 +107,12 @@ export function useLocalGame(cfg: LocalConfig): Controller {
 
   const rematch = useCallback(() => {
     generation.current += 1;
-    const s = newGame({ rng: rng.current, mapId: cfg.mapId });
+    const s = newGame({ rng: rng.current, mapId: cfg.mapId, legendaries: cfg.legendaries });
     stateRef.current = s;
     setState(s);
     setEvents((e) => ({ seq: e.seq + 1, list: [] }));
     setError(null);
-  }, [cfg.mapId]);
+  }, [cfg.mapId, cfg.legendaries]);
 
   const names = useMemo<Record<Side, string>>(() => {
     if (cfg.mode === 'local') return { A: 'Player 1', D: 'Player 2' };

@@ -32,6 +32,8 @@ jobs:
         env:
           VITE_BASE: /${{ github.event.repository.name }}/
           VITE_SERVER_URL: ${{ vars.SERVER_URL }}
+          # A static host can't keep the draft lab private, so leave it out of this build.
+          VITE_DRAFT_LAB: 'off'
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

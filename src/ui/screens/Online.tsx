@@ -3,7 +3,7 @@ import { type Side, getMap } from '../../engine';
 import { NetClient, savedName } from '../../net/client';
 import { ROOM_CODE_RE } from '../../net/protocol';
 import { SIDE_TEXT } from '../components/bits';
-import { MapPicker, MapPreview, savedMapId } from '../components/MapPicker';
+import { LegendaryToggle, MapPicker, MapPreview, savedLegendaries, savedMapId } from '../components/MapPicker';
 import { useNet, useOnlineGame } from '../controller';
 import { GameScreen } from './GameScreen';
 
@@ -72,6 +72,7 @@ function Room({ client, onExit }: { client: NetClient; onExit: () => void }) {
   const ctl = useOnlineGame(client, snap);
   const [randomRoles, setRandomRoles] = useState(true);
   const [mapId, setMapId] = useState(savedMapId);
+  const [legendaries, setLegendaries] = useState(savedLegendaries);
   const [copied, setCopied] = useState(false);
   const room = snap.room;
 
@@ -140,18 +141,19 @@ function Room({ client, onExit }: { client: NetClient; onExit: () => void }) {
           <div className="space-y-2">
             <div className="text-xs uppercase tracking-wide text-slate-400">Map</div>
             <MapPicker value={mapId} onChange={setMapId} />
+            <LegendaryToggle value={legendaries} onChange={setLegendaries} />
             <label className="flex items-center gap-2 text-sm text-slate-300">
               <input type="checkbox" checked={randomRoles} onChange={(e) => setRandomRoles(e.target.checked)} />
               Randomize who attacks
             </label>
-            <button type="button" className="btn-primary w-full py-2.5" disabled={!ready} onClick={() => client.send({ t: 'start', randomRoles, mapId })}>
+            <button type="button" className="btn-primary w-full py-2.5" disabled={!ready} onClick={() => client.send({ t: 'start', randomRoles, mapId, legendaries })}>
               {ready ? 'Start match' : 'Waiting for two seated players…'}
             </button>
           </div>
         ) : (
           <div className="space-y-2 text-center">
             <MapPreview map={getMap(room.mapId)} className="mx-auto max-w-xs" />
-            <p className="text-sm text-slate-400">Map: <b className="text-slate-200">{getMap(room.mapId).name}</b> (the host chooses). Waiting for the host to start the match…</p>
+            <p className="text-sm text-slate-400">Map: <b className="text-slate-200">{getMap(room.mapId).name}</b>{room.legendaries === false ? ', no legendaries' : ''} (the host chooses). Waiting for the host to start the match…</p>
           </div>
         )}
         {snap.error && <p className="text-center text-sm text-rose-300">{snap.error}</p>}

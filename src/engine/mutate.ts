@@ -2,7 +2,7 @@ import { getCard } from './data/cards';
 import { abilityOf, cardOf, hasType, hazardAt, isFlier, withAbility } from './query';
 import type { GameEvent, GameState, LogEntry, Pos, Rng, Side, StatId, StatusId, Unit } from './types';
 import { SIDE_NAME } from './types';
-import { cheb, clamp, roundUp5 } from './util';
+import { clamp, roundUp5, steps } from './util';
 
 export interface Ctx {
   s: GameState;
@@ -246,7 +246,7 @@ export function triggerLeech(ctx: Ctx, attacker: Unit, targetPos: Pos, targetId:
   if (dealt <= 0) return;
   for (const v of withAbility(ctx.s, 'leech')) {
     if (v.id === attacker.id || v.id === targetId) continue;
-    if (cheb(v.pos!, targetPos) <= 3) heal(ctx, v, roundUp5(dealt / 2), 'Leech');
+    if (steps(v.pos!, targetPos) <= 3) heal(ctx, v, roundUp5(dealt / 2), 'Leech');
   }
 }
 

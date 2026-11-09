@@ -15,18 +15,18 @@ const MEADOW_ROWS = [
   '.w...w....d...',
 ];
 
-// Second hand-drawn map (12 × 10). A river winds across the middle; its bridges are ordinary
-// ground. The grey stone left of centre is read as the trebuchet.
+// Second hand-drawn map (12 × 10). A river winds across the middle; its bridges ('=') are drawn
+// as wood but are ordinary ground. The grey stone left of centre is read as the trebuchet.
 const RIVER_ROWS = [
   '............',
-  '.........w.w',
-  '..ww.ww.ww..',
-  'w.w...b..bf.',
+  '.........w=w',
+  '..ww=ww=ww..',
+  'w=w...b..bf.',
   'w.b.t.......',
-  'w.w...f..b..',
-  '..ww.ww.b.f.',
-  '......w..ww.',
-  '............',
+  'w=w...f..b..',
+  '..ww=ww.b.f.',
+  '......w==ww.',
+  '..........=.',
   '..........w.',
 ];
 
@@ -35,6 +35,7 @@ const CHAR_TERRAIN: Record<string, Terrain> = {
   w: 'water',
   d: 'dirt',
   g: 'grass',
+  '=': 'bridge',
   f: 'flower',
   b: 'bush',
   T: 'dirt',

@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
@@ -12,6 +13,27 @@ const PORT = Number(process.env.PORT ?? process.env.SERVER_PORT ?? 8787);
 const DIST = path.resolve(import.meta.dirname, '../dist');
 const ROOM_TTL_MS = 30 * 60 * 1000;
 
+// ---------------------------------------------------------------- private draft lab
+// The draft analysis page is for the owner only. Set LAB_KEY on the host, then open
+// /lab?key=<LAB_KEY> once: that stores a cookie, and only browsers with it are sent the lab's code.
+const LAB_KEY = process.env.LAB_KEY ?? '';
+const LAB_COOKIE = 'pcc_lab';
+const labToken = LAB_KEY ? crypto.createHash('sha256').update(`pcc-lab:${LAB_KEY}`).digest('hex') : '';
+/** Built file names of the lab's code (Vite names the chunk after the module). */
+const LAB_CHUNK = /^DraftLab-[\w-]+\.js$/;
+
+function sameSecret(a: string, b: string): boolean {
+  const x = Buffer.from(a);
+  const y = Buffer.from(b);
+  return x.length === y.length && crypto.timingSafeEqual(x, y);
+}
+
+function hasLabAccess(req: http.IncomingMessage): boolean {
+  if (!labToken) return false;
+  const cookie = (req.headers.cookie ?? '').split(';').map((c) => c.trim().split('=')).find(([k]) => k === LAB_COOKIE);
+  return !!cookie && sameSecret(cookie[1] ?? '', labToken);
+}
+
 interface Player {
   id: string;
   name: string;
@@ -25,6 +47,7 @@ interface Room {
   players: Map<string, Player>;
   game: GameState | null;
   mapId: string;
+  legendaries: boolean;
   rng: Rng;
   events: GameEvent[];
   eventSeq: number;
@@ -61,6 +84,7 @@ function view(room: Room): RoomView {
     players: [...room.players.values()].map((p) => ({ id: p.id, name: p.name, side: p.side, connected: p.sockets.size > 0 })),
     game: room.game,
     mapId: room.mapId,
+    legendaries: room.legendaries,
     events: room.events,
     eventSeq: room.eventSeq,
   };
@@ -126,7 +150,7 @@ function handle(ws: WebSocket, conn: Conn, msg: ClientMsg): void {
   switch (msg.t) {
     case 'create': {
       const r: Room = {
-        code: newCode(), hostId: conn.playerId, players: new Map(), game: null, mapId: DEFAULT_MAP_ID, rng: seededRng(randomSeed()),
+        code: newCode(), hostId: conn.playerId, players: new Map(), game: null, mapId: DEFAULT_MAP_ID, legendaries: true, rng: seededRng(randomSeed()),
         events: [], eventSeq: 0, emptySince: null,
       };
       rooms.set(r.code, r);
@@ -168,6 +192,7 @@ function handle(ws: WebSocket, conn: Conn, msg: ClientMsg): void {
         if (typeof msg.mapId !== 'string' || !MAPS[msg.mapId]) return fail('Unknown map.');
         room.mapId = msg.mapId;
       }
+      if (msg.legendaries !== undefined) room.legendaries = msg.legendaries !== false;
       if (msg.randomRoles && randomSeed() % 2 === 0) for (const p of seated) p.side = p.side === 'A' ? 'D' : 'A';
       startGame(room);
       return;
@@ -206,7 +231,7 @@ function handle(ws: WebSocket, conn: Conn, msg: ClientMsg): void {
 
 function startGame(room: Room): void {
   room.rng = seededRng(randomSeed());
-  room.game = newGame({ rng: room.rng, mapId: room.mapId });
+  room.game = newGame({ rng: room.rng, mapId: room.mapId, legendaries: room.legendaries });
   room.events = [];
   room.eventSeq += 1;
   broadcast(room);
@@ -226,18 +251,44 @@ const server = http.createServer((req, res) => {
     res.end(JSON.stringify({ ok: true, rooms: rooms.size }));
     return;
   }
+  if (url.pathname === '/lab') {
+    if (!labToken || !sameSecret(url.searchParams.get('key') ?? '', LAB_KEY)) {
+      res.writeHead(404, { 'content-type': 'text/plain' });
+      res.end('Not found');
+      return;
+    }
+    const secure = req.headers['x-forwarded-proto'] === 'https' ? '; Secure' : '';
+    res.writeHead(302, {
+      'set-cookie': `${LAB_COOKIE}=${labToken}; Path=/; HttpOnly; SameSite=Lax; Max-Age=31536000${secure}`,
+      location: '/?lab',
+    });
+    res.end();
+    return;
+  }
+  if (url.pathname === '/api/lab') {
+    const ok = hasLabAccess(req);
+    res.writeHead(ok ? 200 : 404, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+    res.end(JSON.stringify({ ok }));
+    return;
+  }
   if (!fs.existsSync(DIST)) {
     res.writeHead(200, { 'content-type': 'text/plain' });
     res.end('Pokémon Conquest Chess server is running. Build the client with `npm run build` to serve it from here.');
     return;
   }
   const rel = path.normalize(decodeURIComponent(url.pathname)).replace(/^([/\\])+/, '');
+  if (LAB_CHUNK.test(path.basename(rel)) && !hasLabAccess(req)) {
+    res.writeHead(404, { 'content-type': 'text/plain' });
+    res.end('Not found');
+    return;
+  }
   let file = path.join(DIST, rel);
   if (!file.startsWith(DIST) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) file = path.join(DIST, 'index.html');
   const ext = path.extname(file);
   res.writeHead(200, {
     'content-type': MIME[ext] ?? 'application/octet-stream',
-    'cache-control': ext === '.html' ? 'no-cache' : 'public, max-age=86400',
+    // The lab's code must not sit in shared caches.
+    'cache-control': ext === '.html' ? 'no-cache' : LAB_CHUNK.test(path.basename(file)) ? 'private, max-age=86400' : 'public, max-age=86400',
   });
   fs.createReadStream(file).pipe(res);
 });

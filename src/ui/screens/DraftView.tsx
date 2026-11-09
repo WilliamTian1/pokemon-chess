@@ -145,7 +145,7 @@ export function DraftView({ ctl }: { ctl: Controller }) {
   const legends = useMemo(() => s.draft.legendPool.map(getCard), [s.draft.legendPool]);
   const pool = useMemo(() => [...normals, ...legends], [normals, legends]);
   const pickNo = s.draft.index + 1;
-  const legendTurn = isLegendPick(s.draft.index);
+  const legendTurn = isLegendPick(s);
   const pickable = new Set(draftOptions(s));
 
   // Matchups are shown against the hovered or pinned card, or else against the opposing team.
@@ -193,10 +193,11 @@ export function DraftView({ ctl }: { ctl: Controller }) {
 
   return (
     <div className="flex flex-col gap-2 wide:h-full wide:min-h-0">
-      <div className="panel flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 px-3 py-2">
+      {/* Pinned on phones so whose pick it is stays in view while scrolling the cards. */}
+      <div className="panel sticky top-0 z-20 flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 bg-slate-900/95 px-3 py-2 wide:static">
         <div className="min-w-0">
           <div className="text-[11px] uppercase tracking-wide text-slate-400">
-            Pick {pickNo} of 8 · {legendTurn ? <span className="font-bold text-amber-300">legendary pick</span> : '3 each from the pool, then 1 legendary each'}
+            Pick {pickNo} of 8 · {legendTurn ? <span className="font-bold text-amber-300">legendary pick</span> : s.draft.legendPool.length ? '3 each from the pool, then 1 legendary each' : '4 each from the pool, no legendaries'}
           </div>
           <div className={`font-bold ${SIDE_TEXT[turn]}`}>
             {mine ? 'Your pick' : ctl.thinking ? `${ctl.names[turn]} is thinking…` : `${ctl.names[turn]} is picking…`}
@@ -223,7 +224,7 @@ export function DraftView({ ctl }: { ctl: Controller }) {
                 </button>
               ) : (
                 <span key={i} className={`flex h-8 w-8 items-center justify-center rounded-full border border-dashed text-[10px] ${next ? 'border-amber-300 text-amber-300' : 'border-slate-600 text-slate-500'}`}>
-                  {i === 3 ? 'L' : i + 1}
+                  {i === 3 && s.draft.legendPool.length ? 'L' : i + 1}
                 </span>
               );
             })}
