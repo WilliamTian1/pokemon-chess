@@ -55,10 +55,6 @@
     "file": "jingleLose.mp3",
     "gain": 1.072
   },
-  "jingleSpecial": {
-    "file": "jingleSpecial.mp3",
-    "gain": 1.155
-  },
   "jingleEvolve": {
     "file": "jingleEvolve.mp3",
     "gain": 1.009

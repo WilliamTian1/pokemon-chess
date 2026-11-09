@@ -3,7 +3,7 @@ import {
   type CardDef, type GameState, type PType, type Side, TYPES, TYPE_COLORS, attackTypes, bestHit, cardOf, defenseProfile, hitMultiplier,
   multLabel, typeMultiplier,
 } from '../../engine';
-import { Art, Modal, SIDE_TEXT, TypeBadge } from './bits';
+import { Art, Modal, TypeBadge } from './bits';
 
 /**
  * A multiplier chip. `hit` reads from the attacker's point of view (high is good), `take` from
@@ -101,54 +101,68 @@ export function MatchupMatrix({ state, rows, onHover }: { state: GameState; rows
   const team = (side: Side) => state.units.filter((u) => u.side === side && !u.fainted);
   const mine = team(rows);
   const theirs = team(rows === 'A' ? 'D' : 'A');
-  if (!mine.length || !theirs.length) return <div className="text-xs text-slate-500">Nothing to compare.</div>;
+  const [hover, setHover] = useState<{ r: string; c: string } | null>(null);
+  if (!mine.length || !theirs.length) return <div className="text-sm text-slate-500">Nothing to compare.</div>;
+  const medal = (u: (typeof mine)[number], size: string) => (
+    <Art id={u.cardId} className={`${size} rounded-full border-[3px] border-gold shadow ring-2 ${u.side === 'A' ? 'ring-red-800' : 'ring-blue-900'}`} alt={cardOf(u).name} />
+  );
   return (
-    <div className="overflow-x-auto" onMouseLeave={() => onHover?.(null)}>
-      <table className="w-full border-separate border-spacing-0.5 text-[10px]">
-        <thead>
-          <tr>
-            <th className="text-left font-medium text-slate-500">
-              <span className={SIDE_TEXT[rows]}>Row</span> hits / takes
-            </th>
-            {theirs.map((t) => (
-              <th key={t.id} className="px-0.5" title={cardOf(t).name}>
-                <Art id={t.cardId} className={`mx-auto h-7 w-7 rounded-full ring-2 ${t.side === 'A' ? 'ring-rose-500' : 'ring-sky-500'}`} alt={cardOf(t).name} />
+    <div onMouseLeave={() => { setHover(null); onHover?.(null); }}>
+      <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs font-bold text-slate-300">
+        <span className="flex items-center gap-1.5"><span className="mu-tag">deals</span> the row Pokémon's best attack on the column Pokémon</span>
+        <span className="flex items-center gap-1.5"><span className="mu-tag">takes</span> the column Pokémon's best attack on it</span>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full border-separate border-spacing-1.5">
+          <thead>
+            <tr>
+              <th className="w-[28%] text-left align-bottom">
+                <span className={`sash ${rows === 'A' ? 'sash-a' : 'sash-d'}`}>{rows === 'A' ? 'Attacker' : 'Defender'}</span>
+                <span className="mx-1.5 text-xs font-extrabold text-slate-400">vs</span>
+                <span className={`sash ${rows === 'A' ? 'sash-d' : 'sash-a'}`}>{rows === 'A' ? 'Defender' : 'Attacker'}</span>
               </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {mine.map((m) => (
-            <tr key={m.id}>
-              <th className="pr-1 text-left" title={cardOf(m).name}>
-                <div className="flex items-center gap-1">
-                  <Art id={m.cardId} className={`h-7 w-7 shrink-0 rounded-full ring-2 ${m.side === 'A' ? 'ring-rose-500' : 'ring-sky-500'}`} alt={cardOf(m).name} />
-                  <span className="hidden truncate font-semibold text-slate-300 xl:inline">{cardOf(m).name}</span>
-                </div>
-              </th>
-              {theirs.map((t) => {
-                const hit = bestHit(cardOf(m), cardOf(t));
-                const take = bestHit(cardOf(t), cardOf(m));
-                return (
-                  <td
-                    key={t.id}
-                    className="rounded bg-slate-800/80 p-0.5 text-center"
-                    title={matchupTitle(cardOf(m), cardOf(t))}
-                    onMouseEnter={() => onHover?.([m.id, t.id])}
-                  >
-                    <div className="flex flex-col items-center gap-0.5">
-                      {hit ? <MultChip mult={hit.mult} kind="hit" /> : <span className="text-slate-600">—</span>}
-                      {take ? <MultChip mult={take.mult} kind="take" /> : <span className="text-slate-600">—</span>}
-                    </div>
-                  </td>
-                );
-              })}
+              {theirs.map((t) => (
+                <th key={t.id} className={`px-1 pb-1 transition ${hover && hover.c !== t.id ? 'opacity-50' : ''}`} title={cardOf(t).name}>
+                  <div className="flex flex-col items-center gap-1">
+                    {medal(t, 'h-12 w-12')}
+                    <span className="max-w-[6rem] truncate text-xs font-extrabold text-slate-200">{cardOf(t).name}</span>
+                  </div>
+                </th>
+              ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
-      <p className="mt-1 text-[10px] leading-snug text-slate-500">
-        Top: best type multiplier of the row Pokémon's attacks on the column Pokémon. Bottom: the column Pokémon's best attack on the row Pokémon. Abilities like Levitate and Thick Fat are included.
+          </thead>
+          <tbody>
+            {mine.map((m) => (
+              <tr key={m.id}>
+                <th className={`text-left transition ${hover && hover.r !== m.id ? 'opacity-50' : ''}`} title={cardOf(m).name}>
+                  <div className="flex items-center gap-2">
+                    {medal(m, 'h-11 w-11 shrink-0')}
+                    <span className="truncate text-sm font-extrabold text-slate-200">{cardOf(m).name}</span>
+                  </div>
+                </th>
+                {theirs.map((t) => {
+                  const hit = bestHit(cardOf(m), cardOf(t));
+                  const take = bestHit(cardOf(t), cardOf(m));
+                  const lit = hover?.r === m.id && hover?.c === t.id;
+                  return (
+                    <td
+                      key={t.id}
+                      className={`mu-cell ${lit ? 'mu-cell-lit' : ''}`}
+                      title={matchupTitle(cardOf(m), cardOf(t))}
+                      onMouseEnter={() => { setHover({ r: m.id, c: t.id }); onHover?.([m.id, t.id]); }}
+                    >
+                      <div className="flex items-center justify-between gap-1"><span className="mu-label">deals</span>{hit ? <MultChip mult={hit.mult} kind="hit" /> : <span className="text-slate-500">—</span>}</div>
+                      <div className="flex items-center justify-between gap-1"><span className="mu-label">takes</span>{take ? <MultChip mult={take.mult} kind="take" /> : <span className="text-slate-500">—</span>}</div>
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="mt-2 text-xs leading-snug text-slate-400">
+        Green is good for the row Pokémon, red is bad. Abilities like Levitate and Thick Fat are included.
       </p>
     </div>
   );
@@ -164,84 +178,103 @@ export function TypeChartModal({ onClose, cards = [] }: { onClose: () => void; c
     setDef((cur) => (cur.includes(t) ? cur.filter((x) => x !== t) : [...cur.slice(-1), t]));
   };
   const pickedTypes = card ? card.types : def;
-  const cell = (m: number) =>
-    m === 0 ? 'bg-slate-950 text-slate-400' : m >= 4 ? 'bg-emerald-400 text-slate-950' : m >= 2 ? 'bg-emerald-600 text-white'
-      : m <= 0.25 ? 'bg-rose-700 text-white' : m < 1 ? 'bg-rose-500/80 text-white' : 'bg-slate-800/60 text-transparent';
+  const cell = (m: number) => (m === 0 ? 'tc-0' : m >= 2 ? 'tc-2' : m < 1 ? 'tc-half' : 'tc-1');
   return (
-    <Modal onClose={onClose} wide>
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <h3 className="text-lg font-bold">Type chart</h3>
+    <Modal onClose={onClose} xwide>
+      <div className="mb-3 flex items-start justify-between gap-2">
+        <div>
+          <h3 className="font-display text-2xl text-lacquer">Type chart</h3>
+          <p className="text-xs font-bold text-slate-400">Read across from the attacking type, down from the defending type.</p>
+        </div>
         <button type="button" className="btn-ghost" onClick={onClose}>Close</button>
       </div>
-      <p className="mb-2 text-xs text-slate-400">Pick a defender, either one or two types or a Pokémon, to see what hits it hard.</p>
-      <div className="mb-2 flex flex-wrap gap-1">
-        {TYPES.map((t) => (
-          <button key={t} type="button" onClick={() => toggle(t)} className={`rounded ${!card && def.includes(t) ? 'ring-2 ring-amber-300' : 'opacity-75 hover:opacity-100'}`}>
-            <TypeBadge type={t} small />
-          </button>
-        ))}
-      </div>
-      {cards.length > 0 && (
-        <div className="mb-3 flex flex-wrap gap-1">
-          {cards.map((c) => (
-            <button key={c.id} type="button" onClick={() => setCard(card?.id === c.id ? null : c)} title={c.name} className={`rounded-full ${card?.id === c.id ? 'ring-2 ring-amber-300' : 'opacity-70 hover:opacity-100'}`}>
-              <Art id={c.id} className="h-7 w-7 rounded-full" alt={c.name} />
-            </button>
-          ))}
-        </div>
-      )}
-      {pickedTypes.length > 0 && (
-        <div className="mb-3 rounded-lg bg-slate-800/70 p-2.5 text-xs">
-          <div className="mb-1.5 flex flex-wrap items-center gap-1 font-semibold">
-            Damage taken by {card ? <span>{card.name}</span> : null} {pickedTypes.map((t) => <TypeBadge key={t} type={t} small />)}
-          </div>
-          {[4, 2, 0.5, 0.25, 0].map((m) => {
-            const list = TYPES.filter((a) => (card ? hitMultiplier(a, card) : typeMultiplier(a, pickedTypes)) === m);
-            if (!list.length) return null;
-            return (
-              <div key={m} className="mb-1 flex flex-wrap items-center gap-1">
-                <span className="w-8 shrink-0"><MultChip mult={m} kind="take" /></span>
-                {list.map((a) => <TypeBadge key={a} type={a} small />)}
-              </div>
-            );
-          })}
-        </div>
-      )}
-      <div className="overflow-x-auto">
-        <table className="border-separate border-spacing-px text-[9px]" onMouseLeave={() => setHover(null)}>
-          <thead>
-            <tr>
-              <th className="sticky left-0 bg-slate-900 p-0.5 text-left text-[9px] font-medium text-slate-500">Atk ↓ / Def →</th>
-              {TYPES.map((d) => (
-                <th key={d} title={d} className={`p-0 ${hover?.d === d || pickedTypes.includes(d) ? '' : 'opacity-70'}`}>
-                  <span className="block rounded-sm px-px py-0.5 text-[8px] font-bold text-white" style={{ backgroundColor: TYPE_COLORS[d] }}>{d.slice(0, 3)}</span>
+      <div className="flex flex-col gap-4 lg:flex-row">
+        <div className="min-w-0 overflow-x-auto">
+          <table className="tc-ledger" onMouseLeave={() => setHover(null)}>
+            <thead>
+              <tr>
+                <th className="tc-corner">
+                  <span>Defending →</span>
+                  <span>Attacking ↓</span>
                 </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {TYPES.map((a) => (
-              <tr key={a}>
-                <th className={`sticky left-0 bg-slate-900 pr-1 text-left ${hover?.a === a ? '' : 'opacity-80'}`}><TypeBadge type={a} small /></th>
-                {TYPES.map((d) => {
-                  const m = typeMultiplier(a, [d]);
-                  const lit = hover && (hover.a === a || hover.d === d);
-                  const col = pickedTypes.includes(d);
-                  return (
-                    <td
-                      key={d}
-                      onMouseEnter={() => setHover({ a, d })}
-                      title={`${a} → ${d}: ${multLabel(m)}`}
-                      className={`h-5 w-5 rounded-sm text-center font-bold ${cell(m)} ${lit || col ? 'outline outline-1 outline-amber-300/80' : ''}`}
-                    >
-                      {m === 1 ? '·' : m === 0.5 ? '½' : m === 0 ? '0' : m}
-                    </td>
-                  );
-                })}
+                {TYPES.map((d) => (
+                  <th key={d} title={d} className={`tc-colhead ${hover?.d === d ? 'tc-hl' : ''} ${pickedTypes.includes(d) ? 'tc-picked' : ''}`}>
+                    <span className="tc-vname">{d}</span>
+                    <i className="tc-dot" style={{ backgroundColor: TYPE_COLORS[d] }} />
+                  </th>
+                ))}
               </tr>
+            </thead>
+            <tbody>
+              {TYPES.map((a) => (
+                <tr key={a} className={hover?.a === a ? 'tc-row-hl' : ''}>
+                  <th className="tc-rowhead">
+                    <i className="tc-dot" style={{ backgroundColor: TYPE_COLORS[a] }} />
+                    {a}
+                  </th>
+                  {TYPES.map((d) => {
+                    const m = typeMultiplier(a, [d]);
+                    return (
+                      <td
+                        key={d}
+                        onMouseEnter={() => setHover({ a, d })}
+                        title={`${a} → ${d}: ${multLabel(m)}`}
+                        className={`tc-td ${hover?.d === d ? 'tc-col-hl' : ''} ${pickedTypes.includes(d) ? 'tc-col-picked' : ''} ${hover?.a === a && hover?.d === d ? 'tc-focus' : ''}`}
+                      >
+                        {m !== 1 && <span className={`tc-seal ${cell(m)}`}>{m === 0.5 ? '½' : m}</span>}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="mt-3 flex flex-wrap items-center gap-4 text-xs font-bold text-slate-300">
+            <span className="flex items-center gap-1.5"><span className="tc-seal tc-2">2</span> super effective</span>
+            <span className="flex items-center gap-1.5"><span className="tc-seal tc-half">½</span> not very effective</span>
+            <span className="flex items-center gap-1.5"><span className="tc-seal tc-0">0</span> no effect</span>
+          </div>
+        </div>
+        <div className="paper-inset min-w-[260px] flex-1 space-y-3 p-3">
+          <div className="font-display text-lg text-slate-100">Who hits it hard?</div>
+          <p className="text-xs font-bold text-slate-400">Pick a defender: one or two types{cards.length ? ', or a Pokémon' : ''}.</p>
+          <div className="flex flex-wrap gap-1">
+            {TYPES.map((t) => (
+              <button key={t} type="button" onClick={() => toggle(t)} className={`rounded-full transition ${!card && def.includes(t) ? 'scale-110 ring-2 ring-lacquer ring-offset-1 ring-offset-paper' : 'opacity-80 hover:opacity-100'}`}>
+                <TypeBadge type={t} small />
+              </button>
             ))}
-          </tbody>
-        </table>
+          </div>
+          {cards.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {cards.map((c) => (
+                <button key={c.id} type="button" onClick={() => setCard(card?.id === c.id ? null : c)} title={c.name}
+                  className={`rounded-full transition ${card?.id === c.id ? 'scale-110' : 'opacity-75 hover:opacity-100'}`}>
+                  <Art id={c.id} className={`h-9 w-9 rounded-full border-[3px] ${card?.id === c.id ? 'border-lacquer' : 'border-gold'}`} alt={c.name} />
+                </button>
+              ))}
+            </div>
+          )}
+          {pickedTypes.length > 0 ? (
+            <div className="space-y-1.5 border-t-2 border-dashed border-slate-700 pt-2 text-xs">
+              <div className="flex flex-wrap items-center gap-1 font-extrabold text-slate-200">
+                Damage taken by {card ? <span>{card.name}</span> : null} {pickedTypes.map((t) => <TypeBadge key={t} type={t} small />)}
+              </div>
+              {[4, 2, 0.5, 0.25, 0].map((m) => {
+                const list = TYPES.filter((a) => (card ? hitMultiplier(a, card) : typeMultiplier(a, pickedTypes)) === m);
+                if (!list.length) return null;
+                return (
+                  <div key={m} className="flex flex-wrap items-center gap-1">
+                    <span className="w-9 shrink-0"><MultChip mult={m} kind="take" /></span>
+                    {list.map((a) => <TypeBadge key={a} type={a} small />)}
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="rounded-lg border-2 border-dashed border-slate-700 p-3 text-center text-xs font-bold text-slate-500">Nothing picked yet.</div>
+          )}
+        </div>
       </div>
     </Modal>
   );

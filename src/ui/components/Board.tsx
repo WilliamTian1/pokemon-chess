@@ -252,7 +252,7 @@ function BoardImpl({ state, view, overlay, previews, selectedId, hoverId, events
 
   return (
     <div
-      className="relative mx-auto w-full select-none overflow-hidden rounded-lg border-4 border-[#4b6b2f] shadow-2xl shadow-black/40"
+      className="board-frame relative mx-auto w-full select-none overflow-hidden rounded-lg"
       style={{ aspectRatio: `${cols} / ${rows}` }}
       onMouseLeave={() => onHover(null)}
     >

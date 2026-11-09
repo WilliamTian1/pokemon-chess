@@ -1,6 +1,6 @@
-# v1.1.1 rules interpretations
+# v1.2 rules interpretations
 
-The README spec, `Conquest Rules.pdf` and `Conquest Cards.pdf` leave some behaviour open. This page lists what v1.1.1 actually does, so the group can agree on (or change) each call. Each item names the card or rule so it is easy to find in `src/engine/`.
+The README spec, `Conquest Rules.pdf` and `Conquest Cards.pdf` leave some behaviour open. This page lists what v1.2 actually does, so the group can agree on (or change) each call. Each item names the card or rule so it is easy to find in `src/engine/`.
 
 ## Maps
 
@@ -129,7 +129,7 @@ Cannons, wooden logs and ice sliding are not implemented. Magma and pit tiles ex
 
 19 Pokémon from the expansion sheet are in the draft pool (pages 10–13 here). Golurk is left out for now: its card is still an unfinished copy of Octillery's (Water type, Octazooka, Helping Hand). In the 2026-11-09 `Conquest Cards.pdf`, Wigglytuff sits on page 13, which is otherwise a work-in-progress page (unfinished copies named Golurk, Pelipper, Ninetales and others are not used).
 
-- **Types read from the icons.** Tinkaton is Steel/Fairy, Corsola Rock/Water, Wigglytuff Fairy, Haxorus Dragon, Oricorio Flying/Ghost (Revelation Dance is Ghost).
+- **Types read from the icons.** Tinkaton is Steel/Fairy, Corsola Rock/Water, Wigglytuff Fairy/Normal (145 HP since the 2026-11-09 card sheet), Haxorus Dragon, Oricorio Flying/Ghost (Revelation Dance is Ghost).
 - **Flying Press** counts as Fighting and Flying at once: effectiveness multiplies across both, and an immunity to either (Ghost to Fighting) stops it.
 - **Fake Out:** after it is used, it can't be used again until the user ends an activation 4+ tiles (counted like movement) from every opponent.
 - **Gigaton Hammer** only works in even-numbered rounds.

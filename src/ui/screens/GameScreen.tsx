@@ -27,7 +27,7 @@ export function GameScreen({ ctl, onExit, title }: { ctl: Controller; onExit: ()
 
   return (
     <div className="mx-auto flex w-full flex-col px-3 pb-8 pt-3 sm:px-4 wide:h-[100dvh] wide:pb-3">
-      <header className="mb-3 flex shrink-0 flex-wrap items-center justify-between gap-2 wide:mb-2">
+      <header className="lacquer mb-3 flex shrink-0 flex-wrap items-center justify-between gap-2 px-2 py-1.5 wide:mb-2">
         <div className="flex items-center gap-3">
           <button type="button" className="btn-ghost" onClick={() => (inProgress && !spectating ? setConfirmLeave(true) : onExit())}>← Menu</button>
           <div>
@@ -35,6 +35,8 @@ export function GameScreen({ ctl, onExit, title }: { ctl: Controller; onExit: ()
             <div className={`text-xs ${spectating ? 'text-slate-400' : ctl.mySides.length === 1 ? SIDE_TEXT[ctl.mySides[0]] : 'text-slate-400'}`}>{roleText}</div>
           </div>
         </div>
+        {/* BattleView puts the round, whose turn it is and the chart buttons here on one-screen layouts. */}
+        <div id="battle-hud" className="flex min-w-0 flex-1 justify-center empty:hidden" />
         <div className="flex items-center gap-2">
         <SoundButton />
         {inProgress && !spectating && s.phase === 'battle' && (
@@ -85,7 +87,7 @@ export function GameScreen({ ctl, onExit, title }: { ctl: Controller; onExit: ()
 
       {confirmLeave && (
         <Modal onClose={() => setConfirmLeave(false)}>
-          <h3 className="text-lg font-bold">Leave this match?</h3>
+          <h3 className="font-display text-xl text-lacquer">Leave this match?</h3>
           <p className="mt-1 text-sm text-slate-300">
             {ctl.mode === 'online' ? 'You can rejoin with the same room code from this browser.' : 'The current game will be lost.'}
           </p>

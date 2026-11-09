@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { type GameState, type Side, type Unit, cardOf, getTrainer } from '../../engine';
-import { useFitGrid, useTouch } from '../hooks';
-import { CardImage, HpBar, Modal, SIDE_TEXT } from './bits';
+import { useBoxSize, useFitGrid, useTouch } from '../hooks';
+import { CardImage, HpBar, Modal } from './bits';
+import { PokeBallIcon } from './icons';
 import { CardDetail, UnitChips, VsList, vsTable } from './CardView';
 import { CardMagnifier, type Region } from './CardMagnifier';
 import type { EventBatch } from '../controller';
@@ -27,12 +28,21 @@ const STRIP = 24;
  * One team's printed cards beside the board. With `fill`, the cards are sized so all of them fit
  * the column's height and width at once; hovering one shows it enlarged with its live details.
  */
-export function TeamCards({ state, events, side, name, mine, fill, magnifyRegion, selectedId, focusId, onPick, onHover, trainer }: {
+export function TeamCards({ state, events, side, name, mine, fill, magnifyRegion, selectedId, focusId, onPick, onHover, trainer, trainerApart, trainerInner, onCardArea }: {
   state: GameState;
   /** Latest game events, for the hit effects played on the cards. */
   events: EventBatch;
   /** The side's trainer (trainer mode), shown under its Pokémon. */
   trainer?: TrainerSlot | null;
+  /** The trainer is shown elsewhere (beside the board): the Pokémon get the whole column. */
+  trainerApart?: boolean;
+  /**
+   * One-screen layouts with room to spare: the trainer is a third column beside the inner bottom card
+   * (right of the Pokémon for the left team, left of them for the right team), at the cards' size.
+   */
+  trainerInner?: 'right' | 'left';
+  /** Reports the height available to the cards (it doesn't depend on the column's width). */
+  onCardArea?: (h: number) => void;
   side: Side;
   name: string;
   mine: boolean;
@@ -49,29 +59,42 @@ export function TeamCards({ state, events, side, name, mine, fill, magnifyRegion
   const active = state.phase === 'battle' && state.side === side;
   const touch = useTouch();
   const [box, setBox] = useState<HTMLDivElement | null>(null);
-  const fit = useFitGrid(box, units.length, { aspect: 265 / 204, gap: 8, extra: STRIP, below: trainer ? 1 : 0 });
+  const inner = fill && trainer && trainerInner ? trainerInner : null;
+  const ownTrainer = trainer && !trainerApart && !inner ? trainer : null;
+  const fit = useFitGrid(box, units.length, { aspect: 265 / 204, gap: 8, extra: STRIP, below: ownTrainer ? 1 : 0 });
+  // Trainer beside the cards: three columns, two rows.
+  const boxSize = useBoxSize(box);
+  const innerWidth = inner ? Math.floor(Math.min((boxSize.w - 16) / 3, ((boxSize.h - 8) / 2 - STRIP) / (265 / 204))) : 0;
+  const cardCol = (i: number) => (inner === 'left' ? (i % 2) + 2 : (i % 2) + 1);
+  useEffect(() => {
+    if (fill && boxSize.h > 0) onCardArea?.(boxSize.h);
+  }, [fill, boxSize.h]); // eslint-disable-line react-hooks/exhaustive-deps
   const [mag, setMag] = useState<{ id: string; region: Region } | null>(null);
   const [detail, setDetail] = useState<Unit | null>(null);
   const magUnit = mag ? units.find((u) => u.id === mag.id) : undefined;
   const fx = useCardFx(events);
 
   return (
-    <div className={`panel flex flex-col gap-2 p-2 ${fill ? 'h-full min-h-0' : ''} ${active ? (side === 'A' ? 'ring-1 ring-rose-500/60' : 'ring-1 ring-sky-500/60') : ''}`}>
+    <div className={`panel relative flex flex-col gap-2 p-2 ${fill ? 'h-full min-h-0' : ''} ${fill && trainerApart ? 'team-crest' : ''} ${active ? (side === 'A' ? 'ring-1 ring-rose-500/60' : 'ring-1 ring-sky-500/60') : ''}`}>
       <div className="flex shrink-0 items-center justify-between gap-2 px-1">
-        <div className={`truncate text-sm font-bold ${SIDE_TEXT[side]}`}>
-          {side === 'A' ? 'Attacker' : 'Defender'} <span className="font-medium text-slate-300">· {name}</span>
+        <div className="flex min-w-0 items-center gap-2">
+          <span className={`sash shrink-0 !text-sm ${side === 'A' ? 'sash-a' : 'sash-d'}`}>{side === 'A' ? 'Attacker' : 'Defender'}</span>
+          <span className="truncate text-sm font-extrabold text-slate-200">{name}</span>
+          {mine && <span className="chip bg-amber-400 text-slate-950">You</span>}
         </div>
-        <div className="flex items-center gap-1.5">
-          <span className="text-[11px] text-slate-400">{units.filter((u) => !u.fainted).length}/{units.length} left</span>
-          {mine && <span className="chip bg-amber-400 text-slate-900">You</span>}
+        {/* A Poké Ball per Pokémon, greyed out once it has fainted. */}
+        <div className="flex shrink-0 items-center gap-0.5" title={`${units.filter((u) => !u.fainted).length} of ${units.length} Pokémon left`}>
+          {units.map((u) => <PokeBallIcon key={u.id} className={`h-4 w-4 ${u.fainted ? 'opacity-30 grayscale' : ''}`} />)}
         </div>
       </div>
       <div ref={setBox} className={fill ? 'min-h-0 flex-1' : ''}>
         <div
-          className={fill ? 'grid h-full content-center justify-center gap-2' : 'grid grid-cols-[repeat(auto-fill,minmax(170px,1fr))] gap-2'}
-          style={fill && fit.width > 0 ? { gridTemplateColumns: `repeat(${fit.cols}, ${fit.width}px)` } : undefined}
+          className={fill ? `grid h-full justify-center gap-2 ${trainerApart || inner ? 'content-end' : 'content-center'}` : 'grid grid-cols-[repeat(auto-fill,minmax(170px,1fr))] gap-2'}
+          style={inner && innerWidth > 0
+            ? { gridTemplateColumns: `repeat(3, ${innerWidth}px)` }
+            : fill && fit.width > 0 ? { gridTemplateColumns: `repeat(${fit.cols}, ${fit.width}px)` } : undefined}
         >
-          {units.map((u) => {
+          {units.map((u, i) => {
             const c = cardOf(u);
             const done = active && u.activated && !u.fainted;
             return (
@@ -96,6 +119,7 @@ export function TeamCards({ state, events, side, name, mine, fill, magnifyRegion
                   onHover(null);
                   setMag(null);
                 }}
+                style={inner ? { gridColumn: cardCol(i), gridRow: Math.floor(i / 2) + 1 } : undefined}
                 className={`relative flex cursor-pointer flex-col gap-1 rounded-lg outline-none transition focus-visible:ring-2 focus-visible:ring-amber-300 ${
                   u.id === selectedId ? 'ring-2 ring-amber-300 ring-offset-2 ring-offset-slate-900' : u.id === focusId ? 'ring-1 ring-white/70 ring-offset-2 ring-offset-slate-900' : ''
                 } ${u.fainted ? 'opacity-35 grayscale' : done || !u.pos ? 'opacity-60' : ''}`}
@@ -122,8 +146,11 @@ export function TeamCards({ state, events, side, name, mine, fill, magnifyRegion
               </div>
             );
           })}
-          {trainer && (
-            <TrainerCard slot={trainer} side={side} style={fill && fit.width > 0 ? { gridColumn: '1 / -1', justifySelf: 'center', width: fit.width } : undefined} />
+          {inner && trainer && (
+            <TrainerCard slot={trainer} side={side} className="self-end" style={{ gridColumn: inner === 'left' ? 1 : 3, gridRow: 2 }} />
+          )}
+          {ownTrainer && (
+            <TrainerCard slot={ownTrainer} side={side} style={fill && fit.width > 0 ? { gridColumn: '1 / -1', justifySelf: 'center', width: fit.width } : undefined} />
           )}
         </div>
       </div>
@@ -187,14 +214,14 @@ function UnitDetails({ state, unit, active }: { state: GameState; unit: Unit; ac
   );
 }
 
-/** The trainer's card under its team: hover to read it; the Special Move button sits underneath. */
-function TrainerCard({ slot, side, style }: { slot: TrainerSlot; side: Side; style?: React.CSSProperties }) {
+/** A trainer's card (under its team, or beside the board): hover to read it; the Special Move button sits underneath. */
+export function TrainerCard({ slot, side, style, className = '' }: { slot: TrainerSlot; side: Side; style?: React.CSSProperties; className?: string }) {
   const t = getTrainer(slot.id);
   const [zoom, setZoom] = useState(false);
   const [confirm, setConfirm] = useState(false);
   useEffect(() => setConfirm(false), [slot.canUse, slot.used]);
   return (
-    <div className="flex flex-col gap-1" style={style}>
+    <div className={`flex flex-col gap-1 ${className}`} style={style}>
       <button
         type="button"
         className="relative [container-type:inline-size]"

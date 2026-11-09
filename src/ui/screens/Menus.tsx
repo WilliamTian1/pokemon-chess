@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { type ReactNode, useState } from 'react';
 import { DIFFICULTIES, type Difficulty } from '../../ai/bot';
 import { CARD_LIST, type CardDef, type Side, TRAINER_LIST } from '../../engine';
 import { Art, Modal } from '../components/bits';
 import { CardDetail, MiniGrid } from '../components/CardView';
-import { LegendaryToggle, MapPicker, TrainerToggle, savedLegendaries, savedMapId, savedTrainers } from '../components/MapPicker';
+import { BannerIcon, DiceIcon, GreatBallIcon, PokeBallIcon, ShieldIcon, SpearIcon, SwordsIcon, UltraBallIcon } from '../components/icons';
+import { LegendaryToggle, MapPicker, OptionTiles, SetupHeading, TrainerToggle, savedLegendaries, savedMapId, savedTrainers } from '../components/MapPicker';
 import { TypeChartModal } from '../components/Matchups';
 import { CardGrid, useCardFilter } from './DraftView';
 
@@ -19,41 +20,48 @@ export function Home({ onBot, onLocal, onOnline, onCards, onLab, onRules }: {
   onRules: () => void;
 }) {
   return (
-    <div className="mx-auto flex min-h-screen max-w-3xl flex-col items-center justify-center gap-8 px-4 py-10">
-      <div className="text-center">
-        <div className="mb-4 flex justify-center -space-x-3">
+    <div className="mx-auto flex min-h-screen max-w-3xl flex-col items-center justify-center gap-7 px-4 py-10">
+      <div className="flex w-full flex-col items-center text-center">
+        <div className="mb-4 flex justify-center -space-x-2">
           {SHOWCASE.map((id, i) => (
-            <Art key={id} id={id} className={`h-14 w-14 rounded-full ring-2 ${i % 2 ? 'ring-sky-500' : 'ring-rose-500'} shadow-lg sm:h-16 sm:w-16`} />
+            <Art
+              key={id}
+              id={id}
+              className={`h-10 w-10 rounded-full border-[3px] border-gold shadow-[0_4px_10px_rgba(0,0,0,.55)] sm:h-16 sm:w-16 ${i % 2 ? 'ring-2 ring-sky-700' : 'ring-2 ring-red-800'}`}
+            />
           ))}
         </div>
-        <h1 className="text-4xl font-black tracking-tight sm:text-5xl">
-          Pokémon Conquest <span className="bg-gradient-to-r from-amber-300 to-rose-400 bg-clip-text text-transparent">Chess</span>
-        </h1>
-        <p className="mt-2 text-slate-400">v1.1.1 — draft four, outmanoeuvre, survive ten rounds.</p>
+        <div className="title-plaque">
+          <PokeBallIcon className="absolute -left-5 -top-5 h-12 w-12 -rotate-12 drop-shadow-[0_3px_4px_rgba(0,0,0,.5)]" />
+          <h1 className="title-brush text-[2.1rem] leading-[1.05] sm:text-6xl">Pokémon Conquest</h1>
+          <div className="title-brush title-gold mt-1 text-3xl sm:text-5xl">Chess</div>
+        </div>
+        <p className="mt-4 text-sm text-slate-300">v1.2</p>
       </div>
-      <div className="grid w-full gap-3 sm:grid-cols-3">
-        <MenuButton title="Play vs Bot" sub="Easy · Medium · Hard" onClick={onBot} primary />
-        <MenuButton title="Online match" sub="Private room with friends" onClick={onOnline} />
-        <MenuButton title="Hot-seat" sub="Two players, one device" onClick={onLocal} />
-      </div>
-      <div className="flex gap-3">
-        <button type="button" className="btn-ghost" onClick={onCards}>Card gallery</button>
-        {onLab && <button type="button" className="btn-ghost" onClick={onLab}>Draft analysis</button>}
-        <button type="button" className="btn-ghost" onClick={onRules}>How to play</button>
+      <div className="scroll w-full max-w-3xl">
+        <div className="grid gap-3 sm:grid-cols-3">
+          <MenuButton title="Play vs Bot" sub="Easy · Medium · Hard" icon={<PokeBallIcon className="h-9 w-9" />} onClick={onBot} primary />
+          <MenuButton title="Online match" sub="Private room with friends" icon={<BannerIcon className="h-9 w-9" />} onClick={onOnline} />
+          <MenuButton title="Hot-seat" sub="Two players, one device" icon={<SwordsIcon className="h-9 w-9" />} onClick={onLocal} />
+        </div>
+        <div className="mt-4 flex flex-wrap justify-center gap-3">
+          <button type="button" className="btn-ghost" onClick={onCards}>Card gallery</button>
+          {onLab && <button type="button" className="btn-ghost" onClick={onLab}>Draft analysis</button>}
+          <button type="button" className="btn-ghost" onClick={onRules}>How to play</button>
+        </div>
       </div>
     </div>
   );
 }
 
-function MenuButton({ title, sub, onClick, primary }: { title: string; sub: string; onClick: () => void; primary?: boolean }) {
+function MenuButton({ title, sub, icon, onClick, primary }: { title: string; sub: string; icon: ReactNode; onClick: () => void; primary?: boolean }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`rounded-2xl border p-5 text-left transition hover:-translate-y-0.5 ${primary ? 'border-amber-300/70 bg-amber-400/10 hover:bg-amber-400/20' : 'border-slate-700 bg-slate-900/80 hover:border-slate-500'}`}
-    >
-      <div className="text-lg font-bold">{title}</div>
-      <div className="text-sm text-slate-400">{sub}</div>
+    <button type="button" onClick={onClick} className={`menu-btn ${primary ? 'menu-btn-primary' : ''}`}>
+      <span className="shrink-0">{icon}</span>
+      <span className="min-w-0 text-left">
+        <span className="block font-display text-lg leading-tight">{title}</span>
+        <span className="block text-xs font-bold opacity-80">{sub}</span>
+      </span>
     </button>
   );
 }
@@ -63,14 +71,41 @@ export function LocalSetup({ onStart, onBack }: { onStart: (mapId: string, legen
   const [legendaries, setLegendaries] = useState(savedLegendaries);
   const [trainers, setTrainers] = useState(savedTrainers);
   return (
-    <div className="mx-auto max-w-2xl px-4 py-10">
-      <button type="button" className="btn-ghost mb-4" onClick={onBack}>← Back</button>
-      <div className="panel space-y-5 p-5">
-        <h2 className="text-2xl font-bold">Hot-seat: choose a map</h2>
-        <MapPicker value={mapId} onChange={setMapId} />
-        <LegendaryToggle value={legendaries} onChange={setLegendaries} />
-        <TrainerToggle value={trainers} onChange={setTrainers} />
-        <button type="button" className="btn-primary w-full py-3 text-base" onClick={() => onStart(mapId, legendaries, trainers)}>Start draft</button>
+    <SetupFrame title="Hot-seat" sub="Two players, one device" onBack={onBack}
+      left={(
+        <>
+          <section><SetupHeading n={1}>Legendaries</SetupHeading><LegendaryToggle value={legendaries} onChange={setLegendaries} /></section>
+          <section><SetupHeading n={2}>Trainers</SetupHeading><TrainerToggle value={trainers} onChange={setTrainers} /></section>
+        </>
+      )}
+      map={<MapPicker value={mapId} onChange={setMapId} />}
+      mapStep={3}
+      onStart={() => onStart(mapId, legendaries, trainers)}
+    />
+  );
+}
+
+/** A setup screen: a parchment banner title, options on the left, the map and the start button on the right. */
+function SetupFrame({ title, sub, onBack, left, map, mapStep, onStart }: {
+  title: string; sub: string; onBack: () => void; left: ReactNode; map: ReactNode; mapStep: number; onStart: () => void;
+}) {
+  return (
+    <div className="mx-auto max-w-6xl px-4 py-6">
+      <div className="mb-4 flex items-center gap-3">
+        <button type="button" className="btn-ghost" onClick={onBack}>← Back</button>
+        <div>
+          <h2 className="title-banner text-3xl leading-tight">{title}</h2>
+          <div className="text-sm font-bold text-slate-300">{sub}</div>
+        </div>
+      </div>
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
+        <div className="panel space-y-5 p-5">{left}</div>
+        <div className="panel flex flex-col gap-4 p-5">
+          <section><SetupHeading n={mapStep}>Battlefield</SetupHeading>{map}</section>
+          <button type="button" className="btn-primary mt-auto w-full gap-3 py-3.5 font-display text-xl" onClick={onStart}>
+            <PokeBallIcon className="h-8 w-8" /> Start the draft
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -88,49 +123,45 @@ export function BotSetup({ onStart, onBack }: { onStart: (human: Side, level: Di
     hard: 'Drafts with a model learned from thousands of self-play games, plans whole turns and checks them against your best reply.',
   };
   return (
-    <div className="mx-auto max-w-2xl px-4 py-10">
-      <button type="button" className="btn-ghost mb-4" onClick={onBack}>← Back</button>
-      <div className="panel space-y-5 p-5">
-        <h2 className="text-2xl font-bold">Play vs Bot</h2>
-        <div>
-          <div className="mb-2 text-sm font-semibold text-slate-300">Difficulty</div>
-          <div className="grid grid-cols-3 gap-2">
-            {DIFFICULTIES.map((d) => (
-              <button key={d} type="button" onClick={() => setLevel(d)} className={`btn ${level === d ? 'bg-amber-400 text-slate-950' : 'bg-slate-800 hover:bg-slate-700'} capitalize`}>
-                {d}
-              </button>
-            ))}
-          </div>
-          <p className="mt-2 text-xs text-slate-400">{desc[level]}</p>
-        </div>
-        <div>
-          <div className="mb-2 text-sm font-semibold text-slate-300">Your role</div>
-          <div className="grid grid-cols-3 gap-2">
-            {([['A', 'Attacker'], ['D', 'Defender'], ['R', 'Random']] as const).map(([v, label]) => (
-              <button key={v} type="button" onClick={() => setRole(v)} className={`btn ${role === v ? (v === 'A' ? 'bg-rose-500 text-white' : v === 'D' ? 'bg-sky-500 text-white' : 'bg-amber-400 text-slate-950') : 'bg-slate-800 hover:bg-slate-700'}`}>
-                {label}
-              </button>
-            ))}
-          </div>
-          <p className="mt-2 text-xs text-slate-400">
-            The Attacker moves first and must faint all four Defenders within 10 rounds. The Defender wins by surviving.
-          </p>
-        </div>
-        <div>
-          <div className="mb-2 text-sm font-semibold text-slate-300">Map</div>
-          <MapPicker value={mapId} onChange={setMapId} />
-        </div>
-        <LegendaryToggle value={legendaries} onChange={setLegendaries} />
-        <TrainerToggle value={trainers} onChange={setTrainers} />
-        <button
-          type="button"
-          className="btn-primary w-full py-3 text-base"
-          onClick={() => onStart(role === 'R' ? (Math.random() < 0.5 ? 'A' : 'D') : role, level, mapId, legendaries, trainers)}
-        >
-          Start draft
-        </button>
-      </div>
-    </div>
+    <SetupFrame title="Play vs Bot" sub="Draft against the computer" onBack={onBack}
+      left={(
+        <>
+          <section>
+            <SetupHeading n={1}>Difficulty</SetupHeading>
+            <OptionTiles
+              value={level}
+              onChange={setLevel}
+              options={DIFFICULTIES.map((d) => ({
+                value: d,
+                title: d[0].toUpperCase() + d.slice(1),
+                emblem: d === 'easy' ? <PokeBallIcon className="h-full w-full" /> : d === 'medium' ? <GreatBallIcon className="h-full w-full" /> : <UltraBallIcon className="h-full w-full" />,
+              }))}
+            />
+            <p className="mt-2 text-xs font-bold text-slate-400">{desc[level]}</p>
+          </section>
+          <section>
+            <SetupHeading n={2}>Your side</SetupHeading>
+            <OptionTiles
+              value={role}
+              onChange={setRole}
+              options={[
+                { value: 'A' as const, title: 'Attacker', sub: 'Moves first', emblem: <SpearIcon className="h-full w-full" /> },
+                { value: 'D' as const, title: 'Defender', sub: 'Holds out', emblem: <ShieldIcon className="h-full w-full" /> },
+                { value: 'R' as const, title: 'Random', sub: 'Toss a die', emblem: <DiceIcon className="h-full w-full" /> },
+              ]}
+            />
+            <p className="mt-2 text-xs font-bold text-slate-400">
+              The Attacker must faint all four Defenders within 10 rounds. The Defender wins by surviving.
+            </p>
+          </section>
+          <section><SetupHeading n={3}>Legendaries</SetupHeading><LegendaryToggle value={legendaries} onChange={setLegendaries} /></section>
+          <section><SetupHeading n={4}>Trainers</SetupHeading><TrainerToggle value={trainers} onChange={setTrainers} /></section>
+        </>
+      )}
+      map={<MapPicker value={mapId} onChange={setMapId} />}
+      mapStep={5}
+      onStart={() => onStart(role === 'R' ? (Math.random() < 0.5 ? 'A' : 'D') : role, level, mapId, legendaries, trainers)}
+    />
   );
 }
 
@@ -182,9 +213,9 @@ export function HowToPlay({ onBack }: { onBack: () => void }) {
   return (
     <div className="mx-auto max-w-3xl space-y-4 px-4 py-6 text-sm leading-relaxed text-slate-300">
       <button type="button" className="btn-ghost" onClick={onBack}>← Back</button>
-      <h2 className="text-2xl font-bold text-white">How to play</h2>
+      <h2 className="title-banner text-3xl">How to play</h2>
       <section className="panel space-y-2 p-4">
-        <h3 className="font-bold text-white">Match flow</h3>
+        <h3 className="font-display text-lg text-lacquer">Match flow</h3>
         <ol className="list-decimal space-y-1 pl-5">
           <li><b>Draft:</b> each match deals 15 random Pokémon and 4 random legendaries. The Attacker and Defender alternate picking 3 Pokémon each, then each picks one legendary. With <b>No legendaries</b> chosen at setup, the pool is 20 Pokémon and both players pick all 4 from it.</li>
           <li><b>Trainers</b> (if <b>With trainers</b> was chosen at setup): after the draft, 4 random trainers are shown. The Attacker takes one, then the Defender picks from the other three. A trainer's passive always applies to its own side, and its <b>Special Move</b> can be used once per game at any point of your own turn (between Pokémon) without using up an action.</li>
@@ -194,14 +225,14 @@ export function HowToPlay({ onBack }: { onBack: () => void }) {
         <p><b className="text-rose-300">Attacker</b> wins by fainting all 4 Defenders before round 10 ends. <b className="text-sky-300">Defender</b> wins by wiping the Attackers or simply surviving round 10.</p>
       </section>
       <section className="panel space-y-2 p-4">
-        <h3 className="font-bold text-white">Your turn</h3>
+        <h3 className="font-display text-lg text-lacquer">Your turn</h3>
         <p>Activate each of your Pokémon once, in any order: <b>move</b> up to its Mov (orthogonal steps, through allies but not enemies), then take <b>one action</b> — use a move, fire the trebuchet, or wait. Then press <b>End turn</b>.</p>
         <p>Select a Pokémon, tap a blue tile to move, pick a move and aim it in one of four directions (or just click the Pokémon you want to hit). Previews show the damage range and KO chance on every Pokémon hit — allies included!</p>
         <p><b>Reach:</b> click an opposing Pokémon to see every tile it can attack on its next turn, after moving. Its first move's range is filled red, its second move's is outlined in yellow. Click it again or press Esc to hide it.</p>
         <p><b>Tags:</b> like tokens on a real table, stat changes and conditions are tags dropped onto the Pokémon's card: sword = Attack, shield = Defense, boot = Movement (one tag per stage, + or −), fire = burn, bubbles = poison (purple: badly poisoned), lightning = paralysis, Zzz = sleep, snowflake = frozen, sweat drop = flinched or recharging, and “!” for other effects (confusion, Taunt, Follow Me, cooldowns). A red number on a tag is how many of the Pokémon's turns the effect still lasts. Hover a tag for details.</p>
       </section>
       <section className="panel space-y-2 p-4">
-        <h3 className="font-bold text-white">Reading the move grids</h3>
+        <h3 className="font-display text-lg text-lacquer">Reading the move grids</h3>
         <div className="flex items-center gap-4">
           <MiniGrid move={example} size={16} />
           <div className="space-y-1">
@@ -214,7 +245,7 @@ export function HowToPlay({ onBack }: { onBack: () => void }) {
         <p>A move can only be used if it hits at least one Pokémon, ally or opponent. Adjacent means all 8 surrounding tiles, diagonals included. “Within N tiles” counts steps like movement, so a diagonal tile is 2 away.</p>
       </section>
       <section className="panel space-y-2 p-4">
-        <h3 className="font-bold text-white">The maps</h3>
+        <h3 className="font-display text-lg text-lacquer">The maps</h3>
         <p>Choose Trebuchet Meadow or Winding River before each match. On Winding River the brown bridges are ordinary ground.</p>
         <div className="grid gap-1.5 sm:grid-cols-2">
           <Legend color="tile-water">Water: only Water, Flying and Levitate Pokémon can enter.</Legend>
@@ -225,7 +256,7 @@ export function HowToPlay({ onBack }: { onBack: () => void }) {
         </div>
       </section>
       <section className="panel space-y-2 p-4">
-        <h3 className="font-bold text-white">Damage</h3>
+        <h3 className="font-display text-lg text-lacquer">Damage</h3>
         <p>Damage = move power ± 20 per Attack/Defense stage ± ability and terrain modifiers (minimum 10), × type effectiveness, rounded up to the nearest 5. Grazes replace the power with the graze value and ignore Attack boosts and Defense drops.</p>
         <p>Status: Poison/Burn 20 per turn (Burn also −30 damage), Toxic 20, 40, 60…, Paralysis −1 Mov and 20% to lose the turn, Sleep/Freeze wake on a 5–6 each turn. Flinched Pokémon lose their next activation; confused ones have a ⅓ chance to hurt themselves for 30 instead of acting.</p>
       </section>

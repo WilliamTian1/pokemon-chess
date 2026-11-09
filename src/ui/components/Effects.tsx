@@ -86,11 +86,11 @@ export function SpecialCutIn({ events, names }: { events: EventBatch; names: Rec
       <div className={`absolute inset-0 animate-cutinBg ${fromLeft ? 'bg-gradient-to-r from-rose-900/90 via-rose-700/60' : 'bg-gradient-to-l from-sky-900/90 via-sky-700/60'} to-transparent`} />
       <div className="absolute inset-x-0 top-1/2 h-40 -translate-y-1/2 animate-cutinStripe bg-[repeating-linear-gradient(110deg,rgba(255,255,255,.12)_0_18px,transparent_18px_40px)]" />
       <div className={`relative flex items-center gap-6 ${fromLeft ? 'flex-row animate-cutinLeft' : 'flex-row-reverse animate-cutinRight'}`}>
-        <img src={trainerImg(show.trainer)} alt="" className="w-[min(40vw,260px)] rotate-[-4deg] rounded-xl shadow-2xl ring-4 ring-amber-300/90" />
+        <img src={trainerImg(show.trainer)} alt="" className="w-[min(40vw,260px)] rotate-[-4deg] rounded-xl border-4 border-gold shadow-2xl ring-4 ring-[#2a170b]" />
         <div className={`max-w-md ${fromLeft ? 'text-left' : 'text-right'}`}>
           <div className="text-xs font-bold uppercase tracking-[0.3em] text-amber-200">{SIDE_NAME[show.side]} · {names[show.side]}</div>
-          <div className="text-5xl font-black italic text-white drop-shadow-[0_3px_0_rgba(0,0,0,.6)]">{t.name}</div>
-          <div className="mt-1 text-2xl font-black uppercase italic text-amber-300 drop-shadow-[0_2px_0_rgba(0,0,0,.6)]">Special Move!</div>
+          <div className="title-brush text-5xl">{t.name}</div>
+          <div className="title-brush title-gold mt-1 text-3xl">Special Move!</div>
           <p className="mt-2 text-sm font-semibold text-white/90 drop-shadow">{t.special}</p>
         </div>
       </div>
@@ -142,7 +142,7 @@ export function FieldFx({ events }: { events: EventBatch }) {
         const across = fx.kind === 'sand' || fx.kind === 'wind';
         return <span key={i} className={`absolute ${cls}`} style={{ left: `${left}%`, top: across ? `${(i * 29) % 100}%` : '-5%', animationDelay: `${delay}s` }} />;
       })}
-      <div className="absolute inset-x-0 top-[18%] text-center text-3xl font-black italic text-white drop-shadow-[0_3px_0_rgba(0,0,0,.6)] animate-fieldText">{FIELD_TEXT[fx.kind]}</div>
+      <div className="title-brush absolute inset-x-0 top-[18%] text-center text-4xl animate-fieldText">{FIELD_TEXT[fx.kind]}</div>
     </div>,
     document.body,
   );
@@ -169,9 +169,9 @@ export function TurnSweep({ state, names, mySides }: { state: GameState; names: 
   const yours = mySides.length === 1 && mySides[0] === show.side;
   return createPortal(
     <div key={show.key} className="pointer-events-none fixed inset-x-0 top-[38%] z-[50] flex justify-center">
-      <div className={`animate-turnSweep rounded-xl px-10 py-3 text-center shadow-2xl ${show.side === 'A' ? 'bg-rose-600/90' : 'bg-sky-600/90'}`}>
-        <div className="text-xs font-bold uppercase tracking-[0.3em] text-white/80">Round {show.round}</div>
-        <div className="text-3xl font-black italic text-white">{yours ? 'Your turn!' : `${names[show.side]}’s turn`}</div>
+      <div className={`turn-banner animate-turnSweep px-12 py-3 text-center ${show.side === 'A' ? 'turn-banner-a' : 'turn-banner-d'}`}>
+        <div className="text-xs font-extrabold uppercase tracking-[0.3em] text-[#f2d27a]">Round {show.round}</div>
+        <div className="title-brush text-4xl">{yours ? 'Your turn!' : `${names[show.side]}’s turn`}</div>
       </div>
     </div>,
     document.body,

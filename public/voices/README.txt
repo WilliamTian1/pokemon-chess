@@ -1,7 +1,5 @@
-Trainer voicelines: four short battle callouts per trainer, named <trainer>-1 through <trainer>-4
-(e.g. red-1.ogg, mitsuhide-2.wav). One is chosen at random whenever that trainer's Special Move is
-used; the list lives in VOICE_CLIPS in src/ui/audio.ts. If a clip can't be played, the game falls
-back to a synthesized line.
+Trainer voicelines: four short battle callouts per trainer, named <trainer>-1.wav through <trainer>-4.wav. One is chosen at random whenever that trainer's Special Move is
+used; the list lives in VOICE_CLIPS in src/ui/audio.ts.
 
 Chosen from the transcribed sets in "Pokemon Chess Voicelines/" (transcripts.tsv there):
   mitsuhide  offense-c "This should finish you!", support-c "Now is our chance!",
@@ -13,3 +11,8 @@ Chosen from the transcribed sets in "Pokemon Chess Voicelines/" (transcripts.tsv
   red        0014 "Tah!", 0017 "Hut!", 0026 "Huah!", 0025 "Huh!" (Red has no spoken lines)
   blue       0013 "Bring it!", 0016 "Get 'em!", 0072 "I'll show you!", 0071 "I'll teach you just how strong I am!"
   lance      0013 "Here we come!", 0023 "Now!", 0026 "Fight!", 0007 "You haven't seen my true strength yet."
+
+All clips were then cleaned up by scripts/soundtrack/voices.py: resampled to 48 kHz, the missing top
+octave regrown with a harmonic exciter (the Kessen III clips are 22 kHz PS2 audio), rumble cut, a light
+presence lift and matched loudness. To redo it from the original picks, run the selection again and then
+  python3 scripts/soundtrack/voices.py <picked clips dir> public/voices

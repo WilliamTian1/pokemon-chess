@@ -4,7 +4,8 @@
 
 :root {
   color-scheme: dark;
-  font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-family: 'M PLUS Rounded 1c', ui-rounded, system-ui, sans-serif;
+  font-weight: 500;
   --tile-normal: #7fae55;
   --tile-normal-2: #78a650;
   --tile-dirt: #b88a5c;
@@ -13,6 +14,68 @@
   --tile-bridge: #a0703f;
   --tile-water: #3f97d6;
   --tile-water-2: #4ea6e3;
+
+  /* Page context: dark lacquer, cream text (Tailwind's slate and light accents read these). */
+  --slate-50: 255 251 240;
+  --slate-100: 248 238 214;
+  --slate-200: 238 224 192;
+  --slate-300: 224 206 168;
+  --slate-400: 196 174 132;
+  --slate-500: 160 138 100;
+  --slate-600: 120 98 68;
+  --slate-700: 92 70 46;
+  --slate-800: 64 46 30;
+  --slate-900: 44 30 19;
+  --slate-950: 27 18 11;
+  --amber-100: 254 243 199;
+  --amber-200: 253 230 138;
+  --amber-300: 252 211 77;
+  --amber-400: 251 191 36;
+  --rose-200: 254 205 211;
+  --rose-300: 253 164 175;
+  --rose-400: 251 113 133;
+  --emerald-200: 167 243 208;
+  --emerald-300: 110 231 183;
+  --emerald-400: 52 211 153;
+  --sky-200: 186 230 253;
+  --sky-300: 125 211 252;
+  --sky-400: 56 189 248;
+  --atk-soft: 252 165 165;
+  --def-soft: 147 197 253;
+}
+
+/* Parchment context: the same classes become ink on paper, with deeper accents. */
+.panel,
+.paper,
+.scroll {
+  color-scheme: light;
+  --slate-50: 26 17 8;
+  --slate-100: 51 34 15;
+  --slate-200: 62 43 22;
+  --slate-300: 80 58 34;
+  --slate-400: 106 82 56;
+  --slate-500: 134 110 80;
+  --slate-600: 166 142 104;
+  --slate-700: 196 172 130;
+  --slate-800: 226 208 166;
+  --slate-900: 240 226 192;
+  --slate-950: 247 238 214;
+  --amber-100: 122 74 8;
+  --amber-200: 138 84 10;
+  --amber-300: 150 92 12;
+  --amber-400: 184 120 20;
+  --rose-200: 150 32 32;
+  --rose-300: 168 36 34;
+  --rose-400: 190 46 40;
+  --emerald-200: 22 96 50;
+  --emerald-300: 24 110 56;
+  --emerald-400: 30 128 66;
+  --sky-200: 20 78 146;
+  --sky-300: 24 90 166;
+  --sky-400: 32 102 184;
+  --atk-soft: 170 32 30;
+  --def-soft: 30 62 170;
+  color: rgb(var(--slate-100));
 }
 
 html,
@@ -21,75 +84,181 @@ body,
   min-height: 100%;
 }
 
+/* Lacquered night with a faint gold wave pattern (seigaiha). */
 body {
+  color: rgb(var(--slate-100));
   background:
-    radial-gradient(1200px 600px at 20% -10%, rgba(59, 130, 246, 0.12), transparent 60%),
-    radial-gradient(900px 500px at 110% 10%, rgba(239, 68, 68, 0.1), transparent 60%),
-    #0b1120;
+    radial-gradient(120% 80% at 50% -10%, rgba(168, 38, 29, 0.28), transparent 60%),
+    radial-gradient(90% 70% at 50% 120%, rgba(0, 0, 0, 0.55), transparent 70%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='56' height='28' viewBox='0 0 56 28'%3E%3Cg fill='none' stroke='%23d9ab45' stroke-opacity='0.09' stroke-width='1.2'%3E%3Cpath d='M0 28a28 28 0 0 1 56 0M7 28a21 21 0 0 1 42 0M14 28a14 14 0 0 1 28 0M21 28a7 7 0 0 1 14 0'/%3E%3Cpath d='M-28 14a28 28 0 0 1 56 0M-21 14a21 21 0 0 1 42 0M-14 14a14 14 0 0 1 28 0M28 14a28 28 0 0 1 56 0M35 14a21 21 0 0 1 42 0M42 14a14 14 0 0 1 28 0'/%3E%3C/g%3E%3C/svg%3E") 0 0 / 56px 28px,
+    #1b120b;
   background-attachment: fixed;
 }
 
+::selection {
+  background: rgba(217, 171, 69, 0.45);
+}
+
+h1,
+h2,
+.font-display {
+  font-family: 'Potta One', 'M PLUS Rounded 1c', system-ui, sans-serif;
+  font-weight: 400;
+  letter-spacing: 0.01em;
+}
+
 @layer components {
+  /* A parchment window in a dark wooden frame with a gold inner line. */
   .panel {
-    @apply rounded-xl border border-slate-700/60 bg-slate-900/80 shadow-lg shadow-black/20 backdrop-blur;
+    @apply rounded-xl;
+    border: 3px solid #4a2b16;
+    background:
+      radial-gradient(circle at 18% 22%, rgba(150, 110, 50, 0.08), transparent 40%),
+      radial-gradient(circle at 82% 78%, rgba(150, 110, 50, 0.1), transparent 45%),
+      linear-gradient(180deg, #f6ead0, #efdfb9);
+    box-shadow:
+      inset 0 0 0 2px rgba(217, 171, 69, 0.85),
+      inset 0 0 28px rgba(140, 95, 35, 0.22),
+      0 8px 22px rgba(0, 0, 0, 0.45);
+  }
+  /* Dark lacquer bar (headers, HUD strips) with a gold edge. */
+  .lacquer {
+    @apply rounded-xl;
+    border: 2px solid rgba(217, 171, 69, 0.75);
+    background: linear-gradient(180deg, #3a2414, #24150b);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 220, 150, 0.12);
   }
   .btn {
-    @apply inline-flex select-none items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-sm font-semibold transition
+    @apply inline-flex select-none items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-sm font-extrabold transition
       focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 disabled:cursor-not-allowed disabled:opacity-40;
+    border-width: 2px;
   }
+  .btn:not(:disabled):active {
+    transform: translateY(2px);
+  }
+  /* Vermilion lacquer with a gold edge. */
   .btn-primary {
-    @apply btn bg-amber-400 text-slate-950 hover:bg-amber-300;
+    @apply btn;
+    color: #fff6dc;
+    text-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
+    border-color: #e6bd55;
+    background: linear-gradient(180deg, #d4473a, #a3261d);
+    box-shadow: 0 3px 0 #6b150f, inset 0 1px 0 rgba(255, 255, 255, 0.28);
   }
+  .btn-primary:not(:disabled):hover {
+    background: linear-gradient(180deg, #e05547, #b52d22);
+  }
+  .btn-primary:not(:disabled):active {
+    box-shadow: 0 1px 0 #6b150f, inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  }
+  /* Paper on parchment, dark wood on the page (follows the slate variables). */
   .btn-ghost {
-    @apply btn bg-slate-800 text-slate-100 hover:bg-slate-700;
+    @apply btn;
+    color: rgb(var(--slate-100));
+    border-color: rgb(var(--slate-600));
+    background: rgb(var(--slate-800));
+    box-shadow: 0 3px 0 rgb(var(--slate-700)), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  }
+  .btn-ghost:not(:disabled):hover {
+    border-color: rgb(var(--amber-400));
+  }
+  .btn-ghost:not(:disabled):active {
+    box-shadow: 0 1px 0 rgb(var(--slate-700));
   }
   .btn-danger {
-    @apply btn bg-rose-600 text-white hover:bg-rose-500;
+    @apply btn;
+    color: #fff1e6;
+    border-color: #f0a58f;
+    background: linear-gradient(180deg, #b8322a, #7e1812);
+    box-shadow: 0 3px 0 #4f0d09;
   }
   .chip {
-    @apply inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-bold uppercase leading-none tracking-wide;
+    @apply inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-extrabold uppercase leading-none tracking-wide;
   }
 }
 
+input[type='checkbox'],
+input[type='radio'],
+input[type='range'] {
+  accent-color: #b8321f;
+}
+
+/* Painted terrain: soft grass with tufts and dapples, worn dirt with pebbles, wooden planks and water
+   with ripples. Neighbouring tiles alternate slightly so the field reads like a checkerboard. */
 .tile-normal {
-  background-color: var(--tile-normal);
+  background:
+    radial-gradient(ellipse 18% 12% at 24% 30%, rgba(40, 90, 20, 0.35), transparent 70%),
+    radial-gradient(ellipse 16% 10% at 70% 64%, rgba(40, 90, 20, 0.3), transparent 70%),
+    radial-gradient(ellipse 12% 8% at 46% 82%, rgba(220, 240, 150, 0.22), transparent 70%),
+    radial-gradient(circle at 30% 25%, rgba(255, 255, 200, 0.12), transparent 55%),
+    linear-gradient(160deg, #8cbb5c, var(--tile-normal));
 }
 .tile-normal.alt {
-  background-color: var(--tile-normal-2);
+  background:
+    radial-gradient(ellipse 18% 12% at 66% 28%, rgba(40, 90, 20, 0.35), transparent 70%),
+    radial-gradient(ellipse 16% 10% at 28% 70%, rgba(40, 90, 20, 0.3), transparent 70%),
+    radial-gradient(ellipse 12% 8% at 80% 80%, rgba(220, 240, 150, 0.2), transparent 70%),
+    radial-gradient(circle at 70% 30%, rgba(255, 255, 200, 0.1), transparent 55%),
+    linear-gradient(160deg, #83b356, var(--tile-normal-2));
 }
 .tile-dirt {
   background:
-    radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.08) 0 2px, transparent 3px) 0 0 / 14px 14px,
-    var(--tile-dirt);
+    radial-gradient(circle at 22% 30%, rgba(90, 55, 25, 0.45) 0 6%, transparent 7%),
+    radial-gradient(circle at 70% 62%, rgba(90, 55, 25, 0.4) 0 5%, transparent 6%),
+    radial-gradient(circle at 48% 80%, rgba(255, 230, 190, 0.35) 0 4%, transparent 5%),
+    radial-gradient(circle at 80% 22%, rgba(255, 230, 190, 0.3) 0 3%, transparent 4%),
+    radial-gradient(ellipse at 50% 50%, rgba(255, 220, 170, 0.12), transparent 70%),
+    linear-gradient(160deg, #c49768, var(--tile-dirt));
 }
 .tile-dirt.alt {
   background:
-    radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.08) 0 2px, transparent 3px) 0 0 / 14px 14px,
-    var(--tile-dirt-2);
+    radial-gradient(circle at 65% 28%, rgba(90, 55, 25, 0.45) 0 6%, transparent 7%),
+    radial-gradient(circle at 26% 68%, rgba(90, 55, 25, 0.4) 0 5%, transparent 6%),
+    radial-gradient(circle at 78% 82%, rgba(255, 230, 190, 0.35) 0 4%, transparent 5%),
+    radial-gradient(circle at 20% 20%, rgba(255, 230, 190, 0.3) 0 3%, transparent 4%),
+    radial-gradient(ellipse at 50% 50%, rgba(255, 220, 170, 0.1), transparent 70%),
+    linear-gradient(160deg, #ba8d5f, var(--tile-dirt-2));
 }
+/* Tall grass: dark blades. */
 .tile-grass {
   background:
-    repeating-linear-gradient(115deg, rgba(255, 255, 255, 0.07) 0 3px, transparent 3px 9px),
-    var(--tile-grass);
+    linear-gradient(75deg, transparent 44%, rgba(25, 70, 15, 0.55) 45% 48%, transparent 49%) 0 0 / 34% 60%,
+    linear-gradient(105deg, transparent 44%, rgba(25, 70, 15, 0.5) 45% 48%, transparent 49%) 17% 40% / 34% 60%,
+    linear-gradient(80deg, transparent 44%, rgba(160, 210, 90, 0.4) 45% 48%, transparent 49%) 8% 20% / 34% 60%,
+    linear-gradient(160deg, #5a9a38, var(--tile-grass));
 }
 /* Wooden planks laid across the direction of travel (set per tile by the board). */
 .tile-bridge {
   background:
-    repeating-linear-gradient(0deg, rgba(60, 30, 10, 0.45) 0 1.5px, transparent 1.5px 20%),
-    linear-gradient(90deg, rgba(60, 30, 10, 0.5) 0 6%, transparent 6% 94%, rgba(60, 30, 10, 0.5) 94%),
-    var(--tile-bridge);
+    repeating-linear-gradient(0deg, rgba(60, 30, 10, 0.5) 0 1.5px, transparent 1.5px 20%),
+    linear-gradient(90deg, rgba(60, 30, 10, 0.55) 0 7%, transparent 7% 93%, rgba(60, 30, 10, 0.55) 93%),
+    repeating-linear-gradient(90deg, rgba(255, 220, 160, 0.08) 0 3px, transparent 3px 9px),
+    linear-gradient(180deg, #b07c48, var(--tile-bridge));
 }
 .tile-bridge.across {
   background:
-    repeating-linear-gradient(90deg, rgba(60, 30, 10, 0.45) 0 1.5px, transparent 1.5px 20%),
-    linear-gradient(0deg, rgba(60, 30, 10, 0.5) 0 6%, transparent 6% 94%, rgba(60, 30, 10, 0.5) 94%),
-    var(--tile-bridge);
+    repeating-linear-gradient(90deg, rgba(60, 30, 10, 0.5) 0 1.5px, transparent 1.5px 20%),
+    linear-gradient(0deg, rgba(60, 30, 10, 0.55) 0 7%, transparent 7% 93%, rgba(60, 30, 10, 0.55) 93%),
+    repeating-linear-gradient(0deg, rgba(255, 220, 160, 0.08) 0 3px, transparent 3px 9px),
+    linear-gradient(90deg, #b07c48, var(--tile-bridge));
 }
 .tile-water {
   background:
-    radial-gradient(ellipse 60% 22% at 30% 35%, rgba(255, 255, 255, 0.28), transparent 70%),
-    radial-gradient(ellipse 50% 18% at 72% 70%, rgba(255, 255, 255, 0.2), transparent 70%),
-    linear-gradient(160deg, var(--tile-water-2), var(--tile-water));
+    radial-gradient(ellipse 34% 9% at 30% 30%, rgba(255, 255, 255, 0.45), transparent 70%),
+    radial-gradient(ellipse 26% 7% at 70% 66%, rgba(255, 255, 255, 0.35), transparent 70%),
+    radial-gradient(ellipse 18% 6% at 42% 84%, rgba(255, 255, 255, 0.25), transparent 70%),
+    radial-gradient(circle at 50% 50%, rgba(20, 70, 140, 0.25), transparent 80%),
+    linear-gradient(160deg, #5ab2ea, #2f86c8);
+  background-size: 100% 100%, 100% 100%, 100% 100%, 100% 100%, 100% 100%;
+  animation: waterShimmer 4s ease-in-out infinite alternate;
+}
+@keyframes waterShimmer {
+  from {
+    background-position: 0 0, 0 0, 0 0, 0 0, 0 0;
+  }
+  to {
+    background-position: 8% 3%, -8% -2%, 6% -3%, 0 0, 0 0;
+  }
 }
 
 .no-scrollbar::-webkit-scrollbar {
@@ -105,5 +274,613 @@ body {
   *::after {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+/* ---------------------------------------------------------------- title screen */
+
+/* Brush lettering: cream with a dark outline and a gold drop. */
+.title-brush {
+  font-family: 'Potta One', 'M PLUS Rounded 1c', system-ui, sans-serif;
+  color: #fff3d6;
+  -webkit-text-stroke: 6px #2a170b;
+  paint-order: stroke fill;
+  text-shadow: 0 4px 0 #9a7426, 0 8px 14px rgba(0, 0, 0, 0.55);
+}
+.title-gold {
+  color: #f2c94c;
+  text-shadow: 0 4px 0 #6e140f, 0 8px 14px rgba(0, 0, 0, 0.55);
+}
+/* A red lacquer plaque with a gold rim, hung on the wall. */
+.title-plaque {
+  position: relative;
+  max-width: 100%;
+  padding: 1.1rem 2.2rem 1.3rem;
+  border-radius: 18px;
+  border: 3px solid #e6bd55;
+  background:
+    radial-gradient(120% 90% at 50% 0%, rgba(255, 255, 255, 0.14), transparent 55%),
+    linear-gradient(180deg, #b52f24, #7e1a13);
+  box-shadow: 0 0 0 5px #2a170b, 0 0 0 7px rgba(217, 171, 69, 0.6), 0 16px 30px rgba(0, 0, 0, 0.55);
+}
+/* A hanging scroll: parchment between two wooden rods. */
+.scroll {
+  position: relative;
+  padding: 1.6rem 1.4rem 1.4rem;
+  color-scheme: light;
+  border-left: 2px solid rgba(154, 116, 38, 0.6);
+  border-right: 2px solid rgba(154, 116, 38, 0.6);
+  background:
+    radial-gradient(circle at 15% 25%, rgba(150, 110, 50, 0.1), transparent 40%),
+    radial-gradient(circle at 85% 75%, rgba(150, 110, 50, 0.12), transparent 45%),
+    linear-gradient(180deg, #f6ead0, #ecdab0);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.5);
+}
+.scroll::before,
+.scroll::after {
+  content: '';
+  position: absolute;
+  left: -14px;
+  right: -14px;
+  height: 14px;
+  border-radius: 7px;
+  background: linear-gradient(180deg, #7a4a26, #3a2112 70%);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 210, 150, 0.25);
+}
+.scroll::before {
+  top: -10px;
+}
+.scroll::after {
+  bottom: -10px;
+}
+.menu-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.9rem 1rem;
+  border-radius: 14px;
+  border: 2px solid #8a6a3a;
+  color: #33220f;
+  background: linear-gradient(180deg, #fbf3dd, #ead6a6);
+  box-shadow: 0 4px 0 #8a6a3a, 0 8px 14px rgba(80, 50, 20, 0.25);
+  transition: transform 0.12s, box-shadow 0.12s, filter 0.12s;
+}
+.menu-btn:hover {
+  transform: translateY(-2px);
+  filter: brightness(1.04);
+  box-shadow: 0 6px 0 #8a6a3a, 0 12px 18px rgba(80, 50, 20, 0.3);
+}
+.menu-btn:active {
+  transform: translateY(3px);
+  box-shadow: 0 1px 0 #8a6a3a;
+}
+.menu-btn-primary {
+  color: #fff6dc;
+  border-color: #e6bd55;
+  background: linear-gradient(180deg, #d4473a, #a3261d);
+  box-shadow: 0 4px 0 #6b150f, 0 8px 14px rgba(80, 20, 10, 0.35);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
+}
+.menu-btn-primary:hover {
+  box-shadow: 0 6px 0 #6b150f, 0 12px 18px rgba(80, 20, 10, 0.4);
+}
+
+/* ---------------------------------------------------------------- game */
+
+/* The battlefield sits in a dark wooden frame with a gold rim. */
+.board-frame {
+  border: 6px solid #4a2b16;
+  box-shadow: 0 0 0 2px #d9ab45, 0 0 0 5px #2a170b, 0 16px 32px rgba(0, 0, 0, 0.5);
+}
+/* A soft vignette over the field so its edges sink into the frame. */
+.board-frame::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  box-shadow: inset 0 0 28px rgba(30, 20, 5, 0.45);
+}
+/* Page titles: brush lettering, smaller outline. */
+.title-banner {
+  font-family: 'Potta One', 'M PLUS Rounded 1c', system-ui, sans-serif;
+  color: #fff3d6;
+  -webkit-text-stroke: 4px #2a170b;
+  paint-order: stroke fill;
+  text-shadow: 0 3px 0 #9a7426;
+}
+/* Turn banner: a lacquer sash with gold edges. */
+.turn-banner {
+  border-top: 3px solid #e6bd55;
+  border-bottom: 3px solid #e6bd55;
+  box-shadow: 0 0 0 3px #2a170b, 0 18px 34px rgba(0, 0, 0, 0.55);
+}
+.turn-banner-a {
+  background: linear-gradient(180deg, #c73a2e, #8a1c15);
+}
+.turn-banner-d {
+  background: linear-gradient(180deg, #2f62b8, #1c3a78);
+}
+
+@media (max-width: 639px) {
+  .title-plaque {
+    padding: 0.8rem 1.1rem 0.9rem;
+  }
+  .title-brush {
+    -webkit-text-stroke-width: 5px;
+  }
+  .scroll {
+    padding: 1.4rem 0.9rem 1.1rem;
+  }
+}
+
+/* ---------------------------------------------------------------- draft council */
+
+/* Pick counter: a round lacquer seal with a gold rim. */
+.draft-seal {
+  display: flex;
+  height: 3.4rem;
+  width: 3.4rem;
+  flex-shrink: 0;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  color: #fff3d6;
+  border: 3px solid #e6bd55;
+  background: radial-gradient(circle at 35% 30%, #d4473a, #8a1c15 70%);
+  box-shadow: 0 0 0 2px #2a170b, 0 4px 8px rgba(0, 0, 0, 0.35);
+}
+.draft-phase {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 9999px;
+  padding: 0.1rem 0.6rem;
+  font-size: 0.7rem;
+  font-weight: 800;
+  color: #fff3d6;
+  background: #4a2b16;
+}
+/* Each side's army: a coloured sash and a row of gold-ringed medallions. */
+.draft-army {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  border-radius: 9999px;
+  padding: 0.3rem 0.5rem 0.3rem 0.3rem;
+  background: rgba(74, 43, 22, 0.08);
+  border: 2px solid transparent;
+  transition: box-shadow 0.2s, border-color 0.2s;
+}
+.draft-army-active {
+  border-color: #d9ab45;
+  background: rgba(217, 171, 69, 0.18);
+  box-shadow: 0 0 0 3px rgba(217, 171, 69, 0.25);
+}
+.draft-sash {
+  font-family: 'Potta One', 'M PLUS Rounded 1c', system-ui, sans-serif;
+  font-size: 0.95rem;
+  line-height: 1;
+  color: #fff3d6;
+  padding: 0.45rem 0.8rem;
+  border-radius: 9999px;
+  border: 2px solid #e6bd55;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.4);
+}
+.draft-army-a .draft-sash {
+  background: linear-gradient(180deg, #c73a2e, #8a1c15);
+}
+.draft-army-d .draft-sash {
+  background: linear-gradient(180deg, #2f62b8, #1c3a78);
+}
+.draft-medal {
+  display: flex;
+  height: 2.9rem;
+  width: 2.9rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 9999px;
+  border: 3px solid #d9ab45;
+  box-shadow: 0 0 0 2px #2a170b, 0 3px 6px rgba(0, 0, 0, 0.3);
+  transition: transform 0.12s;
+}
+button.draft-medal:hover {
+  transform: translateY(-2px) scale(1.05);
+}
+.draft-medal-pinned {
+  border-color: #fff3d6;
+  box-shadow: 0 0 0 2px #2a170b, 0 0 0 5px #d9ab45;
+}
+.draft-medal-empty {
+  font-family: 'Potta One', 'M PLUS Rounded 1c', system-ui, sans-serif;
+  font-size: 1rem;
+  color: rgba(74, 43, 22, 0.55);
+  border-style: dashed;
+  border-color: rgba(154, 116, 38, 0.7);
+  background: rgba(255, 255, 255, 0.35);
+  box-shadow: none;
+}
+.draft-medal-next {
+  color: #8a1c15;
+  border-color: #c73a2e;
+  background: rgba(255, 243, 214, 0.9);
+  animation: medalPulse 1.4s ease-in-out infinite;
+}
+@keyframes medalPulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(199, 58, 46, 0.55);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(199, 58, 46, 0);
+  }
+}
+/* The trainer slot: a small portrait cut from the top of the trainer card. */
+.draft-trainer {
+  display: flex;
+  height: 2.9rem;
+  width: 2.3rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  margin-left: 0.25rem;
+  border-radius: 0.5rem;
+  border: 3px solid #d9ab45;
+  object-fit: cover;
+  object-position: 50% 22%;
+  font-family: 'Potta One', 'M PLUS Rounded 1c', system-ui, sans-serif;
+}
+@media (max-width: 639px) {
+  .draft-medal {
+    height: 2.4rem;
+    width: 2.4rem;
+  }
+  .draft-trainer {
+    height: 2.4rem;
+    width: 1.9rem;
+  }
+  .draft-sash {
+    font-size: 0.8rem;
+    padding: 0.4rem 0.6rem;
+  }
+}
+
+/* ---------------------------------------------------------------- battle desk */
+
+/* A side's sash (Attacker red, Defender blue) with a gold edge. */
+.sash {
+  display: inline-flex;
+  align-items: center;
+  font-family: 'Potta One', 'M PLUS Rounded 1c', system-ui, sans-serif;
+  font-size: 0.8rem;
+  line-height: 1;
+  color: #fff3d6;
+  padding: 0.3rem 0.65rem;
+  border-radius: 9999px;
+  border: 2px solid #e6bd55;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.4);
+}
+.sash-a {
+  background: linear-gradient(180deg, #c73a2e, #8a1c15);
+}
+.sash-d {
+  background: linear-gradient(180deg, #2f62b8, #1c3a78);
+}
+/* The command desk: the action bar and the battle log on one sheet of parchment. */
+.command-desk .panel {
+  border: 0;
+  border-radius: 0.5rem;
+  background: none;
+  box-shadow: none;
+}
+/* A faint Poké Ball crest in the space above a team's cards. */
+.team-crest::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 9%;
+  width: min(60%, 220px);
+  aspect-ratio: 1;
+  transform: translateX(-50%);
+  pointer-events: none;
+  opacity: 0.1;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cg fill='none' stroke='%234a2b16' stroke-width='1.6'%3E%3Ccircle cx='16' cy='16' r='14'/%3E%3Cpath d='M2 16h9.4M20.6 16H30'/%3E%3Ccircle cx='16' cy='16' r='4.6'/%3E%3Ccircle cx='16' cy='16' r='2'/%3E%3C/g%3E%3C/svg%3E") center / contain no-repeat;
+}
+
+/* ---------------------------------------------------------------- types and charts */
+
+.type-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  border: 2px solid;
+  padding: 0.12rem 0.5rem;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #fff;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.5);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+.type-badge-sm {
+  font-size: 9px;
+  padding: 0.1rem 0.35rem;
+  border-width: 1.5px;
+}
+/* A recessed sheet inside a parchment window. */
+.paper-inset {
+  border-radius: 0.75rem;
+  border: 2px solid rgba(154, 116, 38, 0.45);
+  background: rgba(255, 250, 235, 0.55);
+  box-shadow: inset 0 2px 6px rgba(120, 80, 30, 0.15);
+}
+/* Type chart: an ink-ruled ledger on the parchment. Type names are brushed (vertical over the columns),
+   2x is a vermilion hanko seal, half an ink ring, and no effect a black ink seal. */
+.tc-ledger {
+  border-collapse: collapse;
+  font-family: 'Potta One', 'M PLUS Rounded 1c', system-ui, sans-serif;
+}
+.tc-corner {
+  vertical-align: bottom;
+  padding: 0 0.4rem 0.3rem 0;
+  text-align: right;
+  font-family: 'M PLUS Rounded 1c', system-ui, sans-serif;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.3;
+  color: rgb(var(--slate-400));
+}
+.tc-corner span {
+  display: block;
+}
+.tc-colhead {
+  vertical-align: bottom;
+  padding: 0 0 0.25rem;
+  font-weight: 400;
+  transition: transform 0.12s;
+}
+.tc-vname {
+  display: block;
+  margin: 0 auto 0.2rem;
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  font-size: 11px;
+  line-height: 1.75rem;
+  color: rgb(var(--slate-200));
+}
+.tc-dot {
+  display: inline-block;
+  height: 0.6rem;
+  width: 0.6rem;
+  flex-shrink: 0;
+  border-radius: 9999px;
+  border: 1.5px solid rgba(42, 23, 11, 0.6);
+}
+.tc-colhead .tc-dot {
+  display: block;
+  margin: 0 auto;
+}
+.tc-hl .tc-vname,
+.tc-picked .tc-vname {
+  color: #a8261d;
+}
+.tc-rowhead {
+  padding: 0 0.5rem 0 0;
+  white-space: nowrap;
+  text-align: right;
+  font-size: 11px;
+  font-weight: 400;
+  color: rgb(var(--slate-200));
+}
+.tc-rowhead .tc-dot {
+  margin-right: 0.35rem;
+  vertical-align: -1px;
+}
+.tc-row-hl .tc-rowhead {
+  color: #a8261d;
+}
+.tc-td {
+  height: 1.85rem;
+  width: 1.85rem;
+  min-width: 1.85rem;
+  padding: 0;
+  text-align: center;
+  vertical-align: middle;
+  border: 1px solid rgba(74, 43, 22, 0.22);
+}
+tbody tr:nth-child(odd) .tc-td {
+  background: rgba(154, 116, 38, 0.06);
+}
+.tc-row-hl .tc-td,
+.tc-col-hl {
+  background: rgba(217, 171, 69, 0.22) !important;
+}
+.tc-col-picked {
+  background: rgba(168, 38, 29, 0.1) !important;
+}
+.tc-focus {
+  outline: 2px solid #a8261d;
+  outline-offset: -2px;
+}
+.tc-seal {
+  display: inline-flex;
+  height: 1.35rem;
+  width: 1.35rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  font-family: 'Potta One', 'M PLUS Rounded 1c', system-ui, sans-serif;
+  font-size: 12px;
+  line-height: 1;
+}
+.tc-2 {
+  color: #fff3d6;
+  background: radial-gradient(circle at 35% 30%, #d4473a, #9c2318 75%);
+  box-shadow: 0 0 0 1.5px rgba(156, 35, 24, 0.35);
+  transform: rotate(-8deg);
+}
+.tc-half {
+  color: #5a3d1e;
+  border: 2px solid rgba(90, 61, 30, 0.6);
+  background: rgba(255, 250, 235, 0.6);
+}
+.tc-0 {
+  color: #f2e4c2;
+  background: radial-gradient(circle at 35% 30%, #4a3420, #1b120b 75%);
+  transform: rotate(6deg);
+}
+
+/* Matchups board cells: two lines, "deals" over "takes". */
+.mu-cell {
+  border-radius: 0.6rem;
+  padding: 0.35rem 0.5rem;
+  border: 2px solid rgba(154, 116, 38, 0.35);
+  background: rgba(255, 250, 235, 0.65);
+  transition: border-color 0.12s, transform 0.12s;
+}
+.mu-cell-lit {
+  border-color: #a8261d;
+  transform: scale(1.04);
+}
+.mu-label {
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.6;
+}
+.mu-cell .chip {
+  font-size: 12px;
+  padding: 0.15rem 0.4rem;
+}
+.mu-tag {
+  border-radius: 9999px;
+  padding: 0.05rem 0.45rem;
+  color: #fff3d6;
+  background: #4a2b16;
+  font-size: 10px;
+}
+
+/* ---------------------------------------------------------------- setup screens */
+
+.setup-num {
+  display: inline-flex;
+  height: 1.7rem;
+  width: 1.7rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  font-family: 'Potta One', 'M PLUS Rounded 1c', system-ui, sans-serif;
+  font-size: 0.9rem;
+  color: #fff3d6;
+  border: 2px solid #e6bd55;
+  background: radial-gradient(circle at 35% 30%, #d4473a, #8a1c15 70%);
+  box-shadow: 0 0 0 2px #2a170b;
+}
+.opt-tile {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-height: 3.6rem;
+  padding: 0.5rem 0.65rem;
+  border-radius: 0.8rem;
+  border: 2px solid #b8955a;
+  color: #33220f;
+  background: linear-gradient(180deg, #fbf3dd, #ecdab0);
+  box-shadow: 0 3px 0 #a07c44;
+  transition: transform 0.12s, box-shadow 0.12s, filter 0.12s;
+}
+.opt-tile:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.03);
+}
+.opt-tile:active {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 #a07c44;
+}
+.opt-tile-on {
+  color: #fff6dc;
+  border-color: #e6bd55;
+  background: linear-gradient(180deg, #d4473a, #a3261d);
+  box-shadow: 0 3px 0 #6b150f, 0 0 0 3px rgba(217, 171, 69, 0.35);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
+}
+.opt-tile-on:active {
+  box-shadow: 0 1px 0 #6b150f;
+}
+.opt-emblem {
+  display: flex;
+  height: 2.7rem;
+  width: 2.7rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 9999px;
+  background: #fff8e6;
+  border: 2px solid #d9ab45;
+  box-shadow: 0 0 0 2px #2a170b;
+}
+.map-card {
+  position: relative;
+  display: block;
+  padding: 0.6rem;
+  border-radius: 0.9rem;
+  border: 2px solid #b8955a;
+  color: #33220f;
+  background: linear-gradient(180deg, #fbf3dd, #ecdab0);
+  box-shadow: 0 3px 0 #a07c44;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.map-card:hover {
+  transform: translateY(-2px);
+}
+.map-card-on {
+  border-color: #a8261d;
+  box-shadow: 0 3px 0 #6b150f, 0 0 0 3px #d9ab45;
+}
+.map-chosen {
+  position: absolute;
+  right: -0.4rem;
+  top: -0.6rem;
+  transform: rotate(8deg);
+  font-family: 'Potta One', 'M PLUS Rounded 1c', system-ui, sans-serif;
+  font-size: 0.8rem;
+  color: #fff3d6;
+  padding: 0.2rem 0.6rem;
+  border-radius: 0.4rem;
+  border: 2px solid #e6bd55;
+  background: #a8261d;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.35);
+}
+/* A map preview: the board's painted tiles in a small wooden frame. */
+.map-mini {
+  border-radius: 0.4rem;
+  border: 4px solid #4a2b16;
+  box-shadow: 0 0 0 1.5px #d9ab45, 0 4px 10px rgba(0, 0, 0, 0.3);
+}
+.map-mini > div {
+  box-shadow: inset 0 0 0 0.5px rgba(40, 60, 20, 0.18);
+}
+/* Narrow screens: option tiles put the emblem above the text so nothing is cut off. */
+@media (max-width: 639px) {
+  .opt-tile {
+    flex-direction: column;
+    justify-content: flex-start;
+    gap: 0.35rem;
+    padding: 0.55rem 0.4rem;
+    text-align: center;
+  }
+  .opt-tile > span:last-child {
+    text-align: center;
+  }
+  .opt-emblem {
+    height: 2.3rem;
+    width: 2.3rem;
   }
 }

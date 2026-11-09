@@ -51,6 +51,8 @@ export interface GameRecord {
   round: number;
   teams: Record<Side, string[]>;
   pool: string[];
+  /** The map (older records don't have it: scripts/train-draft-general.ts takes it from `file@map`). */
+  mapId?: string;
   /** Game mode, and each side's trainer in trainer mode. */
   legends?: boolean;
   trainers?: Record<Side, string | null>;
@@ -168,7 +170,7 @@ async function playGame(job: Job, other: string | undefined): Promise<GameRecord
   const d = stat('D');
   const z = s.winner === 'A' ? 1 : 0;
   return {
-    seed: job.seed, players: job.players, winner: s.winner!, round: s.round, teams: { A: s.draft.picks.A, D: s.draft.picks.D },
+    seed: job.seed, players: job.players, winner: s.winner!, round: s.round, teams: { A: s.draft.picks.A, D: s.draft.picks.D }, mapId: job.mapId,
     pool: s.draft.pool, legends: job.legends, ...(s.trainers ? { trainers: { ...s.trainers.picks } } : {}), fainted: { A: a.fainted, D: d.fainted }, hpFrac: { A: a.hpFrac, D: d.hpFrac }, ms, decisions, replans,
     ...(job.usage ? { usage } : {}),
     ...(job.positions ? { positions: turns.map((t): ValueRecord => ({ g: job.seed, k: 'turn', r: t.round, y: z, n: 0, z, f: positionFeatures(t) })) } : {}),

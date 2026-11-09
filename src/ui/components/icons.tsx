@@ -98,3 +98,100 @@ export function DollIcon() {
     </svg>
   );
 }
+
+/** A Poké Ball (decorations and the Play vs Bot button). */
+export function PokeBallIcon({ className = '' }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 32 32" className={className} aria-hidden="true">
+      <circle cx="16" cy="16" r="14" fill="#e3463a" stroke="#2a170b" strokeWidth="2.2" />
+      <path d="M2 16a14 14 0 0 0 28 0z" fill="#fbf3dc" stroke="#2a170b" strokeWidth="2.2" />
+      <path d="M2 16h28" stroke="#2a170b" strokeWidth="2.2" />
+      <circle cx="16" cy="16" r="4.6" fill="#fbf3dc" stroke="#2a170b" strokeWidth="2.2" />
+      <path d="M8 9.5a9 9 0 0 1 5-3.5" stroke="#fff" strokeOpacity=".55" strokeWidth="1.8" fill="none" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+/** Two crossed katanas (hot-seat). */
+export function SwordsIcon({ className = '' }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 32 32" className={className} fill="none" strokeLinecap="round" aria-hidden="true">
+      <path d="M6 6l17 17M26 6L9 23" stroke="#e8e0cc" strokeWidth="2.6" />
+      <path d="M6 6l17 17M26 6L9 23" stroke="#2a170b" strokeWidth="0.8" strokeOpacity=".5" />
+      <path d="M21 25l4-4M11 25l-4-4" stroke="#d9ab45" strokeWidth="3" />
+      <path d="M24.5 26.5l2-2M7.5 26.5l-2-2" stroke="#6e140f" strokeWidth="3" />
+    </svg>
+  );
+}
+
+/** A war banner (online match: rally your friends). */
+export function BannerIcon({ className = '' }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 32 32" className={className} aria-hidden="true">
+      <path d="M8 3v27" stroke="#2a170b" strokeWidth="2.4" strokeLinecap="round" />
+      <path d="M9 5h16l-3 5 3 5H9z" fill="#2f5fb3" stroke="#2a170b" strokeWidth="1.8" strokeLinejoin="round" />
+      <circle cx="16" cy="10" r="2.6" fill="#f2d27a" />
+      <circle cx="8" cy="3" r="1.8" fill="#d9ab45" stroke="#2a170b" strokeWidth="1" />
+    </svg>
+  );
+}
+
+/** A Great Ball (medium difficulty). */
+export function GreatBallIcon({ className = '' }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 32 32" className={className} aria-hidden="true">
+      <circle cx="16" cy="16" r="14" fill="#2f6fd6" stroke="#2a170b" strokeWidth="2.2" />
+      <path d="M5 11l5-4M27 11l-5-4" stroke="#e3463a" strokeWidth="3.4" strokeLinecap="round" />
+      <path d="M2 16a14 14 0 0 0 28 0z" fill="#fbf3dc" stroke="#2a170b" strokeWidth="2.2" />
+      <path d="M2 16h28" stroke="#2a170b" strokeWidth="2.2" />
+      <circle cx="16" cy="16" r="4.6" fill="#fbf3dc" stroke="#2a170b" strokeWidth="2.2" />
+    </svg>
+  );
+}
+
+/** An Ultra Ball (hard difficulty). */
+export function UltraBallIcon({ className = '' }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 32 32" className={className} aria-hidden="true">
+      <circle cx="16" cy="16" r="14" fill="#2b2b2b" stroke="#2a170b" strokeWidth="2.2" />
+      <path d="M9.5 3.5v9M22.5 3.5v9" stroke="#f2c94c" strokeWidth="3.6" />
+      <path d="M2 16a14 14 0 0 0 28 0z" fill="#fbf3dc" stroke="#2a170b" strokeWidth="2.2" />
+      <path d="M2 16h28" stroke="#2a170b" strokeWidth="2.2" />
+      <circle cx="16" cy="16" r="4.6" fill="#fbf3dc" stroke="#2a170b" strokeWidth="2.2" />
+    </svg>
+  );
+}
+
+/** A round shield (the Defender). */
+export function ShieldIcon({ className = '' }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 32 32" className={className} aria-hidden="true">
+      <path d="M16 3l11 4v8c0 7-5 12-11 14C10 27 5 22 5 15V7z" fill="#2f62b8" stroke="#2a170b" strokeWidth="2" strokeLinejoin="round" />
+      <path d="M16 7l7 2.6V15c0 4.6-3 8-7 9.6z" fill="#5c8de0" />
+      <circle cx="16" cy="15" r="3.2" fill="#f2d27a" stroke="#2a170b" strokeWidth="1.2" />
+    </svg>
+  );
+}
+
+/** A spear and pennant (the Attacker). */
+export function SpearIcon({ className = '' }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 32 32" className={className} aria-hidden="true">
+      <path d="M7 27L24 8" stroke="#6b4224" strokeWidth="2.6" strokeLinecap="round" />
+      <path d="M22 4l6-1-1 6-3 1-3-3z" fill="#e8e0cc" stroke="#2a170b" strokeWidth="1.4" strokeLinejoin="round" />
+      <path d="M17 14l-6-2 1 5z" fill="#c73a2e" stroke="#2a170b" strokeWidth="1.2" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+/** A die (random role). */
+export function DiceIcon({ className = '' }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 32 32" className={className} aria-hidden="true">
+      <rect x="5" y="5" width="22" height="22" rx="5" fill="#fbf3dc" stroke="#2a170b" strokeWidth="2.2" transform="rotate(-8 16 16)" />
+      <g fill="#a8261d" transform="rotate(-8 16 16)">
+        <circle cx="11" cy="11" r="2" /><circle cx="21" cy="11" r="2" /><circle cx="16" cy="16" r="2" /><circle cx="11" cy="21" r="2" /><circle cx="21" cy="21" r="2" />
+      </g>
+    </svg>
+  );
+}

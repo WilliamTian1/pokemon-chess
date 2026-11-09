@@ -1,6 +1,6 @@
 import type { AbilityId, CardDef, MoveDef, MoveFx, PType, TargetSpec } from '../types';
 
-// Transcribed from `Conquest Cards.pdf` (2026-11-09 edition): pages 1–9 are the v1.1.1 roster, 10–12
+// Transcribed from `Conquest Cards.pdf` (2026-11-09 edition): pages 1–9 are the v1.2 roster, 10–12
 // the expansion, and Wigglytuff is on page 13 (otherwise a work-in-progress page). Moves are listed in
 // the order they appear on the card (top first) — Foul Play reads the target's *first* attack.
 
@@ -903,7 +903,7 @@ export const CARD_LIST: CardDef[] = [
     ability: ['dancer', 'Dancer', 'When another pokemon uses an attack with “dance” in the name, this pokemon copies that attack.'],
   }),
   card({
-    id: 'wigglytuff', name: 'Wigglytuff', types: ['Fairy'], hp: 130, mov: 2, page: 13,
+    id: 'wigglytuff', name: 'Wigglytuff', types: ['Fairy', 'Normal'], hp: 145, mov: 2, page: 13,
     moves: [
       sts('Metronome', SELF, 'Draw a random unused pokemon, and choose to use one of their moves in any direction if possible.', { special: 'metronome' }),
       FAKE_OUT('.O./OOO/.O./.G.'),

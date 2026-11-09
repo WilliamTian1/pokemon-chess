@@ -30,7 +30,6 @@ TRACKS = {
     'resultsLose': ('0025 BGM_EVENT_SAD.mp3', True),
     'jingleWin': ('0020 BGM_JINGLE_BATTLE_WIN.mp3', False),
     'jingleLose': ('0021 BGM_JINGLE_BATTLE_LOSE.mp3', False),
-    'jingleSpecial': ('0023 BGM_JINGLE_BUSYO_EVOLUTION.mp3', False),
     'jingleEvolve': ('0022 BGM_JINGLE_POKEMON_EVOLUTION.mp3', False),
 }
 TARGET_RMS_DB = -18.0

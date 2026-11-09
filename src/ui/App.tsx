@@ -36,11 +36,15 @@ type Screen =
   | { name: 'game'; cfg: LocalConfig; key: number };
 
 /**
- * Development only: `?scenario=<teamA>;<teamD>[;<trainerA>,<trainerD>][;river]` (card ids, comma-separated)
+ * Development only: `?screen=…` (see below), or `?scenario=<teamA>;<teamD>[;<trainerA>,<trainerD>][;river]` (card ids, comma-separated)
  * starts a hot-seat battle with those teams already placed, for trying out specific cards.
  */
 function devScenario(): Screen | null {
   if (!import.meta.env.DEV) return null;
+  // `?screen=<name>` opens a menu screen directly, or `draft` a fresh hot-seat draft (for screenshots).
+  const screen = new URLSearchParams(location.search).get('screen');
+  if (screen === 'draft') return { name: 'game', key: Date.now(), cfg: { mode: 'local', mapId: 'meadow', legendaries: true, trainers: true } };
+  if (screen && ['botSetup', 'localSetup', 'cards', 'lab', 'rules', 'online'].includes(screen)) return { name: screen } as Screen;
   const q = new URLSearchParams(location.search).get('scenario');
   if (!q) return null;
   const [a = '', d = '', t = '', map = 'meadow'] = q.split(';');

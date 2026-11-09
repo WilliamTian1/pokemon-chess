@@ -72,7 +72,7 @@ function DraftCards({ cards, fit, takenBy, pickable, canPick, legendTurn, onOpen
             <div className="flex h-[22px] items-center gap-1 overflow-hidden">
               <div className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">{badge(c)}</div>
               {canPick && pickable.has(c.id) && (
-                <button type="button" className="chip shrink-0 bg-amber-400 px-2 py-1 normal-case text-slate-950 hover:bg-amber-300" onClick={() => onDraft(c)}>
+                <button type="button" className="btn-primary shrink-0 !rounded-md !px-2.5 !py-0.5 text-xs" onClick={() => onDraft(c)}>
                   Draft
                 </button>
               )}
@@ -114,9 +114,9 @@ export function useCardFilter(all: CardDef[]) {
         value={q}
         onChange={(e) => setQ(e.target.value)}
         placeholder="Search name, move or ability…"
-        className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm outline-none focus:border-amber-300 sm:w-64"
+        className="w-full rounded-lg border-2 border-slate-600 bg-slate-950 px-3 py-1.5 text-sm font-bold shadow-inner outline-none placeholder:font-medium focus:border-amber-400 sm:w-64"
       />
-      <select value={sort} onChange={(e) => setSort(e.target.value as Sort)} className="rounded-lg border border-slate-700 bg-slate-900 px-2 py-2 text-sm" aria-label="Sort cards">
+      <select value={sort} onChange={(e) => setSort(e.target.value as Sort)} className="rounded-lg border-2 border-slate-600 bg-slate-950 px-2 py-1.5 text-sm font-bold shadow-inner" aria-label="Sort cards">
         <option value="page">Card order</option>
         <option value="name">Name</option>
         <option value="type">Type</option>
@@ -213,53 +213,73 @@ export function DraftView({ ctl }: { ctl: Controller }) {
   return (
     <div className="flex flex-col gap-2 wide:h-full wide:min-h-0">
       {/* Pinned on phones so whose pick it is stays in view while scrolling the cards. */}
-      <div className="panel sticky top-0 z-20 flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 bg-slate-900/95 px-3 py-2 wide:static">
-        <div className="min-w-0">
-          <div className="text-[11px] uppercase tracking-wide text-slate-400">
-            Pick {pickNo} of {s.draft.order.length} · {trainerTurn ? <span className="font-bold text-amber-300">trainer pick</span> : legendTurn ? <span className="font-bold text-amber-300">legendary pick</span> : s.draft.legendPool.length ? '3 each from the pool, then 1 legendary each' : '4 each from the pool, no legendaries'}{s.trainers && !trainerTurn ? ', then a trainer each' : ''}
+      <div className="panel sticky top-0 z-20 flex shrink-0 flex-col gap-2.5 px-3 py-2.5 wide:static">
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-2.5">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="draft-seal" title={`Pick ${pickNo} of ${s.draft.order.length}`}>
+              <span className="text-[9px] font-extrabold uppercase tracking-widest text-[#f2d27a]">Pick</span>
+              <span className="font-display text-xl leading-none">{pickNo}<span className="text-xs text-[#f2d27a]">/{s.draft.order.length}</span></span>
+            </div>
+            <div className="min-w-0">
+              <div className={`truncate font-display text-xl leading-tight ${SIDE_TEXT[turn]}`}>
+                {mine ? 'Your pick!' : ctl.thinking ? `${ctl.names[turn]} is thinking…` : `${ctl.names[turn]} is picking…`}
+              </div>
+              <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
+                <span className="draft-phase">{trainerTurn ? 'Trainer pick' : legendTurn ? '★ Legendary pick' : 'Pool pick'}</span>
+                {focusCard && (
+                  <span className="draft-phase !bg-[#f2d27a] !text-[#4a2b16]">
+                    Comparing with {focusCard.name}
+                    {pinned && !hovered && (
+                      <button type="button" className="ml-1 font-black" aria-label="Stop comparing" onClick={() => setPinned(null)}>✕</button>
+                    )}
+                  </span>
+                )}
+              </div>
+            </div>
           </div>
-          <div className={`font-bold ${SIDE_TEXT[turn]}`}>
-            {mine ? 'Your pick' : ctl.thinking ? `${ctl.names[turn]} is thinking…` : `${ctl.names[turn]} is picking…`}
-            <span className="ml-1.5 text-xs font-medium text-slate-400">({turn === 'A' ? 'Attacker' : 'Defender'})</span>
-          </div>
+          {(['A', 'D'] as const).map((side) => {
+            const trainer = s.trainers?.picks[side] ?? null;
+            const active = turn === side;
+            return (
+              <div key={side} className={`draft-army ${side === 'A' ? 'draft-army-a' : 'draft-army-d'} ${active ? 'draft-army-active' : ''}`}>
+                <span className="draft-sash">{side === 'A' ? 'Attacker' : 'Defender'}</span>
+                <div className="flex items-center gap-1.5">
+                  {[0, 1, 2, 3].map((i) => {
+                    const id = s.draft.picks[side][i];
+                    const next = active && s.draft.picks[side].length === i;
+                    const legendSlot = i === 3 && s.draft.legendPool.length > 0;
+                    return id ? (
+                      <button
+                        key={i}
+                        type="button"
+                        title={`${getCard(id).name}: click to compare every card against it`}
+                        onClick={() => setPinned(pinned === id ? null : id)}
+                        onMouseEnter={() => onHover(id)}
+                        onMouseLeave={() => onHover(null)}
+                        className={`draft-medal ${pinned === id ? 'draft-medal-pinned' : ''}`}
+                      >
+                        <Art id={id} className="h-full w-full rounded-full" alt={getCard(id).name} />
+                      </button>
+                    ) : (
+                      <span key={i} className={`draft-medal draft-medal-empty ${next ? 'draft-medal-next' : ''}`} title={legendSlot ? 'Legendary' : `Pick ${i + 1}`}>
+                        {legendSlot ? '★' : i + 1}
+                      </span>
+                    );
+                  })}
+                  {s.trainers && (
+                    trainer ? (
+                      <img src={trainerImg(trainer)} alt={getTrainer(trainer).name} title={getTrainer(trainer).name} className="draft-trainer" />
+                    ) : (
+                      <span className={`draft-trainer draft-medal-empty ${active && trainerTurn ? 'draft-medal-next' : ''}`} title="Trainer">T</span>
+                    )
+                  )}
+                </div>
+              </div>
+            );
+          })}
+          <button type="button" className="btn-ghost ml-auto shrink-0" onClick={() => setChart(true)}>Type chart</button>
         </div>
-        {(['A', 'D'] as const).map((side) => (
-          <div key={side} className="flex items-center gap-1.5">
-            <span className={`text-xs font-bold ${SIDE_TEXT[side]}`}>{side === 'A' ? 'Attacker' : 'Defender'}</span>
-            {[0, 1, 2, 3].map((i) => {
-              const id = s.draft.picks[side][i];
-              const next = turn === side && s.draft.picks[side].length === i;
-              return id ? (
-                <button
-                  key={i}
-                  type="button"
-                  title={`${getCard(id).name}: click to compare every card against it`}
-                  onClick={() => setPinned(pinned === id ? null : id)}
-                  onMouseEnter={() => onHover(id)}
-                  onMouseLeave={() => onHover(null)}
-                  className={`rounded-full ${pinned === id ? 'ring-2 ring-amber-300' : ''}`}
-                >
-                  <Art id={id} className={`h-8 w-8 rounded-full ring-2 ${side === 'A' ? 'ring-rose-500' : 'ring-sky-500'}`} alt={getCard(id).name} />
-                </button>
-              ) : (
-                <span key={i} className={`flex h-8 w-8 items-center justify-center rounded-full border border-dashed text-[10px] ${next ? 'border-amber-300 text-amber-300' : 'border-slate-600 text-slate-500'}`}>
-                  {i === 3 && s.draft.legendPool.length ? 'L' : i + 1}
-                </span>
-              );
-            })}
-          </div>
-        ))}
-        <p className="min-w-[200px] flex-1 text-[11px] leading-snug text-slate-400">
-          {focusCard ? (
-            <>Comparing with <b className="text-amber-300">{focusCard.name}</b>: <b className="text-slate-300">hits</b> = how hard each card hits it, <b className="text-slate-300">takes</b> = how hard it hits that card (neutral 1× not shown).{pinned && !hovered ? ' Click its portrait again to unpin.' : ''}</>
-          ) : rivalPicks.length ? (
-            <>Badges compare each card with the {rival === 'A' ? 'Attacker' : 'Defender'}'s picks. Hover a card to compare with it{touch ? '' : ' and see it enlarged'}.</>
-          ) : (
-            <>Hover a card to compare every other card with it{touch ? '' : ' and see it enlarged'}. Click a card for its full matchups.</>
-          )}
-        </p>
-        <button type="button" className="btn-ghost shrink-0" onClick={() => setChart(true)}>Type chart</button>
-        <div className="w-full">{filter.controls}</div>
+        <div className="w-full border-t-2 border-dashed border-slate-700 pt-2">{filter.controls}</div>
       </div>
       <div className="flex gap-3 wide:min-h-0 wide:flex-1">
       <div ref={setGridBox} className="min-w-0 flex-1">
@@ -374,7 +394,7 @@ function TrainerRow({ ids, fit, owner, pickable, active, onPick, onHover }: {
   return (
     <div className="mx-auto mt-2" style={{ width }}>
       <div className={`mb-1 text-[11px] font-bold uppercase tracking-wide ${active ? 'text-amber-300' : 'text-slate-400'}`}>
-        Trainers on offer{active ? ' · pick one' : ' · picked after the Pokémon, the Attacker first'}
+        Trainers
       </div>
       <div
         className={fit ? 'grid justify-start gap-2' : 'grid grid-cols-[repeat(auto-fill,minmax(min(100%,160px),1fr))] gap-2'}

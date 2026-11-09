@@ -1,4 +1,47 @@
+import type { ReactNode } from 'react';
 import { DEFAULT_MAP_ID, MAPS, MAP_LIST, type MapDef, type Terrain } from '../../engine';
+import { Art } from './bits';
+import { BushIcon, FlowerIcon, PokeBallIcon, TrebuchetIcon } from './icons';
+
+/** A numbered heading for a step of a setup screen. */
+export function SetupHeading({ n, children }: { n: number; children: ReactNode }) {
+  return (
+    <div className="mb-2 flex items-center gap-2">
+      <span className="setup-num">{n}</span>
+      <span className="font-display text-lg text-slate-100">{children}</span>
+    </div>
+  );
+}
+
+export interface OptionDef<T> {
+  value: T;
+  title: string;
+  sub?: string;
+  emblem: ReactNode;
+}
+
+/** A row of chunky choice tiles: the chosen one turns to red lacquer with a gold rim. */
+export function OptionTiles<T>({ options, value, onChange, cols = options.length }: { options: OptionDef<T>[]; value: T; onChange: (v: T) => void; cols?: number }) {
+  return (
+    <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
+      {options.map((o) => (
+        <button key={String(o.value)} type="button" aria-pressed={value === o.value} onClick={() => onChange(o.value)} className={`opt-tile ${value === o.value ? 'opt-tile-on' : ''}`}>
+          <span className="opt-emblem">{o.emblem}</span>
+          <span className="min-w-0 text-left">
+            <span className="block font-display text-[0.95rem] leading-tight">{o.title}</span>
+            {o.sub && <span className="block text-[11px] font-bold leading-snug opacity-80">{o.sub}</span>}
+          </span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** A line or two about each map for the picker. */
+const MAP_BLURB: Record<string, string> = {
+  meadow: 'Open fields around a central trebuchet, a dirt road and scattered ponds.',
+  river: 'A river snakes across the field: bridges and fords decide the fight.',
+};
 
 const TILE: Record<Terrain, string> = {
   normal: 'var(--tile-normal)', dirt: 'var(--tile-dirt)', grass: 'var(--tile-grass)', bridge: 'var(--tile-bridge)', water: 'var(--tile-water)',
@@ -47,19 +90,14 @@ export function LegendaryToggle({ value, onChange }: { value: boolean; onChange:
     onChange(on);
   };
   return (
-    <div>
-      <div className="mb-2 text-sm font-semibold text-slate-300">Legendaries</div>
-      <div className="grid grid-cols-2 gap-2">
-        {([true, false] as const).map((on) => (
-          <button key={String(on)} type="button" aria-pressed={value === on} onClick={() => choose(on)} className={`btn ${value === on ? 'bg-amber-400 text-slate-950' : 'bg-slate-800 hover:bg-slate-700'}`}>
-            {on ? 'With legendaries' : 'No legendaries'}
-          </button>
-        ))}
-      </div>
-      <p className="mt-2 text-xs text-slate-400">
-        {value ? 'Each player drafts 3 Pokémon from the pool of 15, then 1 of 4 random legendaries.' : 'No legendaries: a bigger pool of 20, and each player drafts all 4 Pokémon from it.'}
-      </p>
-    </div>
+    <OptionTiles
+      value={value}
+      onChange={choose}
+      options={[
+        { value: true, title: 'With legendaries', sub: '3 from a pool of 15, then 1 of 4 legendaries', emblem: <Art id="rayquaza" className="h-full w-full rounded-full" /> },
+        { value: false, title: 'No legendaries', sub: 'All 4 picks from a bigger pool of 20', emblem: <Art id="pikachu" className="h-full w-full rounded-full" /> },
+      ]}
+    />
   );
 }
 
@@ -85,31 +123,26 @@ export function TrainerToggle({ value, onChange }: { value: boolean; onChange: (
     onChange(on);
   };
   return (
-    <div>
-      <div className="mb-2 text-sm font-semibold text-slate-300">Trainers</div>
-      <div className="grid grid-cols-2 gap-2">
-        {([false, true] as const).map((on) => (
-          <button key={String(on)} type="button" aria-pressed={value === on} onClick={() => choose(on)} className={`btn ${value === on ? 'bg-amber-400 text-slate-950' : 'bg-slate-800 hover:bg-slate-700'}`}>
-            {on ? 'With trainers' : 'No trainers'}
-          </button>
-        ))}
-      </div>
-      <p className="mt-2 text-xs text-slate-400">
-        {value
-          ? 'After the draft, 4 random trainers are offered: the Attacker picks one, then the Defender. Each has a passive and a once-per-game Special Move.'
-          : 'Play without trainer cards.'}
-      </p>
-    </div>
+    <OptionTiles
+      value={value}
+      onChange={choose}
+      options={[
+        { value: false, title: 'No trainers', sub: 'Just the Pokémon', emblem: <PokeBallIcon className="h-full w-full" /> },
+        { value: true, title: 'With trainers', sub: 'Pick a trainer: a passive and one Special Move', emblem: <img src={`${import.meta.env.BASE_URL}trainers/red-icon.webp`} alt="" className="h-full w-full rounded-full object-cover" /> },
+      ]}
+    />
   );
 }
 
 /** A small drawing of a map: terrain, flowers, bushes, the trebuchet and both sides' spawns. */
+/** A small painted copy of a map, using the board's own tile textures and icons, in a wooden frame. */
 export function MapPreview({ map, className = '' }: { map: MapDef; className?: string }) {
   const spawn = (x: number, y: number) =>
     map.spawns.A.some((p) => p.x === x && p.y === y) ? 'A' : map.spawns.D.some((p) => p.x === x && p.y === y) ? 'D' : null;
+  const BASE: Partial<Record<Terrain, string>> = { flower: 'normal', bush: 'normal' };
   return (
     <div
-      className={`grid overflow-hidden rounded-md border-2 border-[#4b6b2f] ${className}`}
+      className={`map-mini grid overflow-hidden ${className}`}
       style={{ gridTemplateColumns: `repeat(${map.width}, 1fr)`, aspectRatio: `${map.width} / ${map.height}` }}
       aria-hidden="true"
     >
@@ -117,12 +150,18 @@ export function MapPreview({ map, className = '' }: { map: MapDef; className?: s
         row.map((t, x) => {
           const sp = spawn(x, y);
           const treb = map.trebuchets.some((p) => p.x === x && p.y === y);
+          const base = BASE[t] ?? t;
+          const painted = ['normal', 'dirt', 'grass', 'bridge', 'water'].includes(base);
           return (
-            <div key={`${x},${y}`} className="relative flex items-center justify-center text-[clamp(6px,1.4vw,11px)] leading-none" style={{ background: TILE[t], boxShadow: 'inset 0 0 0 0.5px rgba(0,0,0,.15)' }}>
-              {t === 'flower' && <span className="h-[45%] w-[45%] rounded-full bg-pink-400 ring-2 ring-yellow-200/80" />}
-              {t === 'bush' && <span className="h-[60%] w-[60%] rounded-full bg-green-800/90" />}
-              {treb && <span className="h-[55%] w-[55%] rounded-sm bg-stone-700" />}
-              {sp && <span className={`absolute inset-[15%] rounded-full ${sp === 'A' ? 'bg-rose-500' : 'bg-sky-500'} ring-1 ring-white/70`} />}
+            <div
+              key={`${x},${y}`}
+              className={`relative flex items-center justify-center ${painted ? `tile-${base} ${(x + y) % 2 ? 'alt' : ''}` : ''}`}
+              style={painted ? undefined : { background: TILE[t] }}
+            >
+              {t === 'flower' && <span className="h-[80%] w-[80%]"><FlowerIcon /></span>}
+              {t === 'bush' && <span className="h-[85%] w-[85%]"><BushIcon /></span>}
+              {treb && <span className="h-[90%] w-[90%]"><TrebuchetIcon /></span>}
+              {sp && <span className={`absolute inset-[18%] rounded-full border-2 border-[#fff3d6] ${sp === 'A' ? 'bg-[#c73a2e]' : 'bg-[#2f62b8]'} shadow`} />}
             </div>
           );
         }),
@@ -144,21 +183,23 @@ export function MapPicker({ value, onChange }: { value: string; onChange: (id: s
             onChange(m.id);
           }}
           aria-pressed={value === m.id}
-          className={`space-y-2 rounded-xl border p-2.5 text-left transition ${value === m.id ? 'border-amber-300 bg-amber-400/10 ring-1 ring-amber-300' : 'border-slate-700 bg-slate-900/70 hover:border-slate-500'}`}
+          className={`map-card ${value === m.id ? 'map-card-on' : ''}`}
         >
           <MapPreview map={m} />
-          <div className="flex items-baseline justify-between gap-2">
-            <span className="font-bold">{m.name}</span>
-            <span className="text-xs text-slate-400">{m.width}×{m.height}</span>
+          <div className="mt-2 flex items-baseline justify-between gap-2">
+            <span className="font-display text-lg leading-tight">{m.name}</span>
+            <span className="shrink-0 text-xs font-extrabold opacity-70">{m.width}×{m.height}</span>
           </div>
+          <p className="text-left text-xs font-bold leading-snug opacity-80">{MAP_BLURB[m.id] ?? ''}</p>
+          {value === m.id && <span className="map-chosen">Chosen</span>}
         </button>
       ))}
-      <p className="text-xs text-slate-400 sm:col-span-2">
-        <span className="mr-1 inline-block h-2.5 w-2.5 rounded-full bg-rose-500 align-middle" />Attacker spawns
-        <span className="ml-3 mr-1 inline-block h-2.5 w-2.5 rounded-full bg-sky-500 align-middle" />Defender spawns
-        <span className="ml-3 mr-1 inline-block h-2.5 w-2.5 rounded-sm bg-stone-700 align-middle" />Trebuchet
-        <span className="ml-3 mr-1 inline-block h-2.5 w-2.5 rounded-full bg-green-800 align-middle" />Berry bush
-        <span className="ml-3 mr-1 inline-block h-2.5 w-2.5 rounded-full bg-pink-400 align-middle ring-1 ring-yellow-200/80" />Flowers
+      <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-bold text-slate-400 sm:col-span-2">
+        <span className="flex items-center gap-1"><span className="inline-block h-3 w-3 rounded-full border-2 border-[#fff3d6] bg-[#c73a2e]" />Attacker spawns</span>
+        <span className="flex items-center gap-1"><span className="inline-block h-3 w-3 rounded-full border-2 border-[#fff3d6] bg-[#2f62b8]" />Defender spawns</span>
+        <span className="flex items-center gap-1"><span className="inline-block h-4 w-4"><TrebuchetIcon /></span>Trebuchet</span>
+        <span className="flex items-center gap-1"><span className="inline-block h-4 w-4"><BushIcon /></span>Berry bush</span>
+        <span className="flex items-center gap-1"><span className="inline-block h-4 w-4"><FlowerIcon /></span>Flowers</span>
       </p>
     </div>
   );

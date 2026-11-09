@@ -44,7 +44,6 @@ export function setAudioSettings(next: Partial<AudioSettings>): void {
     bus.master.gain.value = settings.volume;
     bus.music.gain.value = settings.music ? MUSIC_LEVEL : 0;
   }
-  if (!settings.voice && typeof speechSynthesis !== 'undefined') speechSynthesis.cancel();
   if (switched && wanted) playMusic(wanted, true);
   listeners.forEach((f) => f());
 }
@@ -185,7 +184,7 @@ export type Sfx =
 
 /** Effects that are Conquest jingles with the Conquest soundtrack (victory and defeat open the results music). */
 const JINGLE_SFX: Partial<Record<Sfx, JingleId>> = {
-  special: 'jingleSpecial', evolve: 'jingleEvolve', victory: 'jingleWin', defeat: 'jingleLose',
+evolve: 'jingleEvolve', victory: 'jingleWin', defeat: 'jingleLose',
 };
 
 export function sfx(name: Sfx, delay = 0): void {
@@ -324,39 +323,31 @@ export function sfx(name: Sfx, delay = 0): void {
   }
 }
 
-// ---------------------------------------------------------------- voicelines
-
-/** Fallback lines when a recorded trainer clip cannot be loaded. */
-const VOICE: Record<string, { line: string; pitch: number; rate: number }> = {
-  mitsuhide: { line: 'Clear skies, steady hands. Strike true!', pitch: 0.85, rate: 0.95 },
-  n: { line: 'Rest now, my friends. Be whole again.', pitch: 1.05, rate: 0.9 },
-  nobunaga: { line: 'You! Break through their walls!', pitch: 0.65, rate: 0.95 },
-  red: { line: "We're not done yet. Let's go!", pitch: 1.0, rate: 1.05 },
-  blue: { line: "Watch closely. This is how it's done!", pitch: 1.15, rate: 1.1 },
-  lance: { line: 'Dragons, drive them back!', pitch: 0.75, rate: 0.95 },
-};
 
 /**
  * Recorded voicelines in public/voices: four short battle callouts per trainer (picked from the
- * transcribed sets in `Pokemon Chess Voicelines/`), one chosen at random each time the trainer's
- * Special Move is used. Red has no spoken lines, so his are battle shouts.
+ * transcribed sets in `Pokemon Chess Voicelines/`, cleaned up to 48 kHz by scripts/soundtrack/voices.py),
+ * one chosen at random each time the trainer's Special Move is used. Red has no spoken lines, so his
+ * are battle shouts.
  */
 const VOICE_CLIPS: Record<string, string[]> = {
   // "This should finish you!", "Now is our chance!", "My blade shall run you through!", "Witness the power of a true strategist!"
   mitsuhide: ['mitsuhide-1.wav', 'mitsuhide-2.wav', 'mitsuhide-3.wav', 'mitsuhide-4.wav'],
   // "Let's do this!", "Unleash your power!", "You can't stop me.", "TRUTH!"
-  n: ['n-1.ogg', 'n-2.ogg', 'n-3.ogg', 'n-4.ogg'],
+  n: ['n-1.wav', 'n-2.wav', 'n-3.wav', 'n-4.wav'],
   // "CRUSH THEM IN ONE BLOW!", "Feel my wrath!", "Tremble before Nobunaga!", "Run them through!"
   nobunaga: ['nobunaga-1.wav', 'nobunaga-2.wav', 'nobunaga-3.wav', 'nobunaga-4.wav'],
   // "Tah!", "Hut!", "Huah!", "Huh!"
-  red: ['red-1.ogg', 'red-2.ogg', 'red-3.ogg', 'red-4.ogg'],
+  red: ['red-1.wav', 'red-2.wav', 'red-3.wav', 'red-4.wav'],
   // "Bring it!", "Get 'em!", "I'll show you!", "I'll teach you just how strong I am!"
-  blue: ['blue-1.ogg', 'blue-2.ogg', 'blue-3.ogg', 'blue-4.ogg'],
+  blue: ['blue-1.wav', 'blue-2.wav', 'blue-3.wav', 'blue-4.wav'],
   // "Here we come!", "Now!", "Fight!", "You haven't seen my true strength yet."
-  lance: ['lance-1.ogg', 'lance-2.ogg', 'lance-3.ogg', 'lance-4.ogg'],
+  lance: ['lance-1.wav', 'lance-2.wav', 'lance-3.wav', 'lance-4.wav'],
 };
 
 const lastVoiceClip = new Map<string, number>();
+
+// ---------------------------------------------------------------- voicelines
 
 /** Voices sit a little above the master volume, then 20% down so they don't drown the game. */
 const voiceVolume = (): number => Math.min(1, settings.volume + 0.2) * 0.8;
@@ -375,26 +366,13 @@ function randomVoiceClip(trainer: string): string | null {
 export function speakTrainer(trainer: string): void {
   if (!settings.voice || !unlocked) return;
   const url = randomVoiceClip(trainer);
-  if (!url) {
-    synthLine(trainer);
-    return;
-  }
+  if (!url) return;
   const a = new Audio(url);
   a.volume = voiceVolume();
-  // A clip that can't load or play (offline, unsupported format) falls back to the synthesized line.
-  void a.play().catch(() => synthLine(trainer));
+  // A clip that can't load or play (offline, unsupported format) is simply skipped.
+  void a.play().catch(() => undefined);
 }
 
-function synthLine(trainer: string): void {
-  const v = VOICE[trainer];
-  if (!v || typeof speechSynthesis === 'undefined') return;
-  speechSynthesis.cancel();
-  const u = new SpeechSynthesisUtterance(v.line);
-  u.pitch = v.pitch;
-  u.rate = v.rate;
-  u.volume = voiceVolume();
-  speechSynthesis.speak(u);
-}
 
 // ---------------------------------------------------------------- music
 
@@ -498,7 +476,7 @@ export function playMusic(track: Track | null, force = false): void {
 // ---------------------------------------------------------------- Pokémon Conquest soundtrack
 
 type TrackId = keyof typeof SOUNDTRACK;
-type JingleId = 'jingleWin' | 'jingleLose' | 'jingleSpecial' | 'jingleEvolve';
+type JingleId = 'jingleWin' | 'jingleLose' | 'jingleEvolve';
 interface TrackInfo {
   file: string;
   gain: number;
@@ -511,7 +489,8 @@ const TRACK_INFO: Record<TrackId, TrackInfo> = SOUNDTRACK;
 /** Conquest track for each game track; victory and defeat open with their jingle. */
 const CONQUEST: Record<Track, { intro?: JingleId; loop: TrackId }> = {
   menu: { loop: 'title' },
-  draft: { loop: 'draft' },
+  // The in-game draft shares the Draft Lab's strategy theme (STRATEGY_MAP_B).
+  draft: { loop: 'lab' },
   lab: { loop: 'lab' },
   battle: { loop: 'battle' },
   battleRiver: { loop: 'battleRiver' },

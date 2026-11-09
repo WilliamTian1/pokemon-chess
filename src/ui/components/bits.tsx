@@ -1,14 +1,15 @@
 import type { ReactNode } from 'react';
 import { type PType, type Side, type StatusId, CARDS, TYPE_COLORS } from '../../engine';
 
-/** Expansion cards whose artwork isn't finished yet: their tokens show the name instead. */
-const NO_ART = new Set(['ditto', 'shedinja', 'ninjask', 'froslass', 'roserade', 'wigglytuff']);
+/** Cards whose artwork isn't finished yet: their tokens show the name instead (none at the moment). */
+const NO_ART = new Set<string>([]);
 
+/** A type as a little lacquered tag: its colour, a darker rim and a highlight. */
 export function TypeBadge({ type, small }: { type: PType; small?: boolean }) {
   return (
     <span
-      className={`chip text-white shadow-sm ${small ? '!text-[9px] !px-1' : ''}`}
-      style={{ backgroundColor: TYPE_COLORS[type], textShadow: '0 1px 1px rgba(0,0,0,.45)' }}
+      className={`type-badge ${small ? 'type-badge-sm' : ''}`}
+      style={{ backgroundColor: TYPE_COLORS[type], borderColor: `color-mix(in srgb, ${TYPE_COLORS[type]} 55%, #1b120b)` }}
     >
       {type}
     </span>
@@ -88,7 +89,7 @@ export function SideTag({ side, children }: { side: Side; children?: ReactNode }
   );
 }
 
-export function Modal({ children, onClose, wide }: { children: ReactNode; onClose?: () => void; wide?: boolean }) {
+export function Modal({ children, onClose, wide, xwide }: { children: ReactNode; onClose?: () => void; wide?: boolean; xwide?: boolean }) {
   return (
     <div
       className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-3 sm:items-center"
@@ -97,7 +98,7 @@ export function Modal({ children, onClose, wide }: { children: ReactNode; onClos
       aria-modal="true"
     >
       <div
-        className={`panel max-h-[92vh] w-full overflow-y-auto p-4 ${wide ? 'max-w-3xl' : 'max-w-md'}`}
+        className={`panel max-h-[92vh] w-full overflow-y-auto p-4 ${xwide ? 'max-w-6xl' : wide ? 'max-w-3xl' : 'max-w-md'}`}
         onClick={(e) => e.stopPropagation()}
       >
         {children}

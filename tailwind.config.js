@@ -1,15 +1,38 @@
+/**
+ * Conquest-scroll theme. Slate and the light accent shades are CSS variables (src/index.css): on the
+ * dark lacquer page they're cream-on-dark, and inside a parchment panel (`.panel`, `.paper`) the same
+ * classes turn to ink-on-paper with deeper accents, so every component follows its surroundings.
+ */
+const v = (name) => `rgb(var(--${name}) / <alpha-value>)`;
+const scale = (hue, shades) => Object.fromEntries(shades.map((n) => [n, v(`${hue}-${n}`)]));
+
 /** @type {import('tailwindcss').Config} */
 export default {
   content: ['./index.html', './src/**/*.{ts,tsx}'],
   theme: {
     extend: {
+      fontFamily: {
+        sans: ['"M PLUS Rounded 1c"', 'ui-rounded', 'system-ui', 'sans-serif'],
+        display: ['"Potta One"', '"M PLUS Rounded 1c"', 'system-ui', 'sans-serif'],
+      },
       screens: {
         // One-screen layouts (draft and battle fit the viewport); must match useWideLayout().
         wide: { raw: '(min-width: 1024px) and (min-height: 560px)' },
       },
       colors: {
-        atk: { DEFAULT: '#ef4444', soft: '#fca5a5', deep: '#991b1b' },
-        def: { DEFAULT: '#3b82f6', soft: '#93c5fd', deep: '#1e3a8a' },
+        slate: scale('slate', [50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950]),
+        amber: scale('amber', [100, 200, 300, 400]),
+        rose: scale('rose', [200, 300, 400]),
+        emerald: scale('emerald', [200, 300, 400]),
+        sky: scale('sky', [200, 300, 400]),
+        atk: { DEFAULT: '#ef4444', soft: v('atk-soft'), deep: '#991b1b' },
+        def: { DEFAULT: '#3b82f6', soft: v('def-soft'), deep: '#1e3a8a' },
+        // Conquest palette.
+        lacquer: { DEFAULT: '#a8261d', light: '#cf3f30', dark: '#6e140f' },
+        gold: { DEFAULT: '#d9ab45', light: '#f2d27a', dark: '#9a7426' },
+        wood: { DEFAULT: '#4a2b16', light: '#6b4224', dark: '#2a170b' },
+        paper: { DEFAULT: '#f2e4c2', light: '#f8efd8', dark: '#e2cd9c' },
+        ink: { DEFAULT: '#33220f', soft: '#6d5236' },
       },
       keyframes: {
         floatUp: {

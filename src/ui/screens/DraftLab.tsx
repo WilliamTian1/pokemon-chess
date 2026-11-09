@@ -159,7 +159,7 @@ export function DraftLab({ onBack }: { onBack: () => void }) {
               return (
                 <div key={group} className={active ? '' : 'opacity-70'}>
                   <h3 className={`mb-1.5 text-sm font-bold ${group === 'legend' ? 'text-amber-300' : 'text-slate-200'}`}>
-                    {group === 'legend' ? 'Legendaries (picks 7–8)' : `Pokémon pool (picks 1–${legends ? 6 : 8})`}
+                    {group === 'legend' ? 'Legendaries' : `Pokémon`}
                   </h3>
                   <div className="grid grid-cols-[repeat(auto-fill,minmax(132px,1fr))] gap-2" onMouseLeave={() => setHover(null)}>
                     {ids.map((id) => {
@@ -193,7 +193,7 @@ export function DraftLab({ onBack }: { onBack: () => void }) {
             })}
             {trainers && (
               <div className={trainerTurn ? '' : 'opacity-70'}>
-                <h3 className="mb-1.5 text-sm font-bold text-amber-300">Trainers on offer (picks 9–10: the Attacker, then the Defender)</h3>
+                <h3 className="mb-1.5 text-sm font-bold text-amber-300">Trainers</h3>
                 <div className="grid grid-cols-[repeat(auto-fill,minmax(132px,1fr))] gap-2">
                   {trainerPool.map((id) => {
                     const owner = s.trainers?.picks.A === id ? 'A' : s.trainers?.picks.D === id ? 'D' : null;
@@ -397,7 +397,7 @@ function PoolEditor({ pool, legendPool, legends, trainerPool, onChange }: {
       {trainerPool && (
         <div className="panel space-y-2 px-3 py-2">
           <div className="text-sm">
-            Trainers on offer: <b className={trainerPool.length >= 2 ? 'text-emerald-300' : 'text-rose-300'}>{trainerPool.length}</b>
+            Trainers <b className={trainerPool.length >= 2 ? 'text-emerald-300' : 'text-rose-300'}>{trainerPool.length}</b>
             <span className="text-slate-400"> (a normal game offers 4; at least 2). Click to add or remove.</span>
           </div>
           <div className="grid grid-cols-[repeat(auto-fill,minmax(120px,1fr))] gap-2">
@@ -442,7 +442,7 @@ function PoolEditor({ pool, legendPool, legends, trainerPool, onChange }: {
       </div>
       {(legends ? (['legend', 'normal'] as const) : (['normal'] as const)).map((group) => (
         <div key={group}>
-          <h3 className="mb-1.5 text-sm font-bold text-slate-200">{group === 'legend' ? 'Legendaries' : 'Pokémon'}</h3>
+          <h3 className="mb-1.5 text-sm font-bold text-slate-200">{group === 'legend' ? 'LEGENDARIES' : 'POKÉMON'}</h3>
           <div className="grid grid-cols-[repeat(auto-fill,minmax(110px,1fr))] gap-2">
             {shown.filter((c) => c.legendary === (group === 'legend')).map((c) => {
               const inPool = (c.legendary ? legendPool : pool).includes(c.id);

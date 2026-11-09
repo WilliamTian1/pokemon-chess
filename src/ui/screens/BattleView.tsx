@@ -1,17 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   type Action, type CopyOption, DIRS, DIR_VEC, type Dir, type GameState, type MoveDef, type MoveOption, type Pos, type Side, type TargetPreview,
   type Unit, addPos, bestHit, canUseSpecial, cardOf, dangerZone, decider, dirToward, followMeBlockers, followMeUsers, getCard, getMap,
   getTrainer, inBounds, liveUnits, markedTiles, moveOf, moveOptions, moveTargets, onBoard, otherSide, parseAim, posKey, previewAction,
   selfEffectNotes, specialTargets, targeting, trainerOf, trebuchetOption, unitAt, unitTurnInfo, waitBlock,
 } from '../../engine';
-import { Art, HpBar, Modal, SIDE_TEXT, StatusBadge, TypeBadge } from '../components/bits';
+import { Art, HpBar, Modal, StatusBadge, TypeBadge } from '../components/bits';
 import { ARROW, Board, type BoardView, MOVE_RANGE, type Overlay, screenDir } from '../components/Board';
 import { MiniGrid } from '../components/CardView';
 import { MatchupMatrix, TypeChartModal } from '../components/Matchups';
 import { LogPanel } from '../components/Panels';
 import { FieldFx, SpecialCutIn, TurnSweep, useEventSounds } from '../components/Effects';
-import { TeamCards } from '../components/TeamCards';
+import { TeamCards, TrainerCard, type TrainerSlot } from '../components/TeamCards';
 import { sfx } from '../audio';
 import type { Controller } from '../controller';
 import { useBoxSize, usePortraitBoard, useTouch, useWideLayout } from '../hooks';
@@ -25,6 +26,9 @@ function aimedOption(opts: MoveOption[], aim: Aim | null): MoveOption | undefine
   const c = aim.copy;
   return c ? { moveIndex: aim.index, move: c.move, usable: true, aim: c.aim, dirs: c.dirs, units: c.units } : opts[aim.index];
 }
+
+/** Development only: `?open=chart|matchups` starts with that window open (for screenshots). */
+const devOpen = (what: string): boolean => import.meta.env.DEV && new URLSearchParams(location.search).get('open') === what;
 
 export function BattleView({ ctl }: { ctl: Controller }) {
   const s = ctl.state;
@@ -57,10 +61,15 @@ export function BattleView({ ctl }: { ctl: Controller }) {
   const [hoverMove, setHoverMove] = useState<0 | 1 | null>(null);
   const [hoverTile, setHoverTile] = useState<Pos | null>(null);
   const [matrixHover, setMatrixHover] = useState<string[] | null>(null);
-  const [matchups, setMatchups] = useState(false);
+  const [matchups, setMatchups] = useState(() => devOpen('matchups'));
   const [boardBox, setBoardBox] = useState<HTMLDivElement | null>(null);
+  const [gridEl, setGridEl] = useState<HTMLDivElement | null>(null);
+  const gridSize = useBoxSize(gridEl);
+  const [cardArea, setCardArea] = useState(0);
+  const [hudSlot, setHudSlot] = useState<HTMLElement | null>(null);
+  useEffect(() => setHudSlot(document.getElementById('battle-hud')), []);
   const boardSize = useBoxSize(boardBox);
-  const [chart, setChart] = useState(false);
+  const [chart, setChart] = useState(() => devOpen('chart'));
 
 
 
@@ -325,29 +334,115 @@ export function BattleView({ ctl }: { ctl: Controller }) {
     overlay.matchups = m;
   }
   const remaining = s.phase === 'battle' ? s.units.filter((u) => u.side === s.side && onBoard(u) && !u.activated) : [];
+  const trainerSlot = (side: Side): TrainerSlot | null => (trainerOf(s, side) ? {
+    id: trainerOf(s, side)!,
+    used: s.trainers!.used[side],
+    canUse: myBattleTurn && ctl.mySides.includes(side) && canUseSpecial(s, side),
+    aiming: aim?.kind === 'special' && s.side === side,
+    onUse: () => {
+      if (getTrainer(trainerOf(s, side)!).specialTarget === 'ally') {
+        setSel(null);
+        setAim({ kind: 'special' });
+      } else {
+        send({ type: 'trainerSpecial' });
+      }
+    },
+    onCancel: cancelAim,
+  } : null);
+  const commands = (
+    <>
+      {aim?.kind === 'special' && (
+        <div className="panel mb-2 flex flex-wrap items-center justify-between gap-2 p-3">
+          <span className="text-sm text-amber-200">{getTrainer(trainerOf(s, s.side)!).name}’s Special Move: pick one of your Pokémon that hasn’t moved yet (board or card).</span>
+          <button type="button" className="btn-ghost" onClick={cancelAim}>Cancel</button>
+        </div>
+      )}
+      {placing ? (
+        <PlacementBar ctl={ctl} placeSide={placeSide} myPlacement={myPlacement} unplaced={unplaced} selected={placeUnit} onSelect={setPlaceSel} />
+      ) : (
+        <ActionBar
+          ctl={ctl}
+          unit={controllable ? selUnit : null}
+          myTurn={myBattleTurn}
+          opts={opts}
+          aimOpt={aimOpt}
+          treb={treb}
+          aim={aim}
+          aimDir={aimDir}
+          aimTarget={aimTarget}
+          aimBlocked={aimBlocked}
+          touch={touch}
+          isPost={isPost}
+          postBudget={isPost ? s.active!.postMove : 0}
+          remaining={remaining}
+          confirmEnd={confirmEnd}
+          setConfirmEnd={setConfirmEnd}
+          onAim={(a) => {
+            setAim(a);
+            setAimDir(null);
+            setAimTarget(null);
+          }}
+          onFireDir={fireDir}
+          onFireAt={fireAt}
+          onSelfMove={(index) => selUnit && send({ type: 'useMove', unitId: selUnit.id, moveIndex: index })}
+          onHoverMove={touch ? () => {} : setHoverMove}
+          send={send}
+        />
+      )}
+    </>
+  );
+  // One-screen layouts: the side columns are as wide as their cards need at the height available (so a
+  // wide screen gives the spare width to the board), up to 30% of the width each. With trainers, when
+  // the cards can keep that size in three columns (34% each at most), each trainer joins its team's
+  // column beside the inner bottom card; otherwise the trainers stand beside the command desk.
+  const hasTrainers = !!s.trainers;
+  // Card width the column height allows: two rows, each a card plus its HP strip.
+  const cardW = Math.floor(((cardArea - 8) / 2 - 24) / (265 / 204));
+  const innerSide = 3 * cardW + 16 + 22;
+  const trainersInside = wide && hasTrainers && gridSize.w > 0 && innerSide <= 0.34 * gridSize.w;
+  const sideW = gridSize.w > 0 && cardArea > 0
+    ? Math.min(trainersInside ? innerSide : 2 * cardW + 8 + 22, Math.floor((trainersInside ? 0.34 : 0.3) * gridSize.w))
+    : 0;
+  const hud = (
+    <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2 wide:flex-nowrap">
+      <div className="min-w-0 wide:flex-1">
+        <TurnBanner ctl={ctl} remaining={remaining.length} />
+      </div>
+      <BoardTools
+        state={s}
+        dangerSide={dangerSide}
+        solo={soloDanger}
+        onClearSolo={() => setDangerUnit(null)}
+        dz={dz}
+        readout={readout}
+        onChart={() => setChart(true)}
+        onMatchups={() => setMatchups(true)}
+      />
+    </div>
+  );
+  // One-screen layouts: each team's trainer stands beside the board, next to its team's inner cards.
+  const flankTrainer = (side: Side) => {
+    if (trainersInside) return null;
+    const slot = trainerSlot(side);
+    // As wide as the row's height allows (card aspect 204:265, plus the Special Move line).
+    return slot ? <TrainerCard slot={slot} side={side} className="w-[calc((clamp(150px,22vh,210px)-26px)*204/265)] shrink-0 self-end" /> : null;
+  };
 
   return (
-    <div className="grid grid-cols-1 gap-3 md:grid-cols-2 wide:h-full wide:min-h-0 wide:grid-cols-[minmax(0,1fr)_minmax(0,2.1fr)_minmax(0,1fr)] wide:grid-rows-[minmax(0,1fr)]">
+    <div
+      ref={setGridEl}
+      className="grid grid-cols-1 gap-3 md:grid-cols-2 wide:h-full wide:min-h-0 wide:grid-cols-[minmax(0,1.4fr)_minmax(0,2fr)_minmax(0,1.4fr)] wide:grid-rows-[minmax(0,1fr)]"
+      style={wide && sideW > 0 ? { gridTemplateColumns: `${sideW}px minmax(0,1fr) ${sideW}px` } : undefined}
+    >
       {([leftSide, otherSide(leftSide)] as const).map((side, i) => (
         <aside key={side} className={`min-w-0 wide:h-full wide:min-h-0 ${i === 0 ? 'order-2 wide:order-1' : 'order-3'}`}>
           <TeamCards
             state={s}
             events={ctl.events}
-            trainer={trainerOf(s, side) ? {
-              id: trainerOf(s, side)!,
-              used: s.trainers!.used[side],
-              canUse: myBattleTurn && ctl.mySides.includes(side) && canUseSpecial(s, side),
-              aiming: aim?.kind === 'special' && s.side === side,
-              onUse: () => {
-                if (getTrainer(trainerOf(s, side)!).specialTarget === 'ally') {
-                  setSel(null);
-                  setAim({ kind: 'special' });
-                } else {
-                  send({ type: 'trainerSpecial' });
-                }
-              },
-              onCancel: cancelAim,
-            } : null}
+            trainer={trainerSlot(side)}
+            trainerApart={wide && !trainersInside}
+            trainerInner={trainersInside ? (i === 0 ? 'right' : 'left') : undefined}
+            onCardArea={setCardArea}
             side={side}
             name={ctl.names[side]}
             mine={ctl.mySides.length === 1 && ctl.mySides[0] === side}
@@ -376,22 +471,8 @@ export function BattleView({ ctl }: { ctl: Controller }) {
       {/* On one-screen layouts this column is a fixed-height stack: the board takes whatever room the
           banner, action bar and log leave, so End turn and the log never need scrolling to. */}
       <main ref={mainRef} className="order-1 min-w-0 space-y-3 md:col-span-2 wide:order-2 wide:col-span-1 wide:flex wide:min-h-0 wide:flex-col wide:gap-2 wide:space-y-0 wide:overflow-y-auto">
-        {/* One-screen layouts: banner and tools share a row, leaving the height to the board. */}
-        <div className="space-y-3 wide:flex wide:shrink-0 wide:flex-wrap wide:items-center wide:gap-2 wide:space-y-0">
-          <div className="min-w-0 wide:min-w-[260px] wide:flex-1">
-            <TurnBanner ctl={ctl} remaining={remaining.length} />
-          </div>
-          <BoardTools
-            state={s}
-            dangerSide={dangerSide}
-            solo={soloDanger}
-            onClearSolo={() => setDangerUnit(null)}
-            dz={dz}
-            readout={readout}
-            onChart={() => setChart(true)}
-            onMatchups={() => setMatchups(true)}
-          />
-        </div>
+        {/* One-screen layouts: the banner and tools go up into the game header, leaving the height to the board. */}
+        {wide && hudSlot ? createPortal(hud, hudSlot) : <div className="lacquer space-y-3 px-3 py-2">{hud}</div>}
         <div ref={setBoardBox} className="wide:flex wide:min-h-[110px] wide:flex-1 wide:items-center wide:justify-center">
         <div className="mx-auto w-full" style={wide && boardSize.w > 0 ? { width: Math.min(boardSize.w, boardSize.h * boardAspect) } : undefined}>
           <Board
@@ -407,53 +488,40 @@ export function BattleView({ ctl }: { ctl: Controller }) {
           />
         </div>
         </div>
-        {/* On phones the controls stay pinned to the bottom of the screen while the board scrolls. */}
-        <div className="sticky bottom-0 z-20 -mx-1 rounded-xl bg-slate-950/90 p-1 backdrop-blur wide:static wide:m-0 wide:bg-transparent wide:p-0 wide:backdrop-blur-none">
-        {aim?.kind === 'special' && (
-          <div className="panel mb-2 flex flex-wrap items-center justify-between gap-2 p-3">
-            <span className="text-sm text-amber-200">{getTrainer(trainerOf(s, s.side)!).name}’s Special Move: pick one of your Pokémon that hasn’t moved yet (board or card).</span>
-            <button type="button" className="btn-ghost" onClick={cancelAim}>Cancel</button>
+        {wide ? (
+          // Trainer · command desk (action bar over the battle log) · trainer.
+          <div className={`flex shrink-0 items-stretch gap-2 ${trainersInside || !hasTrainers ? '' : 'h-[clamp(150px,22vh,210px)]'}`}>
+            {flankTrainer(leftSide)}
+            {trainersInside || !hasTrainers ? (
+              // A wide desk: the action bar with the log beside it, so the row stays short.
+              <div className="command-desk panel flex min-h-[92px] min-w-0 flex-1 items-stretch p-1.5">
+                <div className="min-w-0 flex-1 self-center">{commands}</div>
+                {/* The log takes the desk's height rather than setting it. */}
+                <div className="relative w-[34%] min-w-[200px] max-w-[340px] shrink-0 border-l-2 border-dashed border-slate-700">
+                  <LogPanel log={s.log} className="absolute inset-0" />
+                </div>
+              </div>
+            ) : (
+              // Between the two trainer cards: the action bar over the log.
+              <div className="command-desk panel flex min-h-0 min-w-0 flex-1 flex-col p-1.5">
+                {commands}
+                <LogPanel log={s.log} className="min-h-[60px] flex-1 border-t-2 border-dashed border-slate-700" />
+              </div>
+            )}
+            {flankTrainer(otherSide(leftSide))}
           </div>
-        )}
-        {placing ? (
-          <PlacementBar ctl={ctl} placeSide={placeSide} myPlacement={myPlacement} unplaced={unplaced} selected={placeUnit} onSelect={setPlaceSel} />
         ) : (
-          <ActionBar
-            ctl={ctl}
-            unit={controllable ? selUnit : null}
-            myTurn={myBattleTurn}
-            opts={opts}
-            aimOpt={aimOpt}
-            treb={treb}
-            aim={aim}
-            aimDir={aimDir}
-            aimTarget={aimTarget}
-            aimBlocked={aimBlocked}
-            touch={touch}
-            isPost={isPost}
-            postBudget={isPost ? s.active!.postMove : 0}
-            remaining={remaining}
-            confirmEnd={confirmEnd}
-            setConfirmEnd={setConfirmEnd}
-            onAim={(a) => {
-              setAim(a);
-              setAimDir(null);
-              setAimTarget(null);
-            }}
-            onFireDir={fireDir}
-            onFireAt={fireAt}
-            onSelfMove={(index) => selUnit && send({ type: 'useMove', unitId: selUnit.id, moveIndex: index })}
-            onHoverMove={touch ? () => {} : setHoverMove}
-            send={send}
-          />
+          <>
+            {/* On phones the controls stay pinned to the bottom of the screen while the board scrolls. */}
+            <div className="sticky bottom-0 z-20 -mx-1 rounded-xl bg-slate-950/90 p-1 backdrop-blur">{commands}</div>
+            <LogPanel log={s.log} className="h-56" />
+          </>
         )}
-        </div>
-        <LogPanel log={s.log} className="h-56 wide:h-[clamp(60px,10vh,110px)] wide:shrink-0" />
       </main>
       {matchups && (
         <Modal onClose={() => setMatchups(false)} wide>
           <div className="mb-2 flex items-center justify-between gap-2">
-            <h3 className="text-lg font-bold">Matchups</h3>
+            <h3 className="font-display text-xl text-lacquer">Matchups</h3>
             <button type="button" className="btn-ghost" onClick={() => setMatchups(false)}>Close</button>
           </div>
           <MatchupMatrix state={s} rows={leftSide} onHover={setMatrixHover} />
@@ -538,9 +606,12 @@ function TurnBanner({ ctl, remaining }: { ctl: Controller; remaining: number }) 
   if (s.phase === 'placement') {
     const side = decider(s)!;
     return (
-      <div className="panel flex flex-wrap items-center justify-between gap-2 px-3 py-2">
-        <div className={`font-bold ${SIDE_TEXT[side]}`}>
-          Placement · {ctl.mySides.includes(side) ? 'place a Pokémon on a glowing spawn tile' : `${ctl.names[side]} is placing…`}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <span className={`sash ${side === 'A' ? 'sash-a' : 'sash-d'}`}>{side === 'A' ? 'Attacker' : 'Defender'}</span>
+          <span className="font-display text-lg text-[#fff3d6]">
+            Placement · {ctl.mySides.includes(side) ? 'place a Pokémon on a glowing spawn tile' : `${ctl.names[side]} is placing…`}
+          </span>
         </div>
         <div className="text-xs text-slate-400">
           The Attacker places first.{' '}
@@ -552,18 +623,20 @@ function TurnBanner({ ctl, remaining }: { ctl: Controller; remaining: number }) 
   const side = s.side;
   const mine = ctl.mySides.includes(side);
   return (
-    <div className="panel flex flex-wrap items-center justify-between gap-2 px-3 py-2">
-      <div className="flex items-center gap-3">
-        <div className="rounded-lg bg-slate-800 px-2.5 py-1 text-center">
-          <div className="text-[10px] uppercase tracking-wide text-slate-400">Round</div>
-          <div className="text-lg font-black leading-none">{s.round}<span className="text-sm text-slate-500">/{s.maxRounds}</span></div>
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <div className="flex min-w-0 items-center gap-3">
+        <div className="draft-seal !h-12 !w-12" title={`Round ${s.round} of ${s.maxRounds}`}>
+          <span className="text-[8px] font-extrabold uppercase tracking-widest text-[#f2d27a]">Round</span>
+          <span className="font-display text-lg leading-none">{s.round}<span className="text-[10px] text-[#f2d27a]">/{s.maxRounds}</span></span>
         </div>
-        <div>
-          <div className={`font-bold ${SIDE_TEXT[side]}`}>
-            {s.phase === 'over' ? 'Battle over' : mine && ctl.mySides.length === 1 ? 'Your turn' : `${ctl.names[side]}’s turn`}
-            {s.phase !== 'over' && <span className="ml-1.5 text-xs font-medium text-slate-400">({side === 'A' ? 'Attacker' : 'Defender'})</span>}
+        <div className="min-w-0">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="truncate font-display text-xl leading-tight text-[#fff3d6]">
+              {s.phase === 'over' ? 'Battle over' : mine && ctl.mySides.length === 1 ? 'Your turn!' : `${ctl.names[side]}’s turn`}
+            </span>
+            {s.phase !== 'over' && <span className={`sash shrink-0 ${side === 'A' ? 'sash-a' : 'sash-d'}`}>{side === 'A' ? 'Attacker' : 'Defender'}</span>}
           </div>
-          <div className="text-xs text-slate-400">
+          <div className="text-xs font-bold text-slate-300">
             {s.phase === 'over' ? s.winReason : ctl.thinking ? 'Thinking…' : `${remaining} Pokémon left to activate`}
           </div>
         </div>
@@ -865,7 +938,7 @@ function PendingModal({ ctl, view }: { ctl: Controller; view: BoardView }) {
     const exit = p.kind === 'emergencyExit';
     return (
       <Modal>
-        <h3 className="text-lg font-bold">{exit ? 'Emergency Exit!' : 'Imposter'}</h3>
+        <h3 className="font-display text-xl text-lacquer">{exit ? 'Emergency Exit!' : 'Imposter'}</h3>
         <p className="mb-3 text-sm text-slate-300">
           {exit ? `${cardOf(u).name} dropped below 100 HP and must switch places with an ally.` : `${cardOf(u).name} may copy the stat changes of a Pokémon beside it.`}
         </p>
@@ -900,7 +973,7 @@ function PendingModal({ ctl, view }: { ctl: Controller; view: BoardView }) {
     const pv = hovered ? previewAction(s, u.id, 0, { ...hovered.aim, move: hovered.m }) : [];
     return (
       <Modal>
-        <h3 className="text-lg font-bold">Metronome drew {card.name}!</h3>
+        <h3 className="font-display text-xl text-lacquer">Metronome drew {card.name}!</h3>
         <p className="mb-3 text-sm text-slate-300">Choose one of {card.name}’s moves for {cardOf(u).name} to use, and how to aim it.</p>
         <div className="grid grid-cols-2 gap-2">
           {p.options.map((o) => {
@@ -923,7 +996,7 @@ function PendingModal({ ctl, view }: { ctl: Controller; view: BoardView }) {
   const pv = hover ? previewAction(s, u.id, 0, dancer ? { dir: hover as Dir, move: src } : { dir: hover as Dir, copyOf: src }) : [];
   return (
     <Modal>
-      <h3 className="text-lg font-bold">{dancer ? 'Dancer' : 'Liquid Voice'}</h3>
+      <h3 className="font-display text-xl text-lacquer">{dancer ? 'Dancer' : 'Liquid Voice'}</h3>
       <p className="mb-3 text-sm text-slate-300">
         {cardOf(u).name} {dancer ? 'copies' : 'can copy'} <b>{src.name}</b>{dancer ? '' : ' as a Water-type move'}. Choose which way to aim it.
       </p>
