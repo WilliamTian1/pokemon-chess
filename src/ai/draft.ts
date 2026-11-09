@@ -35,41 +35,63 @@ export interface DraftModel {
 }
 
 /**
- * How much a trainer's passive has to work with in `team` (against `opp`): recoil moves for N,
- * one-tile pushes for Blue, cooldown moves for Lance, Pikachu for Red, weather that would hurt the
- * team for Mitsuhide, attacks the team is immune to (plus Artillery Expertise) for Nobunaga.
+ * How much a trainer's passive has to work with, split into a part per card of the trainer's team
+ * (`synergyOwn`) and a part per pair of cards (`synergyPair`, the second card on the opposing team
+ * or, for weather, on either team), so the draft search can add it up card by card:
+ * recoil moves for N, one-tile pushes for Blue, cooldown moves for Lance, Pikachu for Red,
+ * Artillery Expertise and immunities to the opponent's attacks for Nobunaga, weather the team would
+ * suffer from for Mitsuhide.
  */
-export function trainerSynergy(trainer: string, team: string[], opp: string[]): number {
-  const cards = team.map(getCard);
-  const moves = cards.flatMap((c) => c.moves);
+export function synergyOwn(trainer: string, c: CardDef): number {
   switch (trainer) {
     case 'n':
-      return moves.filter((m) => m.fx.recoil || m.fx.recoilPerTarget).length / 2;
+      return c.moves.filter((m) => m.fx.recoil || m.fx.recoilPerTarget).length / 2;
     case 'blue':
-      return moves.filter((m) => m.target.kind === 'grid' && parseGrid(m.target.grid).knockback === 1).length / 2;
+      return c.moves.filter((m) => m.target.kind === 'grid' && parseGrid(m.target.grid).knockback === 1).length / 2;
     case 'lance':
-      return moves.filter((m) => m.fx.nextTurn || m.fx.lockUntilFar).length / 2;
+      return c.moves.filter((m) => m.fx.nextTurn || m.fx.lockUntilFar).length / 2;
     case 'red':
-      return team.includes('pikachu') ? 1 : 0;
-    case 'mitsuhide': {
-      const all = [...team, ...opp].map(getCard);
-      const has = (sp: string, ab?: string) => all.some((c) => c.ability === ab || c.moves.some((m) => m.fx.special === sp));
-      let hurt = 0;
-      for (const c of cards) {
-        if ((has('sunnyDay', 'drought') && c.types.includes('Water')) || (has('rainDance', 'drizzle') && c.types.includes('Fire'))) hurt += 1;
-        if (has('sandstorm') && !c.types.some((t) => t === 'Rock' || t === 'Ground' || t === 'Steel')) hurt += 1;
-        if (has('hail') && !c.types.includes('Ice')) hurt += 1;
-      }
-      return hurt / 2;
-    }
-    case 'nobunaga': {
-      const attacks = opp.map(getCard).flatMap((c) => c.moves.filter((m) => m.kind === 'attack' && m.type));
-      const immune = cards.reduce((a, c) => a + attacks.filter((m) => typeMultiplier(m.type!, c.types) === 0).length, 0);
-      return immune / 2 + cards.filter((c) => c.ability === 'artilleryExpertise').length;
-    }
+      return c.id === 'pikachu' ? 1 : 0;
+    case 'nobunaga':
+      return c.ability === 'artilleryExpertise' ? 1 : 0;
     default:
       return 0;
   }
+}
+
+/** Pair part of a trainer's synergy for own card `c` and card `k` (see synergyOwn). */
+export function synergyPair(trainer: string, c: CardDef, k: CardDef, kIsOpponent: boolean): number {
+  if (trainer === 'nobunaga') {
+    // Attacks of the opponent's card k that c is immune to.
+    return kIsOpponent ? k.moves.filter((m) => m.kind === 'attack' && m.type && typeMultiplier(m.type, c.types) === 0).length / 2 : 0;
+  }
+  if (trainer === 'mitsuhide') {
+    // Weather card k (either team) would bring down on c.
+    const sets = (sp: string, ab?: string) => k.ability === ab || k.moves.some((m) => m.fx.special === sp);
+    let hurt = 0;
+    if (sets('sunnyDay', 'drought') && c.types.includes('Water')) hurt += 1;
+    if (sets('rainDance', 'drizzle') && c.types.includes('Fire')) hurt += 1;
+    if (sets('sandstorm') && !c.types.some((t) => t === 'Rock' || t === 'Ground' || t === 'Steel')) hurt += 1;
+    if (sets('hail') && !c.types.includes('Ice')) hurt += 1;
+    return hurt / 2;
+  }
+  return 0;
+}
+
+/** Whether the trainer's synergy has pair terms with own cards too (weather from one's own team). */
+const PAIRS_WITH_OWN = new Set(['mitsuhide']);
+
+/** The whole synergy of `trainer` with `team` against `opp` (card ids). */
+export function trainerSynergy(trainer: string, team: string[], opp: string[]): number {
+  const own = team.map(getCard);
+  const other = opp.map(getCard);
+  let z = 0;
+  for (const c of own) {
+    z += synergyOwn(trainer, c);
+    for (const k of other) z += synergyPair(trainer, c, k, true);
+    if (PAIRS_WITH_OWN.has(trainer)) for (const k of own) z += synergyPair(trainer, c, k, false);
+  }
+  return z;
 }
 
 /** Untrained trainer terms: no preference beyond a small pull towards trainers that suit the team. */
@@ -81,18 +103,40 @@ export function trainerGain(m: DraftModel, trainer: string, side: Side, team: st
   return side === 'A' ? t.A + t.synA * trainerSynergy(trainer, team, opp) : t.D + t.synD * trainerSynergy(trainer, team, opp);
 }
 
+/** Model estimate of logit P(Attacker wins) for the draft so far, counting trainers already picked. */
+export function draftLogit(m: DraftModel, s: GameState): number {
+  const { A, D } = s.draft.picks;
+  let z = teamLogit(m, A, D);
+  const tA = s.trainers?.picks.A;
+  const tD = s.trainers?.picks.D;
+  if (tA) z += trainerGain(m, tA, 'A', A, D);
+  if (tD) z += trainerGain(m, tD, 'D', D, A);
+  return z;
+}
+
 /**
- * The trainer pick: exact minimax over the offered trainers (the Attacker picks first, then the
- * Defender from the rest), scoring each pairing with the model's trainer terms.
+ * The trainer pick, analysed: each trainer still on offer with logit P(Attacker wins) if it's taken,
+ * by exact minimax (the Attacker picks first, then the Defender from the rest), best first.
  */
-export function bestTrainerPick(s: GameState, side: Side, m: DraftModel = draftModelFor(s.mapId, modeOf(s))): string {
+export function analyzeTrainerPick(s: GameState, m: DraftModel = draftModelFor(s.mapId, modeOf(s))): { side: Side; lines: { id: string; value: number }[] } {
+  const side = s.draft.order[s.draft.index];
   const options = draftOptions(s);
   const { A, D } = s.draft.picks;
+  const base = teamLogit(m, A, D);
   const gA = (t: string) => trainerGain(m, t, 'A', A, D);
   const gD = (t: string) => trainerGain(m, t, 'D', D, A);
-  if (side === 'D') return [...options].sort((x, y) => gD(x) - gD(y))[0];
-  const value = (t: string) => gA(t) + Math.min(...options.filter((o) => o !== t).map(gD), 0);
-  return [...options].sort((x, y) => value(y) - value(x))[0];
+  const lines = options.map((t) => {
+    if (side === 'D') return { id: t, value: base + (s.trainers?.picks.A ? gA(s.trainers.picks.A) : 0) + gD(t) };
+    const rest = options.filter((o) => o !== t).map(gD);
+    return { id: t, value: base + gA(t) + (rest.length ? Math.min(...rest) : 0) };
+  });
+  lines.sort((x, y) => (side === 'A' ? y.value - x.value : x.value - y.value));
+  return { side, lines };
+}
+
+/** The trainer the Hard bot picks: the top line of the trainer analysis. */
+export function bestTrainerPick(s: GameState, _side: Side, m: DraftModel = draftModelFor(s.mapId, modeOf(s))): string {
+  return analyzeTrainerPick(s, m).lines[0].id;
 }
 
 const hitCache = new Map<string, number>();
@@ -270,6 +314,39 @@ export function analyzeDraft(s: GameState, m: DraftModel = draftModelFor(s.mapId
     const stake = new Map(list.map((i) => [i, M.gain(i, 'A', teams.A, teams.D) - M.gain(i, 'D', teams.A, teams.D)]));
     return [...list].sort((x, y) => stake.get(y)! - stake.get(x)!);
   };
+  // Trainer mode: the trainer picks that follow the draft (Attacker first, then the Defender from the
+  // rest), solved exactly at each finished pair of teams, so cards that suit an offered trainer count.
+  const offered = s.trainers ? s.trainers.pool.filter((t) => t !== s.trainers!.picks.A && t !== s.trainers!.picks.D) : [];
+  const cards = ids.map(getCard);
+  const TT = offered.map((t) => ({
+    v: m.trainers?.[t] ?? TRAINER_PRIOR,
+    own: cards.map((c) => synergyOwn(t, c)),
+    vsOpp: cards.map((c) => cards.map((k) => synergyPair(t, c, k, true))),
+    vsOwn: PAIRS_WITH_OWN.has(t) ? cards.map((c) => cards.map((k) => synergyPair(t, c, k, false))) : null,
+  }));
+  const syn = (T: (typeof TT)[number], team: number[], other: number[]): number => {
+    let z = 0;
+    for (const i of team) {
+      z += T.own[i];
+      for (const j of other) z += T.vsOpp[i][j];
+      if (T.vsOwn) for (const j of team) z += T.vsOwn[i][j];
+    }
+    return z;
+  };
+  const trainerValue = (A: number[], D: number[]): number => {
+    if (offered.length < 2) return 0;
+    const gA = TT.map((T) => T.v.A + T.v.synA * syn(T, A, D));
+    const gD = TT.map((T) => T.v.D + T.v.synD * syn(T, D, A));
+    let best = -Infinity;
+    for (let a = 0; a < TT.length; a++) {
+      let worst = Infinity;
+      for (let d = 0; d < TT.length; d++) if (d !== a && gD[d] < worst) worst = gD[d];
+      if (gA[a] + worst > best) best = gA[a] + worst;
+    }
+    return best;
+  };
+  const leafValue = (): number => M.logit(teams.A, teams.D) + trainerValue(teams.A, teams.D);
+
   const withPick = <T,>(k: number, who: Side, i: number, f: () => T): T => {
     const list = free[kind(k)];
     const at = list.indexOf(i);
@@ -288,7 +365,7 @@ export function analyzeDraft(s: GameState, m: DraftModel = draftModelFor(s.mapId
   const search = (k: number, alpha: number, beta: number): { v: number; pv: number[] } => {
     nodes += 1;
     const options = k < order.length ? free[kind(k)] : [];
-    if (!options.length || nodes > NODE_CAP) return { v: M.logit(teams.A, teams.D), pv: [] };
+    if (!options.length || nodes > NODE_CAP) return { v: leafValue(), pv: [] };
     const tk = key(k);
     const hit = tt.get(tk);
     if (hit && (hit.flag === 0 || (hit.flag === 1 && hit.v >= beta) || (hit.flag === -1 && hit.v <= alpha))) return hit;
@@ -330,7 +407,7 @@ export function analyzeDraft(s: GameState, m: DraftModel = draftModelFor(s.mapId
     return { id: ids[i], value: r.v, pv: r.pv.map((pi, n) => ({ side: order[n + 1], id: ids[pi] })), why };
   });
   lines.sort((a, b) => sign * (b.value - a.value));
-  return { side, value: lines[0]?.value ?? M.logit(teams.A, teams.D), lines };
+  return { side, value: lines[0]?.value ?? leafValue(), lines };
 }
 
 /** The pick the Hard bot makes: the top line of the draft search. */

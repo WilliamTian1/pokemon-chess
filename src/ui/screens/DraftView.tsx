@@ -1,10 +1,11 @@
 import { type ReactNode, useMemo, useState } from 'react';
 import {
-  type CardDef, type PType, type Side, TYPES, bestHit, decider, draftOptions, getCard, getTrainer, isLegendPick, isTrainerPick, otherSide,
+  type CardDef, type PType, type Side, TRAINERS, TYPES, bestHit, decider, draftOptions, getCard, getTrainer, isLegendPick, isTrainerPick, otherSide,
 } from '../../engine';
 import { Art, CardImage, Modal, SIDE_TEXT, TypeBadge } from '../components/bits';
 import { CardDetail } from '../components/CardView';
 import { CounterLists, MultChip, TypeChartModal, matchupTitle } from '../components/Matchups';
+import { trainerImg } from '../components/Trainers';
 import type { Controller } from '../controller';
 import { type FitGrid, useFitGrid, useTouch, useWideLayout } from '../hooks';
 
@@ -192,7 +193,9 @@ export function DraftView({ ctl }: { ctl: Controller }) {
   const wide = useWideLayout();
   const touch = useTouch();
   const [gridBox, setGridBox] = useState<HTMLDivElement | null>(null);
-  const fit = useFitGrid(gridBox, Math.max(1, ordered.length), { aspect: 265 / 204, gap: 8, extra: DRAFT_LINE });
+  // Trainer mode: the trainers on offer sit in a row of their own under the pool, at the same size.
+  const offered = s.trainers?.pool ?? [];
+  const fit = useFitGrid(gridBox, Math.max(1, ordered.length), { aspect: 265 / 204, gap: 8, extra: DRAFT_LINE, below: offered.length });
   // The reading pane keeps the last card hovered, so the pointer can leave it without losing it.
   const [reading, setReading] = useState<string | null>(null);
   const onHover = (id: string | null) => {
@@ -251,11 +254,8 @@ export function DraftView({ ctl }: { ctl: Controller }) {
           )}
         </p>
         <button type="button" className="btn-ghost shrink-0" onClick={() => setChart(true)}>Type chart</button>
-        {!trainerTurn && <div className="w-full">{filter.controls}</div>}
+        <div className="w-full">{filter.controls}</div>
       </div>
-      {trainerTurn ? (
-        <TrainerPick ctl={ctl} turn={turn} mine={mine} />
-      ) : (
       <div className="flex gap-3 wide:min-h-0 wide:flex-1">
       <div ref={setGridBox} className="min-w-0 flex-1">
         {ordered.length === 0 && (
@@ -276,6 +276,17 @@ export function DraftView({ ctl }: { ctl: Controller }) {
           focusId={focus}
           badge={badge}
         />
+        {offered.length > 0 && (
+          <TrainerRow
+            ids={offered}
+            fit={wide && fit.width > 0 ? fit : null}
+            owner={(id) => (s.trainers!.picks.A === id ? 'A' : s.trainers!.picks.D === id ? 'D' : null)}
+            pickable={trainerTurn && mine ? pickable : new Set()}
+            active={trainerTurn}
+            onPick={(id) => ctl.dispatch({ type: 'draftPick', cardId: id })}
+            onHover={(id) => id && setReading(id)}
+          />
+        )}
       </div>
       {wide && !touch && (
         <aside
@@ -283,7 +294,14 @@ export function DraftView({ ctl }: { ctl: Controller }) {
           style={{ width: 'min(30vw, calc((100dvh - 200px) * 204 / 265))' }}
           aria-label="Card reader"
         >
-          {readId ? (
+          {readId && TRAINERS[readId] ? (
+            <>
+              <img src={trainerImg(readId)} alt={`${getTrainer(readId).name} card`} className="w-full rounded-lg shadow-2xl shadow-black/60" />
+              <p className="text-center text-[11px] text-slate-400">
+                Trainer: picked after the 8 Pokémon, the Attacker first. Its Special Move can be used once per game.
+              </p>
+            </>
+          ) : readId ? (
             <>
               <CardImage id={readId} name={getCard(readId).name} className="shadow-2xl shadow-black/60" />
               <p className="text-center text-[11px] text-slate-400">
@@ -298,7 +316,6 @@ export function DraftView({ ctl }: { ctl: Controller }) {
         </aside>
       )}
       </div>
-      )}
       {detail && (
         <Modal onClose={() => setDetail(null)}>
           <CardDetail card={detail} extra={<CounterLists card={detail} pool={pool.filter((c) => !takenBy.has(c.id))} onOpen={setDetail} />} />
@@ -334,31 +351,48 @@ export function DraftView({ ctl }: { ctl: Controller }) {
   );
 }
 
-/** Trainer mode, after the draft: the four trainers on offer; the Attacker picks first. */
-function TrainerPick({ ctl, turn, mine }: { ctl: Controller; turn: Side; mine: boolean }) {
-  const s = ctl.state;
-  const t = s.trainers!;
-  const open = new Set(draftOptions(s));
+/**
+ * Trainer mode: the trainers on offer, as cards in a row of their own under the Pokémon pool (same
+ * size). They are picked after the 8 Pokémon, the Attacker first; then the row is the one to pick from.
+ */
+function TrainerRow({ ids, fit, owner, pickable, active, onPick, onHover }: {
+  ids: string[];
+  fit: FitGrid | null;
+  owner: (id: string) => Side | null;
+  pickable: Set<string>;
+  active: boolean;
+  onPick: (id: string) => void;
+  onHover: (id: string | null) => void;
+}) {
+  // Lined up with the pool's left edge (the pool grid is centred at its full width).
+  const width = fit ? fit.cols * fit.width + (fit.cols - 1) * 8 : undefined;
   return (
-    <div className="panel space-y-3 p-3 wide:min-h-0 wide:flex-1 wide:overflow-y-auto">
-      <p className="text-sm text-slate-300">
-        Each side takes one of these trainers: a passive that always applies, and a Special Move that can be used once per game, at any point of your own turn.
-        {mine ? ' Choose yours.' : ` Waiting for ${ctl.names[turn]}…`}
-      </p>
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        {t.pool.map((id) => {
-          const tr = getTrainer(id);
-          const takenBy = t.picks.A === id ? 'A' : t.picks.D === id ? 'D' : null;
+    <div className="mx-auto mt-2" style={{ width }}>
+      <div className={`mb-1 text-[11px] font-bold uppercase tracking-wide ${active ? 'text-amber-300' : 'text-slate-400'}`}>
+        Trainers on offer{active ? ' · pick one' : ' · picked after the Pokémon, the Attacker first'}
+      </div>
+      <div
+        className={fit ? 'grid justify-start gap-2' : 'grid grid-cols-[repeat(auto-fill,minmax(min(100%,160px),1fr))] gap-2'}
+        style={fit ? { gridTemplateColumns: `repeat(${Math.min(fit.cols, ids.length)}, ${fit.width}px)` } : undefined}
+        onMouseLeave={() => onHover(null)}
+      >
+        {ids.map((id) => {
+          const taken = owner(id);
           return (
-            <div key={id} className={`flex flex-col gap-2 rounded-xl border bg-slate-900/80 p-2 ${takenBy ? 'opacity-50' : ''} ${takenBy === 'A' ? 'border-rose-500' : takenBy === 'D' ? 'border-sky-500' : 'border-slate-700'}`}>
-              <img src={`${import.meta.env.BASE_URL}trainers/${id}.jpg`} alt={`${tr.name} card`} className="w-full rounded-lg" />
-              <div className="text-xs text-slate-300"><b>Passive:</b> {tr.passive}</div>
-              <div className="text-xs text-slate-300"><b>Special:</b> {tr.special}</div>
-              {takenBy ? (
-                <span className={`chip self-start ${takenBy === 'A' ? 'bg-rose-500' : 'bg-sky-500'} text-white`}>{takenBy === 'A' ? 'Attacker' : 'Defender'}</span>
-              ) : mine && open.has(id) ? (
-                <button type="button" className="btn-primary" onClick={() => ctl.dispatch({ type: 'draftPick', cardId: id })}>Choose {tr.name}</button>
-              ) : null}
+            <div key={id} onMouseEnter={() => onHover(id)} className={`relative flex flex-col gap-1 rounded-lg ${taken ? 'opacity-35' : active ? '' : 'opacity-75'}`}>
+              <img src={trainerImg(id)} alt={`${getTrainer(id).name} card`} title={`${getTrainer(id).passive} · Special: ${getTrainer(id).special}`} className="block aspect-[204/265] w-full rounded-lg bg-slate-800 object-cover shadow-md shadow-black/40" />
+              <div className="flex h-[22px] items-center justify-end gap-1 overflow-hidden">
+                {pickable.has(id) && (
+                  <button type="button" className="chip shrink-0 bg-amber-400 px-2 py-1 normal-case text-slate-950 hover:bg-amber-300" onClick={() => onPick(id)}>
+                    Choose
+                  </button>
+                )}
+              </div>
+              {taken && (
+                <span className={`absolute -top-2 right-2 chip ${taken === 'A' ? 'bg-rose-500' : 'bg-sky-500'} text-white shadow`}>
+                  {taken === 'A' ? 'Attacker' : 'Defender'}
+                </span>
+              )}
             </div>
           );
         })}
@@ -366,4 +400,3 @@ function TrainerPick({ ctl, turn, mine }: { ctl: Controller; turn: Side; mine: b
     </div>
   );
 }
-

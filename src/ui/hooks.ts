@@ -44,13 +44,18 @@ export function useBoxSize(el: HTMLElement | null): { w: number; h: number } {
   return box;
 }
 
-export function useFitGrid(el: HTMLElement | null, n: number, opts: { aspect: number; gap: number; extra?: number }): FitGrid {
+/**
+ * The column count and card width that fit `n` cards (plus `below` more in rows of their own
+ * underneath, at the same size) into `el`, as large as possible.
+ */
+export function useFitGrid(el: HTMLElement | null, n: number, opts: { aspect: number; gap: number; extra?: number; below?: number }): FitGrid {
   const box = useBoxSize(el);
   const extra = opts.extra ?? 0;
+  const below = opts.below ?? 0;
   let best: FitGrid = { cols: 1, width: 0 };
   if (box.w > 0 && box.h > 0 && n > 0) {
-    for (let cols = 1; cols <= n; cols++) {
-      const rows = Math.ceil(n / cols);
+    for (let cols = 1; cols <= Math.max(n, below); cols++) {
+      const rows = Math.ceil(n / cols) + Math.ceil(below / cols);
       const byW = (box.w - (cols - 1) * opts.gap) / cols;
       const byH = ((box.h - (rows - 1) * opts.gap) / rows - extra) / opts.aspect;
       const width = Math.floor(Math.min(byW, byH));

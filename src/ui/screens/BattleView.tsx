@@ -11,6 +11,7 @@ import { MiniGrid } from '../components/CardView';
 import { MatchupMatrix, TypeChartModal } from '../components/Matchups';
 import { LogPanel } from '../components/Panels';
 import { TeamCards } from '../components/TeamCards';
+import { TrainerZoom, trainerImg } from '../components/Trainers';
 import type { Controller } from '../controller';
 import { useBoxSize, usePortraitBoard, useTouch, useWideLayout } from '../hooks';
 
@@ -955,7 +956,7 @@ function TrainerStrip({ ctl, aiming, onSpecial, onCancel }: {
         return (
           <div key={side} className={`flex items-center gap-2 rounded-lg border px-2 py-1 ${side === 'A' ? 'border-rose-500/40' : 'border-sky-500/40'} bg-slate-900/80`}>
             <button type="button" className="shrink-0" onMouseEnter={() => setZoom(id)} onMouseLeave={() => setZoom(null)} onClick={() => setZoom(zoom === id ? null : id)} title={`${t.name}: ${t.passive}`}>
-              <img src={`${import.meta.env.BASE_URL}trainers/${id}.jpg`} alt={`${t.name} card`} className="h-9 w-7 rounded object-cover object-top" />
+              <img src={trainerImg(id)} alt={`${t.name} card`} className="h-9 w-7 rounded object-cover object-top" />
             </button>
             <div className="min-w-0 text-xs leading-tight">
               <div className={`font-bold ${SIDE_TEXT[side]}`}>{t.name}</div>
@@ -982,15 +983,7 @@ function TrainerStrip({ ctl, aiming, onSpecial, onCancel }: {
           </div>
         );
       })}
-      {zoom && (
-        <div className="pointer-events-none fixed left-1/2 top-1/2 z-50 w-64 -translate-x-1/2 -translate-y-1/2 space-y-2">
-          <img src={`${import.meta.env.BASE_URL}trainers/${zoom}.jpg`} alt="" className="w-full rounded-lg shadow-2xl ring-2 ring-white/20" />
-          <div className="rounded-lg bg-slate-950/95 p-2 text-xs text-slate-200 ring-1 ring-white/10">
-            <div><b>Passive:</b> {getTrainer(zoom).passive}</div>
-            <div className="mt-1"><b>Special (once per game):</b> {getTrainer(zoom).special}</div>
-          </div>
-        </div>
-      )}
+      {zoom && <TrainerZoom id={zoom} />}
     </div>
   );
 }
