@@ -47,6 +47,20 @@ const ICE_ROWS = [
 
 ];
 
+const VOLCANO_ROWS = [
+  '..=.............',
+  '..m.............',
+  '..m.....mmm.mm..',
+  '###..##mmmm.mm##',
+  '..m........t....',
+  '..=....mmmm.mm..',
+  '###..##mmmm.mm##',
+  '..=....mmmm.mm..',
+  '..m.............',
+  '..m.............',
+
+];
+
 const CHAR_TERRAIN: Record<string, Terrain> = {
   '.': 'normal',
   w: 'water',
@@ -79,6 +93,7 @@ function parseRows(rows: string[]): { tiles: Terrain[][]; trebuchets: Pos[] } {
 const meadow = parseRows(MEADOW_ROWS);
 const river = parseRows(RIVER_ROWS);
 const ice = parseRows(ICE_ROWS);
+const volcano = parseRows(VOLCANO_ROWS);
 
 export const MAPS: Record<string, MapDef> = {
   meadow: {
@@ -127,6 +142,19 @@ export const MAPS: Record<string, MapDef> = {
     spawns: {
       D: [{ x: 4, y: 0 }, { x: 6, y: 0 }, { x: 11, y: 0 }, { x: 13, y: 0 }],
       A: [{ x: 4, y: 11 }, { x: 7, y: 11 }, { x: 10, y: 11 }, { x: 14, y: 11 }],
+    },
+  },
+  volcano: {
+    id: 'volcano',
+    name: 'Ignis',
+    theme: 'volcano',
+    width: VOLCANO_ROWS[0].length,
+    height: VOLCANO_ROWS.length,
+    tiles: volcano.tiles,
+    trebuchets: volcano.trebuchets,
+    spawns: {
+      D: [{ x: 3, y: 0 }, { x: 5, y: 0 }, { x: 8, y: 0 }, { x: 11, y: 0 }],
+      A: [{ x: 4, y: 9 }, { x: 6, y: 9 }, { x: 9, y: 9 }, { x: 11, y: 9 }],
     },
   },
 };

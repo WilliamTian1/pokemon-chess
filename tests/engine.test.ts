@@ -115,6 +115,13 @@ describe('damage pipeline', () => {
 });
 
 describe('movement', () => {
+  it('only lets Fire types and fliers stand on magma', () => {
+    const s = setup(['charizard', 'tauros', 'blastoise'], []);
+    expect(canStand(unit(s, 'A0'), 'magma')).toBe(true);
+    expect(canStand(unit(s, 'A1'), 'magma')).toBe(false);
+    expect(canStand(unit(s, 'A2'), 'magma')).toBe(false);
+  });
+
   it('slides across ice to clear ground and stops at a Pokémon blocking the slide', () => {
     const s = setup(['tauros'], [], {
       A0: { x: 4, y: 6 }, A1: null, A2: null, A3: null,
@@ -125,6 +132,22 @@ describe('movement', () => {
       iceStopped: true,
       cost: 1,
       path: [{ x: 5, y: 6 }, { x: 6, y: 6 }, { x: 7, y: 6 }, { x: 8, y: 6 }, { x: 9, y: 6 }, { x: 10, y: 6 }, { x: 11, y: 6 }],
+    });
+
+    describe('magma', () => {
+      it('activates Solar Power for an attack from magma', () => {
+        const tile = MAPS.meadow.tiles[6][6];
+        MAPS.meadow.tiles[6][6] = 'magma';
+        try {
+          const s = setup(['charizard'], ['snorlax'], {
+            A0: { x: 6, y: 6 }, A1: null, A2: null, A3: null,
+            D0: { x: 6, y: 5 }, D1: null, D2: null, D3: null,
+          });
+          expect(previewAction(s, 'A0', 0, { dir: 'N' })[0].min).toBe(90);
+        } finally {
+          MAPS.meadow.tiles[6][6] = tile;
+        }
+      });
     });
     expect(reach.has('8,6')).toBe(false);
 
@@ -154,6 +177,18 @@ describe('movement', () => {
     const finished = act(attacked, { type: 'postMove', unitId: 'A0', to: { x: 12, y: 6 } });
     expect(unit(finished, 'A0').pos).toEqual({ x: 12, y: 6 });
     expect(finished.active).toBeNull();
+  });
+
+  it('lets Ice-type Pokémon cross ice normally', () => {
+    const s = setup(['dewgong'], [], {
+      A0: { x: 4, y: 6 }, A1: null, A2: null, A3: null,
+      D0: null, D1: null, D2: null, D3: null,
+    }, { mapId: 'ice' });
+    expect(reachable(s, unit(s, 'A0'), 3).get('5,6')).toMatchObject({
+      cost: 1,
+      path: [{ x: 5, y: 6 }],
+    });
+    expect(reachable(s, unit(s, 'A0'), 3).get('5,6')?.iceStopped).toBeUndefined();
   });
 
   it('only lets water types and fliers onto water', () => {

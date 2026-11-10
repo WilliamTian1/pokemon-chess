@@ -125,7 +125,10 @@ function tryGenerate(rng: Rng, id: string, plain = false): MapDef | null {
     }
   }
 
-  const map: MapDef = { id, name: `Random field ${id.slice(PROC_PREFIX.length)}`, width, height, tiles, trebuchets, spawns };
+  const map: MapDef = {
+    id, name: `Random field ${id.slice(PROC_PREFIX.length)}`, width, height, tiles, trebuchets, spawns,
+    ...(tiles.some((row) => row.includes('magma')) ? { theme: 'volcano' } : {}),
+  };
   return linked(map) ? map : null;
 }
 

@@ -14,6 +14,7 @@
   --tile-bridge: #a0703f;
   --tile-water: #3f97d6;
   --tile-water-2: #4ea6e3;
+  --tile-magma: #e3471b;
 
   /* Page context: dark lacquer, cream text (Tailwind's slate and light accents read these). */
   --slate-50: 255 251 240;
@@ -281,6 +282,34 @@ input[type='range'] {
     radial-gradient(ellipse 12% 8% at 80% 80%, rgba(255, 255, 255, 0.72), transparent 70%),
     radial-gradient(circle at 70% 30%, rgba(255, 255, 255, 0.75), transparent 55%),
     linear-gradient(160deg, #eaf5f8, #d1e2e8);
+}
+.map-volcano .tile-normal {
+  background:
+    radial-gradient(circle at 22% 30%, rgba(35, 25, 20, 0.24) 0 5%, transparent 6%),
+    radial-gradient(circle at 70% 62%, rgba(35, 25, 20, 0.2) 0 4%, transparent 5%),
+    radial-gradient(ellipse at 50% 50%, rgba(210, 170, 125, 0.1), transparent 70%),
+    linear-gradient(160deg, #76604d, #62503f);
+}
+.map-volcano .tile-normal.alt {
+  background:
+    radial-gradient(circle at 65% 28%, rgba(35, 25, 20, 0.24) 0 5%, transparent 6%),
+    radial-gradient(circle at 26% 68%, rgba(35, 25, 20, 0.2) 0 4%, transparent 5%),
+    radial-gradient(ellipse at 50% 50%, rgba(210, 170, 125, 0.1), transparent 70%),
+    linear-gradient(160deg, #6e5948, #594939);
+}
+.tile-magma {
+  background:
+    linear-gradient(32deg, transparent 0 43%, rgba(255, 190, 75, 0.9) 44% 47%, transparent 48% 100%),
+    linear-gradient(146deg, transparent 0 60%, rgba(255, 110, 30, 0.85) 61% 64%, transparent 65% 100%),
+    radial-gradient(ellipse at 25% 35%, rgba(255, 174, 45, 0.95), transparent 35%),
+    radial-gradient(ellipse at 76% 68%, rgba(255, 82, 20, 0.9), transparent 42%),
+    linear-gradient(155deg, #a51f12, var(--tile-magma) 55%, #c12a13);
+  background-size: 140% 140%, 140% 140%, 100% 100%, 100% 100%, 100% 100%;
+  animation: magmaPulse 3s ease-in-out infinite alternate;
+}
+@keyframes magmaPulse {
+  from { background-position: 0 0, 0 0, 0 0, 0 0, 0 0; filter: brightness(0.9); }
+  to { background-position: 6% 3%, -5% -3%, 0 0, 0 0, 0 0; filter: brightness(1.12); }
 }
 .ice-glide {
   animation: iceGlide 180ms ease-out infinite alternate;

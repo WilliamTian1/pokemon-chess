@@ -249,6 +249,7 @@ export function reachable(s: GameState, u: Unit, budget: number, from?: Pos): Ma
   const B = Math.floor(budget * 2);
   const ghost = isGhost(u);
   const flier = isFlier(u);
+  const ignoresIce = flier || hasType(u, 'Ice');
   const wave = abilityOf(u) === 'waveRider';
   const W = m.width;
   const L = B + 1;
@@ -275,7 +276,7 @@ export function reachable(s: GameState, u: Unit, budget: number, from?: Pos): Ma
         const t = m.tiles[np.y][np.x];
         if (!canPass(u, t)) continue;
         const occ = unitAt(s, np);
-        if (t === 'ice' && !flier && occ) continue;
+        if (t === 'ice' && !ignoresIce && occ) continue;
         if (occ && occ.id !== u.id && occ.side !== u.side && !ghost) continue;
         if (substituteAt(s, np) && !ghost) continue;
         const nc = c + (wave && t === 'water' ? 1 : 2);
@@ -284,7 +285,7 @@ export function reachable(s: GameState, u: Unit, budget: number, from?: Pos): Ma
         let end = np;
         let iceStopped = false;
         let nh = haz + (!flier && hazardAt(s, np) ? 1 : 0);
-        if (t === 'ice' && !flier) {
+        if (t === 'ice' && !ignoresIce) {
           iceStopped = true;
           while (true) {
             const next = { x: end.x + d.x, y: end.y + d.y };

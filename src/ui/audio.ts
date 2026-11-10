@@ -389,15 +389,15 @@ export function speakTrainer(trainer: string): void {
 // ---------------------------------------------------------------- music
 
 /**
- * Battle music is per map: `battle` (Trebuchet Meadow), `battleRiver` (Winding River), and `battleIce`
- * (Nixtorm); `climax` takes over for the final round or when a side is down to its last Pokémon.
+ * Battle music is per map: `battle` (Trebuchet Meadow), `battleRiver` (Winding River), `battleIce`
+ * (Nixtorm), and `battleFire` (Ignis); `climax` takes over for the final round or when a side is down to its last Pokémon.
  */
-export type Track = 'menu' | 'draft' | 'lab' | 'battle' | 'battleRiver' | 'battleIce' | 'climax' | 'victory' | 'defeat';
+export type Track = 'menu' | 'draft' | 'lab' | 'battle' | 'battleRiver' | 'battleIce' | 'battleFire' | 'climax' | 'victory' | 'defeat';
 
 type SongId = 'menu' | 'draft' | 'battle' | 'battleRiver' | 'victory' | 'defeat';
 /** The chiptune song for each track (the chiptune soundtrack has no Lab or climax songs of its own). */
 const CHIPTUNE: Record<Track, SongId> = {
-  menu: 'menu', draft: 'draft', lab: 'menu', battle: 'battle', battleRiver: 'battleRiver', battleIce: 'battle', climax: 'battle', victory: 'victory', defeat: 'defeat',
+  menu: 'menu', draft: 'draft', lab: 'menu', battle: 'battle', battleRiver: 'battleRiver', battleIce: 'battle', battleFire: 'battle', climax: 'battle', victory: 'victory', defeat: 'defeat',
 };
 
 interface Song {
@@ -507,6 +507,7 @@ const CONQUEST: Record<Track, { intro?: JingleId; loop: TrackId }> = {
   battle: { loop: 'battle' },
   battleRiver: { loop: 'battleRiver' },
   battleIce: { loop: 'battleIce' },
+  battleFire: { loop: 'battleFire' },
   climax: { loop: 'climax' },
   victory: { intro: 'jingleWin', loop: 'resultsWin' },
   defeat: { intro: 'jingleLose', loop: 'resultsLose' },

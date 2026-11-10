@@ -180,7 +180,7 @@ export interface CardDef {
 export interface MapDef {
   id: string;
   name: string;
-  theme?: 'snow';
+  theme?: 'snow' | 'volcano';
   width: number;
   height: number;
   tiles: Terrain[][];

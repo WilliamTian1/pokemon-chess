@@ -42,7 +42,7 @@ interface Props {
 const TERRAIN_LABEL: Record<Terrain, string> = {
   normal: 'Grass', dirt: 'Dirt path', grass: 'Grass bridge', bridge: 'Bridge — ordinary ground', water: 'Water — only Water, Flying and Levitate Pokémon',
   flower: 'Flowers — +30 HP at the end of a Pokémon’s activation (not Flying or Levitate)', bush: 'Berry bush — takes 30 less damage (not Flying or Levitate)',
-  wall: 'Wall', magma: 'Magma', ice: 'Ice — Pokémon slide when they enter (except Flying and Levitate)', pit: 'Pit',
+  wall: 'Wall', magma: 'Magma — only Fire, Flying and Levitate Pokémon can enter', ice: 'Ice — Pokémon slide when they enter (except Ice types, Flying and Levitate)', pit: 'Pit',
 };
 
 /**
@@ -276,7 +276,7 @@ function BoardImpl({ state, view, overlay, previews, selectedId, hoverId, events
 
   return (
     <div
-      className={`board-frame relative mx-auto w-full select-none overflow-hidden rounded-lg ${map.theme === 'snow' ? 'map-snow' : ''}`}
+      className={`board-frame relative mx-auto w-full select-none overflow-hidden rounded-lg ${map.theme ? `map-${map.theme}` : ''}`}
       style={{ aspectRatio: `${cols} / ${rows}` }}
       onMouseLeave={() => onHover(null)}
     >

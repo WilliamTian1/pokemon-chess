@@ -25,8 +25,13 @@ Players choose a map before each match (online, the host chooses). Both maps are
 
 ### Nixtorm
 
-- Ordinary ground is snow-colored. Ice tiles are slick: when a non-Flying, non-Levitate Pokémon enters ice, it slides in that direction until it leaves the ice, hits an obstacle, or reaches the board edge.
+- Ordinary ground is snow-colored. Ice tiles are slick: when a Pokémon that is not Ice-type, Flying-type, or protected by Levitate enters ice, it slides in that direction until it leaves the ice, hits an obstacle, or reaches the board edge.
 - The entire slide costs one movement point and ends that move, but the Pokémon may still attack. Any post-attack movement (including Run Away) works normally.
+
+### Volcano terrain
+
+- Volcano-themed fields use dull-brown ordinary ground and red-orange magma.
+- Magma is impassable except to Fire- and Flying-type Pokémon and Pokémon with Levitate. Solar Power adds 30 damage when its holder attacks while standing on magma.
 
 ## Card grids
 

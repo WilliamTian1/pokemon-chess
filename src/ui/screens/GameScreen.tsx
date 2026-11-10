@@ -31,7 +31,7 @@ export function GameScreen({ ctl: raw, onExit, title }: { ctl: Controller; onExi
   const won = s.phase === 'over' && (ctl.mySides.length !== 1 || ctl.mySides[0] === s.winner);
   // The boss theme takes over for the final round, or once either side is down to its last Pokémon.
   const climax = s.phase === 'battle' && (s.round >= s.maxRounds || (['A', 'D'] as const).some((side) => liveUnits(s, side).length === 1));
-  useMusic(s.phase === 'draft' ? 'draft' : s.phase === 'over' ? (won ? 'victory' : 'defeat') : climax ? 'climax' : s.mapId === 'river' ? 'battleRiver' : s.mapId === 'ice' ? 'battleIce' : 'battle');
+  useMusic(s.phase === 'draft' ? 'draft' : s.phase === 'over' ? (won ? 'victory' : 'defeat') : climax ? 'climax' : s.mapId === 'river' ? 'battleRiver' : s.mapId === 'ice' ? 'battleIce' : s.mapId === 'volcano' ? 'battleFire' : 'battle');
   useEffect(() => {
     if (s.phase === 'over') sfx(won ? 'victory' : 'defeat');
   }, [s.phase === 'over']); // eslint-disable-line react-hooks/exhaustive-deps

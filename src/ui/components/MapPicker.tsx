@@ -47,7 +47,7 @@ const MAP_BLURB: Record<string, string> = {
 
 const TILE: Record<Terrain, string> = {
   normal: 'var(--tile-normal)', dirt: 'var(--tile-dirt)', grass: 'var(--tile-grass)', bridge: 'var(--tile-bridge)', water: 'var(--tile-water)',
-  flower: 'var(--tile-normal)', bush: 'var(--tile-normal)', wall: '#57534e', magma: '#c2410c', ice: '#bae6fd', pit: '#1c1917',
+  flower: 'var(--tile-normal)', bush: 'var(--tile-normal)', wall: '#57534e', magma: 'var(--tile-magma)', ice: '#bae6fd', pit: '#1c1917',
 };
 
 const MAP_KEY = 'pcc-map';
@@ -178,7 +178,7 @@ export function MapPreview({ map, className = '' }: { map: MapDef; className?: s
   const BASE: Partial<Record<Terrain, string>> = { flower: 'normal', bush: 'normal' };
   return (
     <div
-      className={`map-mini grid overflow-hidden ${map.theme === 'snow' ? 'map-snow' : ''} ${className}`}
+      className={`map-mini grid overflow-hidden ${map.theme ? `map-${map.theme}` : ''} ${className}`}
       style={{ gridTemplateColumns: `repeat(${map.width}, 1fr)`, aspectRatio: `${map.width} / ${map.height}` }}
       aria-hidden="true"
     >
@@ -187,7 +187,7 @@ export function MapPreview({ map, className = '' }: { map: MapDef; className?: s
           const sp = spawn(x, y);
           const treb = map.trebuchets.some((p) => p.x === x && p.y === y);
           const base = BASE[t] ?? t;
-          const painted = ['normal', 'dirt', 'grass', 'bridge', 'water', 'ice'].includes(base);
+          const painted = ['normal', 'dirt', 'grass', 'bridge', 'water', 'ice', 'magma'].includes(base);
           return (
             <div
               key={`${x},${y}`}
