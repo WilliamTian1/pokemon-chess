@@ -43,6 +43,10 @@ describe('map', () => {
       for (const p of m.spawns[side]) expect(m.tiles[p.y][p.x]).toBe('normal');
     }
   });
+  it('marks Nixtorm as a snow map with ice terrain', () => {
+    expect(MAPS.ice.theme).toBe('snow');
+    expect(MAPS.ice.tiles.flat().some((t) => t === 'ice')).toBe(true);
+  });
 });
 
 describe('type chart', () => {
@@ -111,6 +115,47 @@ describe('damage pipeline', () => {
 });
 
 describe('movement', () => {
+  it('slides across ice to clear ground and stops at a Pokémon blocking the slide', () => {
+    const s = setup(['tauros'], [], {
+      A0: { x: 4, y: 6 }, A1: null, A2: null, A3: null,
+      D0: null, D1: null, D2: null, D3: null,
+    }, { mapId: 'ice' });
+    const reach = reachable(s, unit(s, 'A0'), 3);
+    expect(reach.get('11,6')).toMatchObject({
+      iceStopped: true,
+      cost: 1,
+      path: [{ x: 5, y: 6 }, { x: 6, y: 6 }, { x: 7, y: 6 }, { x: 8, y: 6 }, { x: 9, y: 6 }, { x: 10, y: 6 }, { x: 11, y: 6 }],
+    });
+    expect(reach.has('8,6')).toBe(false);
+
+    unit(s, 'D0').fainted = false;
+    unit(s, 'D0').hp = unit(s, 'D0').maxHp;
+    unit(s, 'D0').pos = { x: 8, y: 6 };
+    const blocked = reachable(s, unit(s, 'A0'), 3);
+    expect(blocked.get('7,6')?.iceStopped).toBe(true);
+    expect(blocked.has('8,6')).toBe(false);
+  });
+
+  it('lets Flying Pokémon cross ice normally and preserves Run Away after attacking from an ice slide', () => {
+    const flier = setup(['charizard'], [], {
+      A0: { x: 4, y: 6 }, A1: null, A2: null, A3: null, D0: null, D1: null, D2: null, D3: null,
+    }, { mapId: 'ice' });
+    expect(reachable(flier, unit(flier, 'A0'), 3).get('7,6')?.iceStopped).toBeUndefined();
+
+    const s = setup(['furret'], ['snorlax'], {
+      A0: { x: 4, y: 6 }, A1: null, A2: null, A3: null,
+      D0: { x: 11, y: 5 }, D1: null, D2: null, D3: null,
+    }, { mapId: 'ice' });
+    const moved = act(s, { type: 'move', unitId: 'A0', to: { x: 11, y: 6 } });
+    expect(unit(moved, 'A0').pos).toEqual({ x: 11, y: 6 });
+    expect(moved.active?.moveCost).toBe(1);
+    const attacked = act(moved, { type: 'useMove', unitId: 'A0', moveIndex: 0, dir: 'N' });
+    expect(attacked.active).toMatchObject({ stage: 'acted', postMove: 2 });
+    const finished = act(attacked, { type: 'postMove', unitId: 'A0', to: { x: 12, y: 6 } });
+    expect(unit(finished, 'A0').pos).toEqual({ x: 12, y: 6 });
+    expect(finished.active).toBeNull();
+  });
+
   it('only lets water types and fliers onto water', () => {
     const s = setup(['venusaur', 'blastoise', 'charizard'], []);
     const t = { x: 1, y: 3 } as const;

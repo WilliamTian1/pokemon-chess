@@ -29,6 +29,10 @@
     "loopEnd": 110.93635,
     "gain": 0.88
   },
+  "battleIce": {
+    "file": "battleIce.mp3",
+    "gain": 0.88
+  },
   "climax": {
     "file": "climax.mp3",
     "loopStart": 12.00635,

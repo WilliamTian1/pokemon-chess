@@ -389,15 +389,15 @@ export function speakTrainer(trainer: string): void {
 // ---------------------------------------------------------------- music
 
 /**
- * Battle music is per map: `battle` (Trebuchet Meadow) and `battleRiver` (Winding River); `climax` takes
- * over for the final round or when a side is down to its last Pokémon.
+ * Battle music is per map: `battle` (Trebuchet Meadow), `battleRiver` (Winding River), and `battleIce`
+ * (Nixtorm); `climax` takes over for the final round or when a side is down to its last Pokémon.
  */
-export type Track = 'menu' | 'draft' | 'lab' | 'battle' | 'battleRiver' | 'climax' | 'victory' | 'defeat';
+export type Track = 'menu' | 'draft' | 'lab' | 'battle' | 'battleRiver' | 'battleIce' | 'climax' | 'victory' | 'defeat';
 
 type SongId = 'menu' | 'draft' | 'battle' | 'battleRiver' | 'victory' | 'defeat';
 /** The chiptune song for each track (the chiptune soundtrack has no Lab or climax songs of its own). */
 const CHIPTUNE: Record<Track, SongId> = {
-  menu: 'menu', draft: 'draft', lab: 'menu', battle: 'battle', battleRiver: 'battleRiver', climax: 'battle', victory: 'victory', defeat: 'defeat',
+  menu: 'menu', draft: 'draft', lab: 'menu', battle: 'battle', battleRiver: 'battleRiver', battleIce: 'battle', climax: 'battle', victory: 'victory', defeat: 'defeat',
 };
 
 interface Song {
@@ -506,6 +506,7 @@ const CONQUEST: Record<Track, { intro?: JingleId; loop: TrackId }> = {
   lab: { loop: 'lab' },
   battle: { loop: 'battle' },
   battleRiver: { loop: 'battleRiver' },
+  battleIce: { loop: 'battleIce' },
   climax: { loop: 'climax' },
   victory: { intro: 'jingleWin', loop: 'resultsWin' },
   defeat: { intro: 'jingleLose', loop: 'resultsLose' },
@@ -561,10 +562,10 @@ function startRecorded(c: AudioContext, out: AudioNode, spec: { intro?: JingleId
   const play = (b: AudioBuffer, info: TrackInfo, when: number, loop: boolean) => {
     const src = c.createBufferSource();
     src.buffer = b;
-    if (loop && info.loopEnd !== undefined) {
+    if (loop) {
       src.loop = true;
       src.loopStart = info.loopStart ?? 0;
-      src.loopEnd = info.loopEnd;
+      src.loopEnd = info.loopEnd ?? b.duration;
     }
     const g = c.createGain();
     g.gain.value = info.gain;

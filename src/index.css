@@ -252,6 +252,44 @@ input[type='range'] {
   background-size: 100% 100%, 100% 100%, 100% 100%, 100% 100%, 100% 100%;
   animation: waterShimmer 4s ease-in-out infinite alternate;
 }
+.tile-ice {
+  background:
+    linear-gradient(34deg, transparent 0 42%, rgba(255, 255, 255, 0.62) 43% 44%, transparent 45% 100%),
+    linear-gradient(146deg, transparent 0 60%, rgba(90, 150, 185, 0.28) 61% 62%, transparent 63% 100%),
+    radial-gradient(ellipse 42% 18% at 25% 28%, rgba(255, 255, 255, 0.62), transparent 75%),
+    radial-gradient(ellipse 34% 14% at 78% 72%, rgba(255, 255, 255, 0.45), transparent 75%),
+    linear-gradient(155deg, #e6fbff, #9bd9ef 62%, #75bfdc);
+  background-size: 140% 140%, 140% 140%, 100% 100%, 100% 100%, 100% 100%;
+  animation: iceShimmer 5s ease-in-out infinite alternate;
+}
+@keyframes iceShimmer {
+  from { background-position: 0 0, 0 0, 0 0, 0 0, 0 0; }
+  to { background-position: 10% 5%, -8% -4%, 0 0, 0 0, 0 0; }
+}
+.map-snow .tile-normal {
+  background:
+    radial-gradient(ellipse 18% 12% at 24% 30%, rgba(102, 137, 151, 0.22), transparent 70%),
+    radial-gradient(ellipse 16% 10% at 70% 64%, rgba(102, 137, 151, 0.18), transparent 70%),
+    radial-gradient(ellipse 12% 8% at 46% 82%, rgba(255, 255, 255, 0.72), transparent 70%),
+    radial-gradient(circle at 30% 25%, rgba(255, 255, 255, 0.75), transparent 55%),
+    linear-gradient(160deg, #f8fdff, #dcebf0);
+}
+.map-snow .tile-normal.alt {
+  background:
+    radial-gradient(ellipse 18% 12% at 66% 28%, rgba(102, 137, 151, 0.22), transparent 70%),
+    radial-gradient(ellipse 16% 10% at 28% 70%, rgba(102, 137, 151, 0.18), transparent 70%),
+    radial-gradient(ellipse 12% 8% at 80% 80%, rgba(255, 255, 255, 0.72), transparent 70%),
+    radial-gradient(circle at 70% 30%, rgba(255, 255, 255, 0.75), transparent 55%),
+    linear-gradient(160deg, #eaf5f8, #d1e2e8);
+}
+.ice-glide {
+  animation: iceGlide 180ms ease-out infinite alternate;
+  filter: drop-shadow(0 0 7px rgba(207, 246, 255, 0.95));
+}
+@keyframes iceGlide {
+  from { transform: translateX(-3%) scale(1.02); }
+  to { transform: translateX(3%) scale(1.06); }
+}
 @keyframes waterShimmer {
   from {
     background-position: 0 0, 0 0, 0 0, 0 0, 0 0;

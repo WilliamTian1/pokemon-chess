@@ -14,9 +14,11 @@ export function scriptedRng(chances: boolean[] = [], dice: number[] = []): Rng {
 export const noLuck = (): Rng => scriptedRng();
 
 /** A battle-phase game with the given teams; units are then moved to `positions` (id → pos). */
-export function setup(teamA: string[], teamD: string[], positions: Record<string, Pos | null> = {}): GameState {
+export function setup(
+  teamA: string[], teamD: string[], positions: Record<string, Pos | null> = {}, opts: { mapId?: string } = {},
+): GameState {
   const used = new Set([...teamA, ...teamD]);
-  const s = quickGame(pad(teamA, used), pad(teamD, used), { rng: seededRng(1) });
+  const s = quickGame(pad(teamA, used), pad(teamD, used), { rng: seededRng(1), mapId: opts.mapId });
   for (const [id, pos] of Object.entries(positions)) {
     const u = getUnit(s, id);
     if (pos === null) {
