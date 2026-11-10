@@ -1,6 +1,6 @@
-# v1.5 rules interpretations
+# v1.5.1 rules interpretations
 
-The README spec, `Conquest Rules.pdf` and `Conquest Cards.pdf` leave some behaviour open. This page lists what v1.5 actually does, so the group can agree on (or change) each call. Each item names the card or rule so it is easy to find in `src/engine/`.
+The README spec, `Conquest Rules.pdf` and `Conquest Cards.pdf` leave some behaviour open. This page lists what v1.5.1 actually does, so the group can agree on (or change) each call. Each item names the card or rule so it is easy to find in `src/engine/`.
 
 ## Maps
 
@@ -169,7 +169,7 @@ Golurk, Pelipper, Ninetales, Aurorus, Crawdaunt, Swalot and Rampardos joined the
 - **Taunt:** during the opponent's next turn, a Pokémon that can hit one of its opponents with a damaging move from where it stands can't use status moves.
 - **Baton Pass:** switches places with an ally within 4 steps and swaps their stat changes.
 - **Transform (Ditto):** uses either move of any other Pokémon on the field as its own (not Transform or Metronome). Ditto prints one move; its second slot is empty.
-- **Metronome:** draws a random card that neither side drafted (any card whose moves aren't Transform or Metronome). The player picks one of its moves and how to aim it; if neither can hit anything, nothing happens.
+- **Metronome:** draws a random card that neither side drafted (any card whose moves aren't Transform or Metronome). The player must use one of its two moves and picks how to aim it. Unlike every other move, a Metronome move may be aimed where it hits nothing (so drawing Explosion can still cost the user its life if that is the move picked). Only when neither move can be used at all (single-target moves with nobody in range, a blocked charge) does nothing happen.
 - **Mortal Spin** also removes spikes and webs in its zone.
 - **Fury Cutter:** +10 power per round number.
 - **Unburden:** +1 Movement each time the Pokémon takes damage from an attack.

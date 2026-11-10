@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import type http from 'node:http';
 import type { Side } from '../src/engine/types';
 import type { AccountView, Profile, ProfileGame } from '../src/net/protocol';
+import { cleanName } from './names';
 import type { SavedGame, Store, User } from './store';
 
 /**
@@ -82,7 +83,8 @@ export class Accounts {
 
   /** A free username based on `base` (for new Google accounts). */
   private freeName(base: string): string {
-    const clean = base.replace(/[^A-Za-z0-9_-]/g, '').slice(0, 16) || 'Trainer';
+    const stripped = base.replace(/[^A-Za-z0-9_-]/g, '').slice(0, 16);
+    const clean = stripped && cleanName(stripped) ? stripped : 'Trainer';
     const root = clean.length >= 3 ? clean : `${clean}Trainer`.slice(0, 16);
     if (!this.store.userByName(root)) return root;
     for (let i = 2; i < 10_000; i++) if (!this.store.userByName(`${root}${i}`)) return `${root}${i}`;
@@ -221,6 +223,7 @@ export class Accounts {
         const username = String(body.username ?? '').trim();
         const password = String(body.password ?? '');
         if (!USERNAME_RE.test(username)) return fail(400, 'Usernames are 3–20 letters, digits, _ or -.'), true;
+        if (!cleanName(username)) return fail(400, 'That username isn’t allowed. Please pick another.'), true;
         if (password.length < 8) return fail(400, 'Passwords need at least 8 characters.'), true;
         if (this.store.userByName(username)) return fail(409, 'That username is taken.'), true;
         const u = this.createUser(username, { passHash: hashPassword(password) });
@@ -254,6 +257,7 @@ export class Accounts {
         if (!me) return fail(401, 'Sign in first.'), true;
         const username = String(body.username ?? '').trim();
         if (!USERNAME_RE.test(username)) return fail(400, 'Usernames are 3–20 letters, digits, _ or -.'), true;
+        if (!cleanName(username)) return fail(400, 'That username isn’t allowed. Please pick another.'), true;
         const taken = this.store.userByName(username);
         if (taken && taken.id !== me.id) return fail(409, 'That username is taken.'), true;
         const old = me.username;

@@ -24,11 +24,20 @@ Hidden information stays on the server: in a Secret draft each player is sent on
 | `DATABASE_URL` | **Needed for accounts on Render.** A Postgres connection string. Without it the server keeps accounts in `DATA_DIR/store.json`, which Render's free plan wipes on every deploy and restart. A free Postgres from [Neon](https://neon.tech) or Supabase works; the server creates its tables (`pcc_users`, `pcc_sessions`, `pcc_games`) itself. |
 | `GOOGLE_CLIENT_ID` | Turns on *Sign in with Google* (see below). Without it, only username/password sign-up is offered. |
 | `BOT_IDLE_GAMES` | Bot-vs-bot games run while the queue is empty (default 1; 0 = off). |
+| `KEEP_AWAKE` | On Render the server requests its own address every 5 minutes so it doesn't go to sleep and the bots keep playing each other (uses the free plan's 750 hours a month, enough for one service). `0` turns this off; it is also off when `BOT_IDLE_GAMES` is 0. On other hosts set `KEEP_AWAKE_URL` to the site's public address. |
 | `BOT_FILL_MS` | How long a ranked player waits before a bot takes the seat (default 10000). |
 | `BOT_THREADS` | Worker threads for bot moves (default 2). |
 | `DATA_DIR` | Where the local JSON store goes without a database (default `.data/`, git-ignored). |
 
-Render's free instances sleep after 15 minutes without visitors. Games in progress and the queue are lost when that happens, but accounts and finished games are safe in the database.
+Render's free instances sleep after 15 minutes without visitors, and every deploy, restart or wake-up starts from an empty disk. With `DATABASE_URL` set, accounts and finished games are safe in the database (only games in progress and the queue are lost). Without it, **every account and rating is deleted each time**.
+
+To check what the live server is using, open `/health`: it shows `"storage":"postgres"` or `"storage":"file"`.
+
+### Setting up the database (once, about 5 minutes)
+
+1. Create a free project at [neon.tech](https://neon.tech) and copy its connection string (`postgresql://…?sslmode=require`).
+2. In the Render dashboard: the service → **Environment** → add `DATABASE_URL` with that string → **Save, rebuild, and deploy**.
+3. Open `/health` and check that it says `"storage":"postgres"`. Accounts made from then on survive deploys.
 
 ## Setting up Sign in with Google
 

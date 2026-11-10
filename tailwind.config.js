@@ -39,7 +39,8 @@ export default {
       keyframes: {
         floatUp: {
           '0%': { opacity: '0', transform: 'translate(-50%, 0) scale(0.8)' },
-          '15%': { opacity: '1', transform: 'translate(-50%, -6px) scale(1.1)' },
+          '10%': { opacity: '1', transform: 'translate(-50%, -6px) scale(1.25)' },
+          '70%': { opacity: '1', transform: 'translate(-50%, -26px) scale(1)' },
           '100%': { opacity: '0', transform: 'translate(-50%, -38px) scale(1)' },
         },
         hitFlash: {
@@ -50,9 +51,18 @@ export default {
           '0%': { boxShadow: '0 0 0 0 rgba(250, 204, 21, 0.7)' },
           '100%': { boxShadow: '0 0 0 10px rgba(250, 204, 21, 0)' },
         },
+        // A used move's zone: two beats, then it lingers and fades.
         zoneFlash: {
-          '0%': { opacity: '0.85' },
-          '100%': { opacity: '0' },
+          '0%': { opacity: '0.9' }, '18%': { opacity: '0.4' }, '36%': { opacity: '0.85' }, '70%': { opacity: '0.55' }, '100%': { opacity: '0' },
+        },
+        // The name of the move just used, over its user; and the ring around that user.
+        moveCallout: {
+          '0%': { opacity: '0', transform: 'var(--shift) scale(0.6)' }, '10%': { opacity: '1', transform: 'var(--shift) scale(1.1)' },
+          '18%, 82%': { opacity: '1', transform: 'var(--shift) scale(1)' }, '100%': { opacity: '0', transform: 'var(--shift) scale(1)' },
+        },
+        userRing: {
+          '0%': { opacity: '0', transform: 'scale(1.5)' }, '15%': { opacity: '1', transform: 'scale(1)' },
+          '40%': { transform: 'scale(1.12)' }, '60%': { transform: 'scale(1)' }, '82%': { opacity: '1' }, '100%': { opacity: '0', transform: 'scale(1)' },
         },
         // A tag dropped onto a card: falls in from above its spot, keeping its tilt (--rot).
         tagDrop: {
@@ -104,8 +114,8 @@ export default {
         tauntPulse: { '0%, 100%': { opacity: '0' }, '25%, 60%': { opacity: '1' } },
         // New turn banner.
         turnSweep: {
-          '0%': { transform: 'translateX(-60vw) skewX(-12deg)', opacity: '0' }, '18%': { transform: 'translateX(0) skewX(-12deg)', opacity: '1' },
-          '78%': { transform: 'translateX(0) skewX(-12deg)', opacity: '1' }, '100%': { transform: 'translateX(60vw) skewX(-12deg)', opacity: '0' },
+          '0%': { transform: 'translateY(-140%)', opacity: '0' }, '18%': { transform: 'translateY(0)', opacity: '1' },
+          '80%': { transform: 'translateY(0)', opacity: '1' }, '100%': { transform: 'translateY(-140%)', opacity: '0' },
         },
         confetti: { '0%': { transform: 'translateY(0) rotate(0deg)' }, '100%': { transform: 'translateY(110vh) rotate(720deg)' } },
         // Draft → battle versus screen.
@@ -120,10 +130,12 @@ export default {
         boulderY: { '0%': { top: 'var(--y0)' }, '45%': { top: 'calc(min(var(--y0), var(--y1)) - 18%)' }, '100%': { top: 'var(--y1)' } },
       },
       animation: {
-        floatUp: 'floatUp 1.3s ease-out forwards',
+        floatUp: 'floatUp 2s ease-out forwards',
+        moveCallout: 'moveCallout 2.2s ease-out forwards',
+        userRing: 'userRing 2.2s ease-out forwards',
         hitFlash: 'hitFlash 0.45s ease-in-out',
         pulseRing: 'pulseRing 1.2s ease-out infinite',
-        zoneFlash: 'zoneFlash 0.9s ease-out forwards',
+        zoneFlash: 'zoneFlash 2s ease-out forwards',
         tagDrop: 'tagDrop 0.45s cubic-bezier(.2,.8,.3,1.2) both',
         tagBurst: 'tagBurst 1.3s ease-out forwards',
         cardHit: 'cardHit 0.7s ease-out forwards',
@@ -140,13 +152,13 @@ export default {
         sandDrift: 'sandDrift 1.2s linear infinite',
         screenSweep: 'screenSweep 1.2s ease-in-out 2',
         tauntPulse: 'tauntPulse 0.9s ease-out 2',
-        turnSweep: 'turnSweep 1.4s cubic-bezier(.2,.8,.3,1) forwards',
+        turnSweep: 'turnSweep 1s cubic-bezier(.2,.8,.3,1) forwards',
         confetti: 'confetti 3s linear infinite',
         fadeIn: 'fadeIn 0.4s ease-out forwards',
-        vsOut: 'vsOut 0.9s ease-in forwards',
-        vsLeft: 'vsLeft 0.7s cubic-bezier(.2,.8,.3,1) both',
-        vsRight: 'vsRight 0.7s cubic-bezier(.2,.8,.3,1) both',
-        countPop: 'countPop 0.8s ease-out both',
+        vsOut: 'vsOut 0.6s ease-in forwards',
+        vsLeft: 'vsLeft 0.4s cubic-bezier(.2,.8,.3,1) both',
+        vsRight: 'vsRight 0.4s cubic-bezier(.2,.8,.3,1) both',
+        countPop: 'countPop 0.5s ease-out both',
         poof: 'poof 0.7s ease-out forwards',
         boulderX: 'boulderX 0.55s linear forwards',
         boulderY: 'boulderY 0.55s ease-in-out forwards',

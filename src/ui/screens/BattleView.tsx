@@ -976,20 +976,20 @@ function PendingModal({ ctl, view }: { ctl: Controller; view: BoardView }) {
       const m = card.moves[Number(o.slice(0, cut))];
       const aim = parseAim(o.slice(cut + 1));
       const where = aim.dir ? dirLabel(aim.dir) : aim.targetId ? `at ${cardOf(s.units.find((x) => x.id === aim.targetId)!).name}` : '';
-      return { m, where, aim };
+      return { m, where, aim, empty: !targeting(s, u, m, aim).ok };
     };
     const hovered = hover ? label(hover) : null;
     const pv = hovered ? previewAction(s, u.id, 0, { ...hovered.aim, move: hovered.m }) : [];
     return (
       <Modal>
         <h3 className="font-display text-xl text-lacquer">Metronome drew {card.name}!</h3>
-        <p className="mb-3 text-sm text-slate-300">Choose one of {card.name}’s moves for {cardOf(u).name} to use, and how to aim it.</p>
+        <p className="mb-3 text-sm text-slate-300">{cardOf(u).name} must use one of {card.name}’s moves. Choose which, and how to aim it (it may be aimed at nothing).</p>
         <div className="grid grid-cols-2 gap-2">
           {p.options.map((o) => {
-            const { m, where } = label(o);
+            const { m, where, empty } = label(o);
             return (
               <button key={o} type="button" className="btn-ghost justify-start text-left" onMouseEnter={() => setHover(o)} onFocus={() => setHover(o)} onClick={() => choose(o)}>
-                <span className="font-semibold">{m.name}</span> <span className="text-xs text-slate-400">{where}</span>
+                <span className="font-semibold">{m.name}</span> <span className="text-xs text-slate-400">{where}{empty ? ' · hits nothing' : ''}</span>
               </button>
             );
           })}

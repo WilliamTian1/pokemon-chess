@@ -4,6 +4,7 @@ import http from 'node:http';
 import path from 'node:path';
 import { type WebSocket, WebSocketServer } from 'ws';
 import type { Difficulty } from '../src/ai/bot';
+import { BOT_TURN_START_MS, botPause } from '../src/ai/pace';
 import {
   type Action, DEFAULT_MAP_ID, type DraftStyle, type GameEvent, type GameState, MAPS, MAP_LIST, type Rng, RuleError, type Side,
   applyAction, decider, deciders, hiddenView, isSimultaneous, newGame, randomSeed, seededRng,
@@ -14,6 +15,7 @@ import {
 } from '../src/net/protocol';
 import { Accounts, accountView } from './accounts';
 import { BotPool } from './botPool';
+import { cleanName } from './names';
 import { Store, type User } from './store';
 
 const PORT = Number(process.env.PORT ?? process.env.SERVER_PORT ?? 8787);
@@ -24,6 +26,13 @@ const BOT_FILL_MS = Number(process.env.BOT_FILL_MS ?? 10_000);
 /** Bot-vs-bot ranked games played while nobody is waiting (0 turns them off). */
 const BOT_IDLE_GAMES = Number(process.env.BOT_IDLE_GAMES ?? 1);
 const BOT_STEP_MS = 450;
+/**
+ * Hosts like Render's free plan put the server to sleep after 15 minutes without a web request, which
+ * also stops the bots' games. While idle bot games are on, the server requests its own public address
+ * every few minutes to stay awake (KEEP_AWAKE=0 turns that off; KEEP_AWAKE_URL overrides the address).
+ */
+const KEEP_AWAKE_URL = process.env.KEEP_AWAKE === '0' || BOT_IDLE_GAMES <= 0 ? '' : process.env.KEEP_AWAKE_URL ?? process.env.RENDER_EXTERNAL_URL ?? '';
+const KEEP_AWAKE_MS = 5 * 60 * 1000;
 
 // ---------------------------------------------------------------- private draft lab
 // The draft analysis page is for the owner only. Set LAB_KEY on the host, then open
@@ -331,7 +340,10 @@ function scheduleBots(room: Room): void {
 
 function runBot(room: Room, side: Side, level: Difficulty): void {
   room.botBusy[side] = true;
-  const seq = room.game!.seq;
+  const g = room.game!;
+  const seq = g.seq;
+  // Its first action of a battle turn waits for the players' new-turn notice; later ones for the last step's effects.
+  const turnStart = g.phase === 'battle' && !g.active && !g.pending.length && !g.units.some((u) => u.side === side && u.activated);
   setTimeout(() => {
     // The bot sees what a player in its seat would: nothing hidden.
     void botPool().decide(hiddenView(room.game!, side), side, level, room.idle ? 1 : 0).then(async (actions) => {
@@ -344,7 +356,8 @@ function runBot(room: Room, side: Side, level: Difficulty): void {
       }
       for (const [i, a] of actions.entries()) {
         if (room.closed || gameOver(room) || !deciders(room.game!).includes(side)) break;
-        if (i > 0) await new Promise((r) => setTimeout(r, BOT_STEP_MS));
+        // Against a person, each step stays on screen long enough to follow.
+        if (i > 0) await new Promise((r) => setTimeout(r, room.idle || room.game!.phase !== 'battle' ? BOT_STEP_MS : botPause(room.events)));
         room.botBusy[side] = true;
         const err = applyRoomAction(room, a, side);
         room.botBusy[side] = false;
@@ -356,7 +369,7 @@ function runBot(room: Room, side: Side, level: Difficulty): void {
       room.botBusy[side] = false;
       if (!room.closed && room.game && room.game.phase !== 'over') applyRoomAction(room, { type: 'concede', side }, side);
     });
-  }, room.idle ? 200 : 600);
+  }, room.idle ? 200 : turnStart ? BOT_TURN_START_MS : g.phase === 'battle' ? Math.max(600, botPause(room.events)) : 600);
 }
 
 // ---------------------------------------------------------------- ranked matchmaking
@@ -428,7 +441,10 @@ function idleBots(): void {
   const humanBotGames = [...rooms.values()].filter((r) => !r.idle && Object.keys(r.bots).length && r.game?.phase !== 'over').length;
   if (running >= BOT_IDLE_GAMES || humanBotGames > 0 || (bots && !bots.idle)) return;
   const all = accounts.bots();
-  const a = all[randomSeed() % all.length];
+  // Usually the bot with the fewest games goes next, so every bot's rating gets settled.
+  const fewest = Math.min(...all.map((b) => b.games));
+  const due = randomSeed() % 4 ? all.filter((b) => b.games === fewest) : all;
+  const a = due[randomSeed() % due.length];
   const near = all.filter((b) => b.id !== a.id && Math.abs(b.rating - a.rating) <= 250);
   if (!near.length) return;
   const b = near[randomSeed() % near.length];
@@ -452,7 +468,8 @@ function handle(ws: WebSocket, conn: Conn, msg: ClientMsg): void {
         tokenToId.set(token, id);
       }
       conn.playerId = id;
-      conn.name = `${String(msg.name ?? '').trim().slice(0, 20) || 'Trainer'}`;
+      const guest = String(msg.name ?? '').trim().slice(0, 20);
+      conn.name = guest && cleanName(guest) ? guest : 'Trainer';
     }
     send(ws, { t: 'welcome', id: conn.playerId, account: conn.user ? accountView(conn.user) : null });
     return;
@@ -566,7 +583,7 @@ const server = http.createServer((req, res) => {
   const url = new URL(req.url ?? '/', 'http://x');
   if (url.pathname === '/health') {
     res.writeHead(200, { 'content-type': 'application/json' });
-    res.end(JSON.stringify({ ok: true, rooms: rooms.size, queue: queue.size }));
+    res.end(JSON.stringify({ ok: true, rooms: rooms.size, queue: queue.size, storage: store.kind, keepAwake: !!KEEP_AWAKE_URL }));
     return;
   }
   if (url.pathname === '/lab') {
@@ -651,10 +668,18 @@ setInterval(() => {
 }, 60_000).unref();
 setInterval(matchmake, 1_000).unref();
 setInterval(idleBots, 15_000).unref();
+if (KEEP_AWAKE_URL) {
+  const ping = () => void fetch(new URL('/health', KEEP_AWAKE_URL), { signal: AbortSignal.timeout(20_000) }).catch(() => undefined);
+  setInterval(ping, KEEP_AWAKE_MS).unref();
+}
 
 server.listen(PORT, () => {
   console.log(`Pokémon Conquest Chess server on http://localhost:${PORT} (ws path /ws, ${store.kind} storage, ${TIME_CONTROLS.length} time controls)${fs.existsSync(DIST) ? '' : ' — client not built'}`);
 });
+
+if (store.kind === 'file' && process.env.RENDER) {
+  console.warn('[store] DATABASE_URL is not set: accounts, ratings and games are kept in a file that this host deletes on every deploy and restart. See docs/online-setup.md.');
+}
 
 process.on('SIGTERM', () => {
   bots?.close();

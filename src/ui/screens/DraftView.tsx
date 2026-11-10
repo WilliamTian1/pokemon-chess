@@ -234,7 +234,8 @@ export function DraftView({ ctl }: { ctl: Controller }) {
       {/* Pinned on phones so whose pick it is stays in view while scrolling the cards. */}
       <div className="panel sticky top-0 z-20 flex shrink-0 flex-col gap-2.5 px-3 py-2.5 phone:gap-1.5 phone:px-2 phone:py-1.5 wide:static">
         <div className="flex flex-wrap items-center gap-x-5 gap-y-2.5 phone:gap-x-2 phone:gap-y-1.5">
-          <div className="flex min-w-0 items-center gap-3 phone:flex-1 phone:gap-2">
+          {/* Takes the space left over, whatever its text: the text changes with the pick and with the card hovered, and must not push the teams’ medallions around. */}
+          <div className="flex min-w-0 items-center gap-3 phone:flex-1 phone:gap-2 sm:flex-[1_1_10rem]">
             {auction ? (
               <div className="draft-seal" title={`Lot ${s.draft.auction!.history.length + 1}`}>
                 <span className="text-[9px] font-extrabold uppercase tracking-widest text-[#f2d27a]">Lot</span>
@@ -246,21 +247,21 @@ export function DraftView({ ctl }: { ctl: Controller }) {
                 <span className="font-display text-xl leading-none">{pickNo}<span className="text-xs text-[#f2d27a]">/{pickOf}</span></span>
               </div>
             )}
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <div className={`truncate font-display text-xl leading-tight phone:text-base ${SIDE_TEXT[turn]}`}>
                 {waiting ? `Sealed! Waiting for ${ctl.names[otherSide(turn)]}…`
                   : auction ? (mine ? 'Your call!' : ctl.thinking ? `${ctl.names[turn]} is thinking…` : `${ctl.names[turn]}’s call…`)
                   : mine ? 'Your pick!' : ctl.thinking ? `${ctl.names[turn]} is thinking…` : `${ctl.names[turn]} is picking${secret ? ' in secret' : ''}…`}
               </div>
               <div className="mt-0.5 flex min-w-0 items-center gap-1.5 overflow-hidden phone:mt-0">
-                <span className="draft-phase">
+                <span className="draft-phase shrink-0">
                   {waiting ? 'Revealed when the battle begins' : trainerTurn ? (secret ? 'Secret trainer pick' : 'Trainer pick') : auction ? 'Auction' : secret ? (legendTurn ? '★ Secret legendary pick' : 'Secret pick') : legendTurn ? '★ Legendary pick' : 'Pool pick'}
                 </span>
                 {focusCard && (
-                  <span className="draft-phase !bg-[#f2d27a] !text-[#4a2b16]">
-                    Comparing with {focusCard.name}
+                  <span className="draft-phase min-w-0 !bg-[#f2d27a] !text-[#4a2b16]" title={`Comparing with ${focusCard.name}`}>
+                    <span className="truncate">Comparing with {focusCard.name}</span>
                     {pinned && !hovered && (
-                      <button type="button" className="ml-1 font-black" aria-label="Stop comparing" onClick={() => setPinned(null)}>✕</button>
+                      <button type="button" className="ml-1 shrink-0 font-black" aria-label="Stop comparing" onClick={() => setPinned(null)}>✕</button>
                     )}
                   </span>
                 )}

@@ -1,6 +1,6 @@
-import { type CSSProperties, memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { type CSSProperties, Fragment, memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
-  type Dir, type GameState, type Pos, type TargetPreview, type Terrain, type Unit, cardOf, getMap, multLabel, onBoard, posKey,
+  type Dir, type GameState, type Pos, type Side, type TargetPreview, type Terrain, type Unit, cardOf, getMap, multLabel, onBoard, posKey,
 } from '../../engine';
 import type { EventBatch } from '../controller';
 import { Art, HpBar, StatusBadge } from './bits';
@@ -84,6 +84,15 @@ interface Floater {
   pos: Pos;
 }
 
+/** The name(s) of the move a Pokémon just used, shown over it; `tiles` is where the move landed. */
+interface Callout {
+  key: string;
+  pos: Pos;
+  side: Side;
+  names: string[];
+  tiles: Pos[];
+}
+
 function BoardImpl({ state, view, overlay, previews, selectedId, hoverId, events, onTile, onHover }: Props) {
   const { rotated, flipped } = view;
   const map = getMap(state.mapId);
@@ -102,12 +111,15 @@ function BoardImpl({ state, view, overlay, previews, selectedId, hoverId, events
   // A fainted Pokémon's puff of smoke, and the trebuchet's boulder in flight.
   const [poofs, setPoofs] = useState<{ key: string; pos: Pos }[]>([]);
   const [boulder, setBoulder] = useState<{ key: string; from: Pos; to: Pos } | null>(null);
+  // The move just used, named over the Pokémon that used it.
+  const [callouts, setCallouts] = useState<Callout[]>([]);
   useEffect(() => {
     const out: Floater[] = [];
     const puffs: { key: string; pos: Pos }[] = [];
     let shot: { key: string; from: Pos; to: Pos } | null = null;
     let lastAttack: Pos[] | null = null;
     const lastPos = new Map<string, Pos>();
+    const used = new Map<string, Callout>();
     const prev = prevPos.current;
     for (const u of state.units) if (u.pos) lastPos.set(u.id, u.pos);
     events.list.forEach((e, i) => {
@@ -120,6 +132,13 @@ function BoardImpl({ state, view, overlay, previews, selectedId, hoverId, events
         if (pos) puffs.push({ key: `${events.seq}-${i}`, pos });
       }
       if (e.t === 'attack' && e.tiles.length) lastAttack = e.tiles;
+      if (e.t === 'attack') {
+        const unit = state.units.find((u) => u.id === e.unitId);
+        const pos = unit?.pos ?? prev.get(e.unitId);
+        const had = used.get(e.unitId);
+        if (had) had.names.push(e.name);
+        else if (unit && pos) used.set(e.unitId, { key: `${events.seq}-${i}`, pos, side: unit.side, names: [e.name], tiles: e.tiles });
+      }
       if (e.t === 'move' && e.path.length) lastPos.set(e.unitId, e.path[e.path.length - 1]);
       if (e.t === 'damage' || e.t === 'heal' || e.t === 'miss') {
         const unit = state.units.find((u) => u.id === e.unitId);
@@ -134,6 +153,7 @@ function BoardImpl({ state, view, overlay, previews, selectedId, hoverId, events
     setFlash(lastAttack ? { key: `f${events.seq}`, tiles: lastAttack } : null);
     setPoofs(puffs);
     setBoulder(shot);
+    setCallouts([...used.values()]);
   }, [events.seq]);
   // Where every Pokémon stood before the latest action (a fainted one has no position any more).
   const prevPos = useRef(new Map<string, Pos>());
@@ -320,12 +340,40 @@ function BoardImpl({ state, view, overlay, previews, selectedId, hoverId, events
             </span>
           );
         })()}
+        {callouts.map((c) => {
+          const d = disp(c.pos);
+          // The label sits on the side of its user away from where the move landed, so it never hides the
+          // targets or their damage numbers (above by default), and leans inward near the side edges.
+          const ys = c.tiles.map((t) => disp(t).y);
+          const above = ys.filter((y) => y < d.y).length;
+          const under = ys.filter((y) => y > d.y).length;
+          const below = d.y === 0 || (above > under && d.y < rows - 1);
+          const shift = d.x < 2 ? '0%' : d.x > cols - 3 ? '-100%' : '-50%';
+          const left = d.x < 2 ? d.x / cols : d.x > cols - 3 ? (d.x + 1) / cols : (d.x + 0.5) / cols;
+          return (
+            <Fragment key={c.key}>
+              <span
+                className={`absolute z-20 animate-userRing rounded-full border-[3px] ${c.side === 'A' ? 'border-rose-300 shadow-[0_0_12px_3px_rgba(244,63,94,.8)]' : 'border-sky-300 shadow-[0_0_12px_3px_rgba(56,189,248,.8)]'}`}
+                style={{ left: `${((d.x + 0.04) / cols) * 100}%`, top: `${((d.y + 0.04) / rows) * 100}%`, width: `${92 / cols}%`, height: `${92 / rows}%` }}
+              />
+              <span
+                className={`absolute z-40 animate-moveCallout whitespace-nowrap rounded-md border-2 border-[#e6bd55] px-2 py-0.5 font-display text-sm leading-tight text-[#fff3d6] shadow-lg shadow-black/60 sm:text-base ${c.side === 'A' ? 'bg-[#8a1c15]' : 'bg-[#1c3a78]'}`}
+                style={{
+                  left: `${left * 100}%`, top: `${((below ? d.y + 1 : d.y) / rows) * 100}%`,
+                  ['--shift' as string]: `translate(${shift}, ${below ? '15%' : '-115%'})`,
+                }}
+              >
+                {c.names.join(' + ')}!
+              </span>
+            </Fragment>
+          );
+        })}
         {floaters.map((f) => {
           const d = disp(f.pos);
           return (
             <span
               key={f.key}
-              className={`absolute z-30 animate-floatUp whitespace-nowrap text-sm font-black sm:text-base ${f.cls}`}
+              className={`absolute z-30 animate-floatUp whitespace-nowrap text-base font-black sm:text-xl ${f.cls}`}
               style={{ left: `${((d.x + 0.5) / cols) * 100}%`, top: `${(d.y / rows) * 100}%`, textShadow: '0 1px 3px #000, 0 0 2px #000' }}
             >
               {f.text}

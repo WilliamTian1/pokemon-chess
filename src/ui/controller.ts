@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Difficulty } from '../ai/bot';
 import { requestBotActions } from '../ai/client';
+import { BOT_TURN_START_MS, botPause } from '../ai/pace';
 import { DRAFT_TRANSITION_MS } from './components/Effects';
 import {
   type Action, type DraftStyle, type GameEvent, type GameState, type Side, RuleError, applyAction, deciders, hiddenView, isSimultaneous, newGame,
@@ -92,17 +93,18 @@ export function useLocalGame(cfg: LocalConfig): Controller {
   const botFailures = useRef(0);
   const generation = useRef(0);
 
-  const apply = useCallback((a: Action, fromBot: boolean): boolean => {
+  /** Applies an action; returns what happened, or null if the rules refused it. */
+  const apply = useCallback((a: Action, fromBot: boolean): GameEvent[] | null => {
     try {
       const r = applyAction(stateRef.current, a, rng.current);
       stateRef.current = r.state;
       setState(r.state);
       setEvents((e) => ({ seq: e.seq + 1, list: r.events }));
-      return true;
+      return r.events;
     } catch (e) {
       if (!(e instanceof RuleError)) throw e;
       if (!fromBot) setError(e.message);
-      return false;
+      return null;
     }
   }, []);
 
@@ -123,14 +125,18 @@ export function useLocalGame(cfg: LocalConfig): Controller {
         // The bot gets the same view a player in its seat would: nothing hidden.
         const acts = await requestBotActions(hiddenView(s, botSide), botSide, level);
         // Right after the draft the versus screen counts down; place once it has gone.
-        const pace = s.phase === 'placement' && s.placement.index === 0 && !isSimultaneous(s) ? DRAFT_TRANSITION_MS : s.phase === 'battle' ? 380 : 450;
+        // In battle its first action waits for the new-turn notice, so nothing happens underneath it.
+        const turnStart = s.phase === 'battle' && !s.active && !s.pending.length && !s.units.some((u) => u.side === botSide && u.activated);
+        const pace = s.phase === 'placement' && s.placement.index === 0 && !isSimultaneous(s) ? DRAFT_TRANSITION_MS : turnStart ? BOT_TURN_START_MS : 450;
         await sleep(Math.max(0, pace - (performance.now() - started)));
         let applied = 0;
         for (let i = 0; i < acts.length; i++) {
           if (gen !== generation.current || !deciders(stateRef.current).includes(botSide)) break;
-          if (!apply(acts[i], true)) break;
+          const done = apply(acts[i], true);
+          if (!done) break;
           applied += 1;
-          if (i < acts.length - 1) await sleep(acts[i].type === 'move' ? 520 : 420);
+          // Each step stays on screen long enough to follow (a move's name, its zone, the damage).
+          await sleep(stateRef.current.phase === 'battle' || stateRef.current.phase === 'over' ? botPause(done) : 450);
         }
         // Never let a confused bot stall the game: fall back to the simplest legal step.
         botFailures.current = applied === 0 && gen === generation.current ? botFailures.current + 1 : 0;

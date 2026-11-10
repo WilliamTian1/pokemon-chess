@@ -145,6 +145,35 @@ describe('expansion cards', () => {
     expect(unit(n, 'D0').hp).toBeLessThan(unit(n, 'D0').maxHp);
   });
 
+  it('Metronome moves may be aimed at nothing, and one must be used', () => {
+    const s = setup(['wigglytuff'], ['snorlax'], { A0: P(9, 8), D0: P(2, 0) });
+    park(s, ['A0', 'D0']);
+    let n = act(s, { type: 'useMove', unitId: 'A0', moveIndex: 0 });
+    const p = n.pending[0];
+    expect(p).toMatchObject({ kind: 'metronome', cardId: 'charizard' });
+    // Nobody is in reach, yet every direction is on offer and one has to be taken.
+    expect(p.options).toEqual(expect.arrayContaining(['0:N', '0:E', '0:S', '0:W']));
+    expect(() => act(n, { type: 'choose', option: null })).toThrow();
+    n = act(n, { type: 'choose', option: '0:N' });
+    expect(n.pending).toHaveLength(0);
+    expect(n.log.some((l) => l.text.includes('(Metronome)'))).toBe(true);
+    expect(unit(n, 'D0').hp).toBe(unit(n, 'D0').maxHp);
+  });
+
+  it('Dancer copies every dance move, from either side', () => {
+    for (const [card, stages] of [['volcarona', { atk: 1, def: 1, mov: 1 }], ['haxorus', { atk: 1, def: 0, mov: 1 }], ['rampardos', { atk: 2, def: 0, mov: 0 }]] as const) {
+      const ally = act(setup([card, 'oricorio'], ['snorlax'], { A0: P(9, 8), A1: P(11, 8) }), { type: 'useMove', unitId: 'A0', moveIndex: 1 });
+      expect(unit(ally, 'A1').stages).toEqual(stages);
+      const foe = act(setup([card], ['oricorio'], { A0: P(9, 8), D0: P(9, 3) }), { type: 'useMove', unitId: 'A0', moveIndex: 1 });
+      expect(unit(foe, 'D0').stages).toEqual(stages);
+    }
+    // Feather Dance is aimed: Oricorio's player picks the direction, and its target's Defense falls too.
+    let n = act(setup(['altaria', 'oricorio'], ['snorlax'], { A0: P(9, 8), A1: P(11, 6), D0: P(9, 6) }), { type: 'useMove', unitId: 'A0', moveIndex: 1, dir: 'N' });
+    expect(n.pending[0]).toMatchObject({ kind: 'dancer', unitId: 'A1' });
+    n = act(n, { type: 'choose', option: 'W' });
+    expect(unit(n, 'D0').stages.def).toBe(-3);
+  });
+
   it('Dancer copies other Pokémon’s dance moves', () => {
     const s = setup(['volcarona', 'oricorio', 'haxorus'], ['snorlax'], { A0: P(9, 8), A1: P(11, 8), A2: P(12, 8) });
     let n = act(s, { type: 'useMove', unitId: 'A0', moveIndex: 1 });

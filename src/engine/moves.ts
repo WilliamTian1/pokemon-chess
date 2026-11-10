@@ -31,6 +31,8 @@ export interface TargetOpts {
   targetId?: string;
   /** Hypothetical position of the user (AI / Follow Me checks). */
   origin?: Pos;
+  /** Metronome: the drawn move may be fired where it hits nothing. */
+  allowEmpty?: boolean;
 }
 
 /** Moves that help one ally in the zone (and do nothing to opponents). */
@@ -97,7 +99,7 @@ export function targeting(s: GameState, u: Unit, move: MoveDef, opts: TargetOpts
       const zone = zoneTiles(s, origin, g, opts.dir);
       const targets = zone.map((p) => unitAt(s, p)).filter((x): x is Unit => !!x && x.id !== u.id);
       const substitute = zone.some((p) => substituteAt(s, p));
-      if (move.fx.healSelfAndAllies !== undefined) return { ok: true, zone, dashTo, targets, substitute };
+      if (move.fx.healSelfAndAllies !== undefined || opts.allowEmpty) return { ok: true, zone, dashTo, targets, substitute };
       if (ALLY_ONLY(move)) {
         if (move.fx.special === 'afterYou') {
           if (!targets.some((x) => x.side === u.side && !x.gotAfterYou)) return fail('No ally in range can act again');
@@ -732,15 +734,20 @@ function queueDancer(ctx: Ctx, u: Unit, move: MoveDef, source: { cardId: string;
 /** Moves Transform and Metronome can't borrow. */
 export const UNCOPYABLE = (m: MoveDef): boolean => !!m.fx.none || m.fx.special === 'transform' || m.fx.special === 'metronome';
 
-/** Ways `u` could use `move` right now: "dir", "@unitId", or "" for self and field moves. */
-export function aimOptions(s: GameState, u: Unit, move: MoveDef): string[] {
+/**
+ * Ways `u` could use `move` right now: "dir", "@unitId", or "" for self and field moves. With
+ * `allowEmpty`, zone moves may also be aimed where they hit nothing (those directions come last).
+ */
+export function aimOptions(s: GameState, u: Unit, move: MoveDef, allowEmpty = false): string[] {
   switch (move.target.kind) {
     case 'self':
     case 'global':
       return [''];
     case 'grid':
-    case 'place':
-      return DIRS.filter((d) => targeting(s, u, move, { dir: d }).ok);
+    case 'place': {
+      const hits = DIRS.filter((d) => targeting(s, u, move, { dir: d }).ok);
+      return allowEmpty ? [...hits, ...DIRS.filter((d) => !hits.includes(d) && targeting(s, u, move, { dir: d, allowEmpty }).ok)] : hits;
+    }
     case 'range':
     case 'ally':
       return liveUnits(s).filter((x) => x.id !== u.id && targeting(s, u, move, { targetId: x.id }).ok).map((x) => `@${x.id}`);
@@ -753,9 +760,13 @@ export function parseAim(aim: string): TargetOpts {
   return aim.startsWith('@') ? { targetId: aim.slice(1) } : { dir: aim as Dir };
 }
 
-/** Metronome's choices for the drawn card: "moveIndex:aim". */
+/**
+ * Metronome's choices for the drawn card: "moveIndex:aim". One of them must be used, so zone moves
+ * may be aimed at nothing (Explosion still takes its user with it); aims that hit something come first.
+ */
 export function metronomeOptions(s: GameState, u: Unit, cardId: string): string[] {
-  return getCard(cardId).moves.flatMap((m, i) => (UNCOPYABLE(m) ? [] : aimOptions(s, u, m).map((a) => `${i}:${a}`)));
+  const all = getCard(cardId).moves.flatMap((m, i) => (UNCOPYABLE(m) ? [] : aimOptions(s, u, m, true).map((a) => ({ o: `${i}:${a}`, hits: targeting(s, u, m, parseAim(a)).ok }))));
+  return [...all.filter((x) => x.hits), ...all.filter((x) => !x.hits)].map((x) => x.o);
 }
 
 /** Metronome: draw a random card nobody drafted, then pick one of its moves and how to aim it. */

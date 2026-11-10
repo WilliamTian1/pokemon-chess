@@ -486,8 +486,9 @@ input[type='range'] {
   box-shadow: 0 0 0 2px #2a170b, 0 3px 6px rgba(0, 0, 0, 0.3);
   transition: transform 0.12s;
 }
+/* Grows in place (no lift), so the pointer never falls off the medal's edge and flickers. */
 button.draft-medal:hover {
-  transform: translateY(-2px) scale(1.05);
+  transform: scale(1.08);
 }
 .draft-medal-pinned {
   border-color: #fff3d6;

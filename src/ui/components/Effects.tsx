@@ -156,7 +156,7 @@ export function FieldFx({ events }: { events: EventBatch }) {
 
 // ---------------------------------------------------------------- turn sweep
 
-/** A banner sweeps across when a new turn starts, with a chime. */
+/** A small notice drops in above the board when a new turn starts, with a chime. It never covers the board. */
 export function TurnSweep({ state, names, mySides }: { state: GameState; names: Record<Side, string>; mySides: Side[] }) {
   const key = state.phase === 'battle' ? `${state.round}-${state.side}` : null;
   const last = useRef<string | null>(null);
@@ -168,16 +168,16 @@ export function TurnSweep({ state, names, mySides }: { state: GameState; names: 
     if (first && state.round === 1 && state.side === 'A' && state.log.length > 30) return;
     setShow({ key, side: state.side, round: state.round });
     sfx('turn');
-    const t = window.setTimeout(() => setShow(null), 1400);
+    const t = window.setTimeout(() => setShow(null), TURN_NOTICE_MS);
     return () => window.clearTimeout(t);
   }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!show) return null;
   const yours = mySides.length === 1 && mySides[0] === show.side;
   return createPortal(
-    <div key={show.key} className="pointer-events-none fixed inset-x-0 top-[38%] z-[50] flex justify-center">
-      <div className={`turn-banner animate-turnSweep px-12 py-3 text-center ${show.side === 'A' ? 'turn-banner-a' : 'turn-banner-d'}`}>
-        <div className="text-xs font-extrabold uppercase tracking-[0.3em] text-[#f2d27a]">Round {show.round}</div>
-        <div className="title-brush text-4xl">{yours ? 'Your turn!' : `${names[show.side]}’s turn`}</div>
+    <div key={show.key} className="pointer-events-none fixed inset-x-0 top-1 z-[50] flex justify-center px-2">
+      <div className={`turn-banner animate-turnSweep flex max-w-full items-baseline gap-3 rounded-full border-x-[3px] border-x-[#e6bd55] px-5 py-1 ${show.side === 'A' ? 'turn-banner-a' : 'turn-banner-d'}`}>
+        <span className="shrink-0 text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#f2d27a]">Round {show.round}</span>
+        <span className="truncate font-display text-lg leading-tight text-[#fff3d6]">{yours ? 'Your turn!' : `${names[show.side]}’s turn`}</span>
       </div>
     </div>,
     document.body,
@@ -186,8 +186,11 @@ export function TurnSweep({ state, names, mySides }: { state: GameState; names: 
 
 // ---------------------------------------------------------------- draft → battle
 
+/** How long the new-turn notice stays up. */
+const TURN_NOTICE_MS = 1000;
+
 /** How long the versus screen and its 3-2-1 countdown last (the bot waits this long before placing). */
-export const DRAFT_TRANSITION_MS = 4200;
+export const DRAFT_TRANSITION_MS = 2500;
 
 /**
  * When the draft ends: both teams slide in from either side, a 3-2-1 countdown beeps, then
@@ -206,10 +209,10 @@ export function DraftTransition({ state, names }: { state: GameState; names: Rec
     setShow(true);
     setCount(3);
     const timers = [
-      window.setTimeout(() => { setCount(3); sfx('count'); }, 900),
-      window.setTimeout(() => { setCount(2); sfx('count'); }, 1700),
-      window.setTimeout(() => { setCount(1); sfx('count'); }, 2500),
-      window.setTimeout(() => { setCount(0); sfx('go'); }, 3300),
+      window.setTimeout(() => { setCount(3); sfx('count'); }, 400),
+      window.setTimeout(() => { setCount(2); sfx('count'); }, 900),
+      window.setTimeout(() => { setCount(1); sfx('count'); }, 1400),
+      window.setTimeout(() => { setCount(0); sfx('go'); }, 1900),
       window.setTimeout(() => setShow(false), DRAFT_TRANSITION_MS),
     ];
     return () => timers.forEach((t) => window.clearTimeout(t));

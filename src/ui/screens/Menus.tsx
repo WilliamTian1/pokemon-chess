@@ -42,7 +42,7 @@ export function Home({ onBot, onLocal, onOnline, onCards, onLab, onRules, onProf
           <h1 className="title-brush text-[2.1rem] leading-[1.05] sm:text-6xl">Pokémon Conquest</h1>
           <div className="title-brush title-gold mt-1 text-3xl sm:text-5xl">Chess</div>
         </div>
-        <p className="mt-4 text-sm text-slate-300">v1.5</p>
+        <p className="mt-4 text-sm text-slate-300">v1.5.1</p>
       </div>
       <div className="scroll w-full max-w-3xl">
         <div className="grid gap-3 sm:grid-cols-3">

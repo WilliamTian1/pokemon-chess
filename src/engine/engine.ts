@@ -1106,7 +1106,7 @@ function resolvePending(ctx: Ctx, option: string | null): void {
       if (!onBoard(u)) return;
       const cut = option.indexOf(':');
       const move = getCard(p.cardId).moves[Number(option.slice(0, cut)) as 0 | 1];
-      const aim = parseAim(option.slice(cut + 1));
+      const aim = { ...parseAim(option.slice(cut + 1)), allowEmpty: true };
       if (!targeting(s, u, move, aim).ok) {
         log(ctx, `${nameOf(u)}'s ${move.name} has nothing left to hit.`, 'info', u.side);
         return;
