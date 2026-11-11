@@ -180,6 +180,7 @@ export interface CardDef {
 export interface MapDef {
   id: string;
   name: string;
+  theme?: 'snow' | 'volcano';
   width: number;
   height: number;
   tiles: Terrain[][];
@@ -386,7 +387,7 @@ export type Action =
   | { type: 'concede'; side: Side };
 
 export type GameEvent =
-  | { t: 'move'; unitId: string; path: Pos[] }
+  | { t: 'move'; unitId: string; path: Pos[]; iceSlideFrom?: number }
   | { t: 'attack'; unitId: string; name: string; tiles: Pos[] }
   | { t: 'damage'; unitId: string; amount: number }
   | { t: 'heal'; unitId: string; amount: number }

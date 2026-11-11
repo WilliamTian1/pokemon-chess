@@ -23,6 +23,16 @@ Players choose a map before each match (online, the host chooses). Both maps are
 - Five berry bushes and three flower patches, with the same effects as on the meadow.
 - The grey stone left of centre (column 4, row 4) is read as the trebuchet.
 
+### Nixtorm
+
+- Ordinary ground is snow-colored. Ice tiles are slick: when a Pokémon that is not Ice-type, Flying-type, or protected by Levitate enters ice, it slides in that direction until it leaves the ice, hits an obstacle, or reaches the board edge.
+- The entire slide costs one movement point and ends that move, but the Pokémon may still attack. Any post-attack movement (including Run Away) works normally.
+
+### Volcano terrain
+
+- Volcano-themed fields use dull-brown ordinary ground and red-orange magma.
+- Magma is impassable except to Fire- and Flying-type Pokémon and Pokémon with Levitate. Solar Power adds 30 damage when its holder attacks while standing on magma.
+
 ## Card grids
 
 - **Orange:** the tiles hit. Every Pokémon on them is hit, allies included.
@@ -199,4 +209,3 @@ Trainer mode is chosen at setup. After the draft, four of the six trainers are o
 ## Effect tags
 
 Stat changes and conditions are shown as the tabletop's tags, dropped onto the card at random (but stable) spots with a slight tilt: one tag per stat stage (sword = Attack, shield = Defense, boot = Movement, + or −), the status condition (fire, bubbles, purple bubbles for bad poison, lightning, Zzz; frozen has no printed tag, so a matching snowflake tag is drawn), the sweat drop for flinching and recharging, and “!” for confusion, Taunt, Follow Me, cooldowns, Sturdy and Future Sight. A red number counts the Pokémon's turns the effect still lasts. When a move lands, the affected cards shake and flash with the damage, healing, status or stat change.
-

@@ -789,14 +789,14 @@ function enforceFollowMe(s: GameState, u: Unit, hitIds: string[] | null): void {
 
 // ---------------------------------------------------------------- actions
 
-function walkPath(ctx: Ctx, u: Unit, path: Pos[]): void {
+function walkPath(ctx: Ctx, u: Unit, path: Pos[], iceSlideFrom?: number): void {
   const walked: Pos[] = [];
   for (const p of path) {
     enterTile(ctx, u, p);
     walked.push(p);
     if (u.fainted) break;
   }
-  emit(ctx, { t: 'move', unitId: u.id, path: walked });
+  emit(ctx, { t: 'move', unitId: u.id, path: walked, ...(iceSlideFrom !== undefined ? { iceSlideFrom } : {}) });
 }
 
 function doMove(ctx: Ctx, unitId: string, to: Pos): void {
@@ -815,9 +815,10 @@ function doMove(ctx: Ctx, unitId: string, to: Pos): void {
   }
   s.active = {
     unitId, stage: 'moved', from: { ...u.pos! }, moveCost: info.cost, movBudget: budget,
-    undoable: info.hazards === 0, postMove: 0, movedThisActivation: true, mustHeal: !!triage,
+    undoable: info.hazards === 0, postMove: 0, movedThisActivation: true,
+    mustHeal: !!triage,
   };
-  walkPath(ctx, u, info.path);
+  walkPath(ctx, u, info.path, info.iceSlideFrom);
   if (u.fainted) {
     s.active = null;
     u.activated = true;
@@ -943,7 +944,7 @@ function postMove(ctx: Ctx, unitId: string, to: Pos): void {
   const info = reachable(s, u, a.postMove).get(posKey(to));
   if (!info) throw new RuleError('That tile is out of reach.');
   a.movedThisActivation = true;
-  walkPath(ctx, u, info.path);
+  walkPath(ctx, u, info.path, info.iceSlideFrom);
   if (u.fainted) {
     s.active = null;
     u.activated = true;

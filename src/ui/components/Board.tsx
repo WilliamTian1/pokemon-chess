@@ -42,7 +42,7 @@ interface Props {
 const TERRAIN_LABEL: Record<Terrain, string> = {
   normal: 'Grass', dirt: 'Dirt path', grass: 'Grass bridge', bridge: 'Bridge — ordinary ground', water: 'Water — only Water, Flying and Levitate Pokémon',
   flower: 'Flowers — +30 HP at the end of a Pokémon’s activation (not Flying or Levitate)', bush: 'Berry bush — takes 30 less damage (not Flying or Levitate)',
-  wall: 'Wall', magma: 'Magma', ice: 'Ice', pit: 'Pit',
+  wall: 'Wall', magma: 'Magma — only Fire, Flying and Levitate Pokémon can enter', ice: 'Ice — Pokémon slide when they enter (except Ice types, Flying and Levitate)', pit: 'Pit',
 };
 
 /**
@@ -162,7 +162,7 @@ function BoardImpl({ state, view, overlay, previews, selectedId, hoverId, events
   }, [state]);
 
   // Moving Pokémon walk their path tile by tile, so it's clear they went around whatever blocked them.
-  const [walk, setWalk] = useState<{ at: Map<string, Pos>; stepMs: number } | null>(null);
+  const [walk, setWalk] = useState<{ at: Map<string, Pos>; sliding: Set<string>; stepMs: number } | null>(null);
   // Layout effect: the first step is in place before paint, so the token never flashes to the end tile.
   useLayoutEffect(() => {
     const walks = events.list.flatMap((e) => (e.t === 'move' && e.path.length > 1 ? [e] : []));
@@ -176,8 +176,12 @@ function BoardImpl({ state, view, overlay, previews, selectedId, hoverId, events
     let done: ReturnType<typeof setTimeout> | undefined;
     const tick = () => {
       const at = new Map<string, Pos>();
-      for (const w of walks) if (step < w.path.length - 1) at.set(w.unitId, w.path[step]);
-      setWalk({ at, stepMs });
+      const sliding = new Set<string>();
+      for (const w of walks) {
+        if (step < w.path.length - 1) at.set(w.unitId, w.path[step]);
+        if (w.iceSlideFrom !== undefined && step >= w.iceSlideFrom) sliding.add(w.unitId);
+      }
+      setWalk({ at, sliding, stepMs });
       step += 1;
     };
     tick();
@@ -272,7 +276,7 @@ function BoardImpl({ state, view, overlay, previews, selectedId, hoverId, events
 
   return (
     <div
-      className="board-frame relative mx-auto w-full select-none overflow-hidden rounded-lg"
+      className={`board-frame relative mx-auto w-full select-none overflow-hidden rounded-lg ${map.theme ? `map-${map.theme}` : ''}`}
       style={{ aspectRatio: `${cols} / ${rows}` }}
       onMouseLeave={() => onHover(null)}
     >
@@ -306,6 +310,7 @@ function BoardImpl({ state, view, overlay, previews, selectedId, hoverId, events
             cols={cols}
             rows={rows}
             selected={u.id === selectedId}
+            iceSliding={walk?.sliding.has(u.id) ?? false}
             hovered={u.id === hoverId}
             targetable={overlay.targetable?.has(u.id) ?? false}
             preview={previews.get(u.id)}
@@ -385,7 +390,7 @@ function BoardImpl({ state, view, overlay, previews, selectedId, hoverId, events
   );
 }
 
-function Token({ unit, pos, stepMs, cols, rows, selected, hovered, targetable, preview, matchup, highlighted, done, foresight }: {
+function Token({ unit, pos, stepMs, cols, rows, selected, iceSliding, hovered, targetable, preview, matchup, highlighted, done, foresight }: {
   unit: Unit;
   pos: Pos;
   /** While Pokémon are walking a path: the time per tile (linear steps instead of one slide). */
@@ -393,6 +398,7 @@ function Token({ unit, pos, stepMs, cols, rows, selected, hovered, targetable, p
   cols: number;
   rows: number;
   selected: boolean;
+  iceSliding: boolean;
   hovered: boolean;
   targetable: boolean;
   preview?: TargetPreview;
@@ -413,7 +419,7 @@ function Token({ unit, pos, stepMs, cols, rows, selected, hovered, targetable, p
       }}
     >
       <div
-        className={`relative aspect-square w-[80%] rounded-full ring-[2.5px] ${ring} ${done ? 'opacity-55 grayscale-[60%]' : ''} ${selected ? 'animate-pulseRing !ring-amber-300' : ''} ${(hovered || highlighted) && !selected ? 'ring-white' : ''} ${targetable ? 'outline outline-2 outline-offset-1 outline-amber-300' : ''} bg-slate-800 shadow-md shadow-black/50`}
+        className={`relative aspect-square w-[80%] rounded-full ring-[2.5px] ${ring} ${done ? 'opacity-55 grayscale-[60%]' : ''} ${selected ? 'animate-pulseRing !ring-amber-300' : ''} ${iceSliding ? 'ice-glide' : ''} ${(hovered || highlighted) && !selected ? 'ring-white' : ''} ${targetable ? 'outline outline-2 outline-offset-1 outline-amber-300' : ''} bg-slate-800 shadow-md shadow-black/50`}
         title={`${c.name} — ${unit.hp}/${unit.maxHp} HP`}
       >
         <Art id={unit.cardId} className="h-full w-full rounded-full" alt={c.name} />

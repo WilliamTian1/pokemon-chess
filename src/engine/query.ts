@@ -232,6 +232,8 @@ export interface ReachInfo {
   cost: number;
   hazards: number;
   path: Pos[];
+  iceStopped?: boolean;
+  iceSlideFrom?: number;
 }
 
 /**
@@ -247,19 +249,24 @@ export function reachable(s: GameState, u: Unit, budget: number, from?: Pos): Ma
   const B = Math.floor(budget * 2);
   const ghost = isGhost(u);
   const flier = isFlier(u);
+  const ignoresIce = flier || hasType(u, 'Ice');
   const wave = abilityOf(u) === 'waveRider';
   const W = m.width;
   const L = B + 1;
-  // best[(idx*L)+c] = hazards (+1 so 0 means unvisited); prev stores predecessor state id
-  const best = new Int16Array(m.width * m.height * L);
-  const prev = new Int32Array(m.width * m.height * L).fill(-1);
+  const statesPerTile = L * 2;
+  // Each position/cost has a regular state and a terminal ice-slide state.
+  const best = new Int16Array(m.width * m.height * statesPerTile);
+  const prev = new Int32Array(m.width * m.height * statesPerTile).fill(-1);
+  const segments: (Pos[] | undefined)[] = new Array(best.length);
+  const sliding: boolean[] = new Array(best.length).fill(false);
   const buckets: number[][] = Array.from({ length: L }, () => []);
-  const startState = (start.y * W + start.x) * L;
+  const startState = (start.y * W + start.x) * statesPerTile;
   best[startState] = 1;
   buckets[0].push(startState);
   for (let c = 0; c <= B; c++) {
     for (const st of buckets[c]) {
-      const idx = Math.floor(st / L);
+      const idx = Math.floor(st / statesPerTile);
+      if (st % 2 === 1) continue;
       const haz = best[st] - 1;
       const px = idx % W;
       const py = Math.floor(idx / W);
@@ -269,15 +276,35 @@ export function reachable(s: GameState, u: Unit, budget: number, from?: Pos): Ma
         const t = m.tiles[np.y][np.x];
         if (!canPass(u, t)) continue;
         const occ = unitAt(s, np);
+        if (t === 'ice' && !ignoresIce && occ) continue;
         if (occ && occ.id !== u.id && occ.side !== u.side && !ghost) continue;
         if (substituteAt(s, np) && !ghost) continue;
         const nc = c + (wave && t === 'water' ? 1 : 2);
         if (nc > B) continue;
-        const nh = haz + (!flier && hazardAt(s, np) ? 1 : 0);
-        const ns = (np.y * W + np.x) * L + nc;
+        const path = [np];
+        let end = np;
+        let iceStopped = false;
+        let nh = haz + (!flier && hazardAt(s, np) ? 1 : 0);
+        if (t === 'ice' && !ignoresIce) {
+          iceStopped = true;
+          while (true) {
+            const next = { x: end.x + d.x, y: end.y + d.y };
+            if (next.x < 0 || next.y < 0 || next.x >= m.width || next.y >= m.height) break;
+            const nextTerrain = m.tiles[next.y][next.x];
+            if (!canStand(u, nextTerrain) || unitAt(s, next) || substituteAt(s, next)) break;
+            path.push(next);
+            end = next;
+            if (hazardAt(s, next)) nh += 1;
+            if (nextTerrain !== 'ice') break;
+          }
+        }
+        const endIdx = end.y * W + end.x;
+        const ns = endIdx * statesPerTile + nc * 2 + Number(iceStopped);
         if (best[ns] !== 0 && best[ns] - 1 <= nh) continue;
         best[ns] = nh + 1;
         prev[ns] = st;
+        segments[ns] = path;
+        sliding[ns] = iceStopped;
         buckets[nc].push(ns);
       }
     }
@@ -291,23 +318,31 @@ export function reachable(s: GameState, u: Unit, budget: number, from?: Pos): Ma
     let bestHaz = Infinity;
     let bestCost = Infinity;
     for (let c = 0; c <= B; c++) {
-      const st = idx * L + c;
-      if (best[st] === 0) continue;
-      const h = best[st] - 1;
-      if (h < bestHaz || (h === bestHaz && c < bestCost)) {
-        bestHaz = h;
-        bestCost = c;
-        bestState = st;
+      for (let stopped = 0; stopped <= 1; stopped++) {
+        const st = idx * statesPerTile + c * 2 + stopped;
+        if (best[st] === 0) continue;
+        const h = best[st] - 1;
+        if (h < bestHaz || (h === bestHaz && (c < bestCost || (c === bestCost && stopped === 0)))) {
+          bestHaz = h;
+          bestCost = c;
+          bestState = st;
+        }
       }
     }
     if (bestState < 0) continue;
+    const chain: number[] = [];
+    for (let st = bestState; st !== startState && st >= 0; st = prev[st]) chain.push(st);
+    chain.reverse();
     const path: Pos[] = [];
-    for (let st = bestState; st !== startState && st >= 0; st = prev[st]) {
-      const i = Math.floor(st / L);
-      path.push({ x: i % W, y: Math.floor(i / W) });
+    let iceSlideFrom: number | undefined;
+    for (const st of chain) {
+      if (sliding[st] && iceSlideFrom === undefined) iceSlideFrom = path.length;
+      path.push(...(segments[st] ?? []));
     }
-    path.reverse();
-    out.set(posKey(p), { pos: p, cost: bestCost / 2, hazards: bestHaz, path });
+    out.set(posKey(p), {
+      pos: p, cost: bestCost / 2, hazards: bestHaz, path,
+      ...(bestState % 2 ? { iceStopped: true, iceSlideFrom } : {}),
+    });
   }
   return out;
 }
