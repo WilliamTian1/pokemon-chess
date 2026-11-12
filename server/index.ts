@@ -13,7 +13,7 @@ import {
   type AccountView, type ClientMsg, type ClockView, type MatchResult, RULE_PREFS, type RoomView, type RulePref, type ServerMsg, type StylePref, TIME_CONTROLS,
   type TimeControl, timeControl,
 } from '../src/net/protocol';
-import { Accounts, accountView } from './accounts';
+import { Accounts, accountView, modeStats } from './accounts';
 import { BotPool } from './botPool';
 import { cleanName } from './names';
 import { Store, type User } from './store';
@@ -382,6 +382,19 @@ const canPair = (a: QueueEntry, b: QueueEntry): boolean =>
   a.tc.id === b.tc.id && compatible(a.style, b.style) && compatible(a.legendaries, b.legendaries) && compatible(a.trainers, b.trainers);
 /** The rule both sides accept; when neither minds, the standard game (on). */
 const resolveRule = (a: RulePref, b: RulePref = 'any'): boolean => (a !== 'any' ? a : b) !== 'off';
+/** The draft style a pair of queue entries will play (decided once, so ratings are compared in that style). */
+const pairStyles = new WeakMap<QueueEntry, Map<QueueEntry, DraftStyle>>();
+function pairStyle(a: QueueEntry, b: QueueEntry): DraftStyle {
+  const known = pairStyles.get(a)?.get(b);
+  if (known) return known;
+  const style = resolveStyle(a.style, b.style);
+  for (const [x, y] of [[a, b], [b, a]] as const) {
+    const m = pairStyles.get(x) ?? new Map<QueueEntry, DraftStyle>();
+    m.set(y, style);
+    pairStyles.set(x, m);
+  }
+  return style;
+}
 function resolveStyle(a: StylePref, b: StylePref): DraftStyle {
   const s = a !== 'any' ? a : b !== 'any' ? b : (['classic', 'secret', 'auction'] as const)[randomSeed() % 3];
   return s;
@@ -400,17 +413,19 @@ function matchmake(): void {
   for (const e of waiting) {
     if (taken.has(e.user.id)) continue;
     const opp = waiting.find((o) => o !== e && !taken.has(o.user.id) && canPair(o, e)
-      && Math.abs(o.user.rating - e.user.rating) <= Math.min(ratingWindow(now - e.since), ratingWindow(now - o.since)));
+      && Math.abs(modeStats(o.user, pairStyle(o, e)).rating - modeStats(e.user, pairStyle(o, e)).rating) <= Math.min(ratingWindow(now - e.since), ratingWindow(now - o.since)));
     if (opp) {
       taken.add(e.user.id).add(opp.user.id);
-      startRanked([e, opp], e.tc, resolveStyle(e.style, opp.style), { legendaries: resolveRule(e.legendaries, opp.legendaries), trainers: resolveRule(e.trainers, opp.trainers) });
+      startRanked([e, opp], e.tc, pairStyle(e, opp), { legendaries: resolveRule(e.legendaries, opp.legendaries), trainers: resolveRule(e.trainers, opp.trainers) });
     } else if (now - e.since >= BOT_FILL_MS) {
       const busy = new Set([...rooms.values()].filter((r) => r.idle && r.game?.phase !== 'over').flatMap((r) => Object.values(r.users ?? {}).map((u) => u.id)));
-      const candidates = accounts.bots().filter((b) => !busy.has(b.id)).sort((a, b) => Math.abs(a.rating - e.user.rating) - Math.abs(b.rating - e.user.rating));
+      const style = resolveStyle(e.style, 'any');
+      const mine = modeStats(e.user, style).rating;
+      const candidates = accounts.bots().filter((b) => !busy.has(b.id)).sort((a, b) => Math.abs(modeStats(a, style).rating - mine) - Math.abs(modeStats(b, style).rating - mine));
       if (!candidates.length) continue;
       const bot = candidates[randomSeed() % Math.min(3, candidates.length)];
       taken.add(e.user.id);
-      startRanked([e, bot], e.tc, resolveStyle(e.style, 'any'), { legendaries: resolveRule(e.legendaries), trainers: resolveRule(e.trainers) });
+      startRanked([e, bot], e.tc, style, { legendaries: resolveRule(e.legendaries), trainers: resolveRule(e.trainers) });
     }
   }
   for (const id of taken) queue.delete(id);
@@ -451,15 +466,16 @@ function idleBots(): void {
   if (running >= BOT_IDLE_GAMES || humanBotGames > 0 || (bots && !bots.idle)) return;
   const all = accounts.bots();
   // Usually the bot with the fewest games goes next, so every bot's rating gets settled.
-  const fewest = Math.min(...all.map((b) => b.games));
-  const due = randomSeed() % 4 ? all.filter((b) => b.games === fewest) : all;
+  const style = (['classic', 'secret', 'auction'] as const)[randomSeed() % 3];
+  const fewest = Math.min(...all.map((b) => modeStats(b, style).games));
+  const due = randomSeed() % 4 ? all.filter((b) => modeStats(b, style).games === fewest) : all;
   const a = due[randomSeed() % due.length];
-  const near = all.filter((b) => b.id !== a.id && Math.abs(b.rating - a.rating) <= 250);
+  const near = all.filter((b) => b.id !== a.id && Math.abs(modeStats(b, style).rating - modeStats(a, style).rating) <= 250);
   if (!near.length) return;
   const b = near[randomSeed() % near.length];
-  // Bots play every kind of ranked game, so their ratings hold whatever a player picks.
+  // Bots play every kind of ranked game, so their rating in each style holds whatever a player picks.
   const rules = { legendaries: randomSeed() % 2 === 0, trainers: randomSeed() % 2 === 0 };
-  startRanked([a as unknown as QueueEntry, b], null, (['classic', 'secret', 'auction'] as const)[randomSeed() % 3], rules, true);
+  startRanked([a as unknown as QueueEntry, b], null, style, rules, true);
 }
 
 // ---------------------------------------------------------------- messages

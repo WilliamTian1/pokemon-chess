@@ -152,10 +152,11 @@ export function AccountChip({ onProfile, className = '' }: { onProfile: (name: s
   return (
     <div className={`relative ${className}`}>
       {account ? (
-        <button type="button" className="btn-ghost gap-2" onClick={() => setMenu((m) => !m)}>
+        <button type="button" className="btn-ghost gap-2" onClick={() => setMenu((m) => !m)}
+          title={`Classic ${account.ratings.classic} · Secret ${account.ratings.secret} · Auction ${account.ratings.auction}`}>
           <PokeBallIcon className="h-5 w-5" />
           <span className="max-w-[9rem] truncate">{account.username}</span>
-          <span className="rounded-full bg-[#4a2b16] px-2 py-0.5 font-display text-xs text-[#f2d27a]">{account.rating}</span>
+          <span className="rounded-full bg-[#4a2b16] px-2 py-0.5 font-display text-xs text-[#f2d27a]">{Math.max(account.ratings.classic, account.ratings.secret, account.ratings.auction)}</span>
         </button>
       ) : (
         <button type="button" className="btn-primary" onClick={() => setAuth(true)}>Sign in</button>

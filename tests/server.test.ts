@@ -140,7 +140,7 @@ describe('accounts and ranked play', () => {
   it('signs up, logs in, rejects bad passwords and duplicate names', async () => {
     const cookie = await signup('RedFan');
     const me = await (await fetch(`http://localhost:${PORT}/api/me`, { headers: { cookie } })).json();
-    expect(me.account).toMatchObject({ username: 'RedFan', rating: 1200 });
+    expect(me.account).toMatchObject({ username: 'RedFan', ratings: { classic: 1200, secret: 1200, auction: 1200 } });
     const dup = await fetch(`http://localhost:${PORT}/api/auth/signup`, {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username: 'redfan', password: 'whatever123' }),
     });
@@ -177,8 +177,11 @@ describe('accounts and ranked play', () => {
     const over = (await b.until((m) => m.t === 'room' && m.room.game?.phase === 'over')) as Extract<ServerMsg, { t: 'room' }>;
     expect(over.room.result?.deltas?.[loser]).toBeLessThan(0);
     const prof = await (await fetch(`http://localhost:${PORT}/api/users/Kanto1`)).json();
-    expect(prof.games).toBe(1);
-    expect(prof.losses).toBe(1);
+    // Only the style that was played changes; the other modes keep their own rating.
+    expect(prof.modes.classic).toMatchObject({ games: 1, losses: 1 });
+    expect(prof.modes.classic.rating).toBeLessThan(1200);
+    expect(prof.modes.secret).toMatchObject({ games: 0, rating: 1200 });
+    expect(prof.modes.auction).toMatchObject({ games: 0, rating: 1200 });
     expect(prof.recent[0]).toMatchObject({ result: 'loss', opponent: { username: 'Johto2' } });
     a.close();
     b.close();

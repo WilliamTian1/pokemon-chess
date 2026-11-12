@@ -27,8 +27,10 @@ export const RULE_PREFS: readonly RulePref[] = ['on', 'off', 'any'];
 export interface AccountView {
   id: string;
   username: string;
-  rating: number;
-  games: number;
+  /** Elo rating per draft style: each mode is rated separately. */
+  ratings: Record<DraftStyle, number>;
+  /** Ranked games played per draft style. */
+  games: Record<DraftStyle, number>;
   /** Bot accounts (they fill the ranked queue): their difficulty. */
   bot?: 'easy' | 'medium' | 'hard';
 }
@@ -135,17 +137,25 @@ export interface ProfileGame {
   team: string[];
 }
 
-export interface Profile {
-  username: string;
+/** One draft style's standing on a profile. */
+export interface ModeProfile {
   rating: number;
   peak: number;
   games: number;
   wins: number;
   losses: number;
-  createdAt: number;
-  bot?: 'easy' | 'medium' | 'hard';
   history: { t: number; r: number }[];
-  recent: ProfileGame[];
-  /** Rank on the leaderboard (1-based), or null for provisional players. */
+  /** Rank on that style's leaderboard (1-based), or null for provisional players. */
   rank: number | null;
 }
+
+export interface Profile {
+  username: string;
+  createdAt: number;
+  bot?: 'easy' | 'medium' | 'hard';
+  modes: Record<DraftStyle, ModeProfile>;
+  /** Recent ranked games in every style (each carries its own style). */
+  recent: ProfileGame[];
+}
+
+export const DRAFT_STYLES: readonly DraftStyle[] = ['classic', 'secret', 'auction'];

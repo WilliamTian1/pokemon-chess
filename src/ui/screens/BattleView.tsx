@@ -70,6 +70,7 @@ export function BattleView({ ctl }: { ctl: Controller }) {
   useEffect(() => setHudSlot(document.getElementById('battle-hud')), []);
   const boardSize = useBoxSize(boardBox);
   const [chart, setChart] = useState(() => devOpen('chart'));
+  const [help, setHelp] = useState(false);
 
 
 
@@ -420,6 +421,7 @@ export function BattleView({ ctl }: { ctl: Controller }) {
         readout={readout}
         onChart={() => setChart(true)}
         onMatchups={() => setMatchups(true)}
+        onHelp={() => setHelp(true)}
       />
     </div>
   );
@@ -536,6 +538,20 @@ export function BattleView({ ctl }: { ctl: Controller }) {
       <FieldFx events={ctl.events} />
       <TurnSweep state={s} names={ctl.names} mySides={ctl.mySides} />
       {chart && <TypeChartModal onClose={() => setChart(false)} cards={s.units.map((u) => cardOf(u))} />}
+      {help && (
+        <Modal onClose={() => setHelp(false)}>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="font-display text-xl text-lacquer">Battle help</h3>
+              <button type="button" className="btn-ghost" onClick={() => setHelp(false)}>Close</button>
+            </div>
+            <p>Activate each of your Pokémon once, in any order. Move up to its Movement, then use one move, the trebuchet, or wait. End your turn after everyone is activated.</p>
+            <p><b>Ice:</b> entering an ice tile makes a Pokémon slide in the direction it entered until it reaches a non-ice tile or an obstacle.</p>
+            <p><b>Magma:</b> non-Fire Pokémon take 30 damage when they enter. Fire Pokémon are unharmed.</p>
+            <p>Use <b>Matchups</b> to compare both teams, or <b>Type chart</b> for the full effectiveness chart. Hover tags and moves for details.</p>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
@@ -556,7 +572,7 @@ function dangerReadout(state: GameState, dz: ReturnType<typeof dangerZone> | nul
   return `In reach of ${[...byUnit].map(([id, mv]) => `${cardOf(state.units.find((x) => x.id === id)!).name} (${mv.join(', ')})`).join(' · ')}`;
 }
 
-function BoardTools({ state, dangerSide, solo, onClearSolo, dz, readout, onChart, onMatchups }: {
+function BoardTools({ state, dangerSide, solo, onClearSolo, dz, readout, onChart, onMatchups, onHelp }: {
   state: GameState;
   dangerSide: Side;
   solo: Unit | null;
@@ -566,6 +582,7 @@ function BoardTools({ state, dangerSide, solo, onClearSolo, dz, readout, onChart
   readout: string | null;
   onChart: () => void;
   onMatchups: () => void;
+  onHelp: () => void;
 }) {
   const when = state.phase === 'battle' && state.side === dangerSide ? 'this turn' : 'on their next turn';
   const treb = dz?.trebuchet.map((id) => cardOf(state.units.find((x) => x.id === id)!).name) ?? [];
@@ -597,6 +614,7 @@ function BoardTools({ state, dangerSide, solo, onClearSolo, dz, readout, onChart
       <button type="button" className="btn-ghost phone:!px-2 phone:!py-1 phone:text-xs" onClick={onChart}>
         <span className="phone:hidden">Type chart</span><span className="sm:hidden">Chart</span>
       </button>
+      <button type="button" className="btn-ghost phone:!px-2 phone:!py-1 phone:text-xs" onClick={onHelp} aria-label="Battle help" title="How to play this battle">?</button>
       {/* Tablets: beside the buttons or on its own line; phones only when it says something about the
           board (the standing hint is left out to save room). One-screen layouts keep the row slim (the
           hover readout appears on the board instead). */}

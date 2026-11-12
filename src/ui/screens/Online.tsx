@@ -5,7 +5,7 @@ import { ROOM_CODE_RE, RULE_PREFS, type RulePref, type StylePref, TIME_CONTROLS,
 import { refreshAccount, useAccount } from '../account';
 import { AccountChip, AuthModal } from '../components/Account';
 import { CardsIcon, ClockIcon, CoinIcon, PokeBallIcon, SealedIcon } from '../components/icons';
-import { Leaderboard } from './Profile';
+import { Leaderboard, STYLE_NAME } from './Profile';
 import { SIDE_TEXT } from '../components/bits';
 import { SoundButton, useMusic } from '../components/Effects';
 import {
@@ -76,7 +76,13 @@ function OnlineScreens({ onExit, onGame, onProfile }: { onExit: () => void; onGa
         <div className="panel space-y-4 p-5">
           <div className="flex items-center justify-between gap-2">
             <h3 className="font-display text-2xl text-lacquer">Ranked</h3>
-            {account && <span className="font-display text-lg">Your rating: {account.rating}</span>}
+            {account && (
+              <span className="font-display text-lg">
+                {style === 'any'
+                  ? `Your ratings: ${(['classic', 'secret', 'auction'] as const).map((k) => `${STYLE_NAME[k]} ${account.ratings[k]}`).join(' · ')}`
+                  : `Your ${STYLE_NAME[style]} rating: ${account.ratings[style]}`}
+              </span>
+            )}
           </div>
           {account ? (
             <>
@@ -111,7 +117,7 @@ function OnlineScreens({ onExit, onGame, onProfile }: { onExit: () => void; onGa
                 </div>
               </section>
               <p className="text-xs font-bold text-slate-400">
-                Ranked matches are played on a random map, and every kind counts towards the same rating. “Either” finds a match fastest. If nobody of your level is searching, a bot account of similar rating takes the seat after a few seconds.
+                Ranked matches are played on a random map, and each draft style has its own rating. “Any” finds a match fastest. If nobody of your level is searching, a bot account of similar rating takes the seat after a few seconds.
               </p>
               <button type="button" className="btn-primary w-full gap-3 py-3.5 font-display text-xl" onClick={findMatch}>
                 <PokeBallIcon className="h-8 w-8" /> Find a ranked match
@@ -148,7 +154,7 @@ function OnlineScreens({ onExit, onGame, onProfile }: { onExit: () => void; onGa
           </div>
           <div className="panel space-y-2 p-5">
             <h3 className="font-display text-2xl text-lacquer">Ladder</h3>
-            <Leaderboard onProfile={onProfile} limit={10} compact />
+            <Leaderboard onProfile={onProfile} limit={10} compact style={style === 'any' ? undefined : style} />
           </div>
         </div>
       </div>

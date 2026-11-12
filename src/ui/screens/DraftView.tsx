@@ -168,6 +168,11 @@ export function DraftView({ ctl }: { ctl: Controller }) {
   const normals = useMemo(() => (secret ? s.draft.secret!.pools[turn] : auction ? [] : s.draft.pool).filter((id) => id !== '?').map(getCard), [s.draft.pool, secret, auction, turn]); // eslint-disable-line react-hooks/exhaustive-deps
   const legends = useMemo(() => (secret ? s.draft.secret!.legendPools[turn] : auction ? [] : s.draft.legendPool).filter((id) => id !== '?').map(getCard), [s.draft.legendPool, secret, auction, turn]); // eslint-disable-line react-hooks/exhaustive-deps
   const pool = useMemo(() => [...normals, ...legends], [normals, legends]);
+  const auctionCards = useMemo(() => {
+    if (!auction) return [];
+    const ids = [...s.draft.picks.A, ...s.draft.picks.D, ...(s.draft.auction?.lot ? [s.draft.auction.lot] : [])];
+    return [...new Set(ids)].map(getCard);
+  }, [auction, s.draft.auction?.lot, s.draft.picks]);
   const secretTotal = TEAM_SIZE + (s.trainers ? 1 : 0);
   const pickNo = secret
     ? Math.min(secretTotal, s.draft.picks[turn].length + (s.trainers?.picks[turn] ? 1 : 0) + 1)
@@ -339,7 +344,7 @@ export function DraftView({ ctl }: { ctl: Controller }) {
       </div>
       <div className="flex gap-3 wide:min-h-0 wide:flex-1">
       <div ref={setGridBox} className="min-w-0 flex-1">
-        {auction && <AuctionBoard ctl={ctl} onRead={setReading} />}
+        {auction && <AuctionBoard ctl={ctl} onRead={setReading} cards={auctionCards} />}
         {waiting && (
           <div className="panel mb-2 flex items-center gap-3 p-3">
             <SealedIcon className="h-10 w-10 shrink-0" />
@@ -442,7 +447,7 @@ export function DraftView({ ctl }: { ctl: Controller }) {
 }
 
 /** Auction: the lot on offer, the standing bid, both sides' coins and the bid controls. */
-function AuctionBoard({ ctl, onRead }: { ctl: Controller; onRead: (id: string) => void }) {
+function AuctionBoard({ ctl, onRead, cards }: { ctl: Controller; onRead: (id: string) => void; cards: CardDef[] }) {
   const s = ctl.state;
   const a = s.draft.auction!;
   const lot = a.lot!;
@@ -452,6 +457,7 @@ function AuctionBoard({ ctl, onRead }: { ctl: Controller; onRead: (id: string) =
   const min = a.high ? a.high.amount + 1 : 0;
   const max = a.coins[turn];
   const [amount, setAmount] = useState(min);
+  const [detail, setDetail] = useState<CardDef | null>(null);
   useEffect(() => {
     setAmount(min);
     onRead(lot);
@@ -465,9 +471,17 @@ function AuctionBoard({ ctl, onRead }: { ctl: Controller; onRead: (id: string) =
         <div className="text-xs font-extrabold uppercase tracking-widest text-slate-400">
           Lot {a.history.length + 1} · {a.deck.length} more to come
         </div>
-        <CardImage id={lot} name={card.name} className="w-full max-w-[280px] shadow-xl phone:max-w-[190px]" />
+        <button type="button" onClick={() => setDetail(card)} className="rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300" title="Open type matchups and counters">
+          <CardImage id={lot} name={card.name} className="w-full max-w-[280px] shadow-xl phone:max-w-[190px]" />
+        </button>
         {card.legendary && <span className="chip bg-amber-400 text-slate-950">★ Legendary · one per team</span>}
       </div>
+      {detail && (
+        <Modal onClose={() => setDetail(null)}>
+          <CardDetail card={detail} extra={<CounterLists card={detail} pool={cards} />} />
+          <button type="button" className="btn-ghost mt-4 w-full" onClick={() => setDetail(null)}>Close</button>
+        </Modal>
+      )}
       <div className="panel space-y-4 p-4">
         <div className="grid grid-cols-2 gap-2">
           {(['A', 'D'] as const).map((side) => (

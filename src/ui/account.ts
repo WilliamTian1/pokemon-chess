@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react';
+import type { DraftStyle } from '../engine/types';
 import type { AccountView, Profile } from '../net/protocol';
 
 /**
@@ -94,4 +95,4 @@ export async function rename(username: string): Promise<string | null> {
 export const fetchProfile = (name: string): Promise<Profile | null> => getJson<Profile>(`users/${encodeURIComponent(name)}`);
 
 export type LeaderRow = AccountView & { rank: number };
-export const fetchLeaderboard = async (): Promise<LeaderRow[] | null> => (await getJson<{ players: LeaderRow[] }>('leaderboard'))?.players ?? null;
+export const fetchLeaderboard = async (style: DraftStyle): Promise<LeaderRow[] | null> => (await getJson<{ players: LeaderRow[] }>(`leaderboard?style=${style}`))?.players ?? null;
