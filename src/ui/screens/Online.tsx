@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { type Side, getMap } from '../../engine';
 import { NetClient, savedName } from '../../net/client';
-import { ROOM_CODE_RE, type StylePref, TIME_CONTROLS, timeControl } from '../../net/protocol';
-import { useAccount } from '../account';
+import { ROOM_CODE_RE, RULE_PREFS, type RulePref, type StylePref, TIME_CONTROLS, timeControl } from '../../net/protocol';
+import { refreshAccount, useAccount } from '../account';
 import { AccountChip, AuthModal } from '../components/Account';
 import { CardsIcon, ClockIcon, CoinIcon, PokeBallIcon, SealedIcon } from '../components/icons';
 import { Leaderboard } from './Profile';
@@ -24,6 +24,8 @@ function OnlineScreens({ onExit, onGame, onProfile }: { onExit: () => void; onGa
   const [auth, setAuth] = useState(false);
   const [tc, setTc] = useState(() => storedPref('pcc-tc', '10+5'));
   const [style, setStyle] = useState<StylePref>(() => storedPref('pcc-ranked-style', 'any') as StylePref);
+  const [legends, setLegends] = useState<RulePref>(() => storedRule('pcc-ranked-legends'));
+  const [trainers, setTrainers] = useState<RulePref>(() => storedRule('pcc-ranked-trainers'));
 
   useEffect(() => () => client?.close(), [client]);
   // Development only: `?screen=online&autoqueue=10+5` joins the ranked queue straight away (screenshots).
@@ -55,8 +57,10 @@ function OnlineScreens({ onExit, onGame, onProfile }: { onExit: () => void; onGa
   const findMatch = () => {
     savePref('pcc-tc', tc);
     savePref('pcc-ranked-style', style);
+    savePref('pcc-ranked-legends', legends);
+    savePref('pcc-ranked-trainers', trainers);
     setRanked(true);
-    connect((c) => c.send({ t: 'queue', timeControl: tc, style }));
+    connect((c) => c.send({ t: 'queue', timeControl: tc, style, legendaries: legends, trainers }));
   };
   return (
     <div className="mx-auto max-w-6xl px-4 py-6">
@@ -99,8 +103,15 @@ function OnlineScreens({ onExit, onGame, onProfile }: { onExit: () => void; onGa
                   ]}
                 />
               </section>
+              <section>
+                <SetupHeading n={3}>Rules</SetupHeading>
+                <div className="space-y-2">
+                  <RuleChoice label="Legendaries" value={legends} onChange={setLegends} />
+                  <RuleChoice label="Trainers" value={trainers} onChange={setTrainers} />
+                </div>
+              </section>
               <p className="text-xs font-bold text-slate-400">
-                Ranked matches are played with legendaries and trainers on a random map. If nobody of your level is searching, a bot account of similar rating takes the seat after a few seconds.
+                Ranked matches are played on a random map, and every kind counts towards the same rating. “Either” finds a match fastest. If nobody of your level is searching, a bot account of similar rating takes the seat after a few seconds.
               </p>
               <button type="button" className="btn-primary w-full gap-3 py-3.5 font-display text-xl" onClick={findMatch}>
                 <PokeBallIcon className="h-8 w-8" /> Find a ranked match
@@ -146,6 +157,30 @@ function OnlineScreens({ onExit, onGame, onProfile }: { onExit: () => void; onGa
   );
 }
 
+const RULE_LABEL: Record<RulePref, string> = { on: 'On', off: 'Off', any: 'Either' };
+
+/** A saved ranked rule preference (on, the long-standing ranked game, unless chosen otherwise). */
+function storedRule(key: string): RulePref {
+  const v = storedPref(key, 'on') as RulePref;
+  return RULE_PREFS.includes(v) ? v : 'on';
+}
+
+/** One optional rule for the ranked queue: play with it, without it, or take either. */
+function RuleChoice({ label, value, onChange }: { label: string; value: RulePref; onChange: (v: RulePref) => void }) {
+  return (
+    <div className="flex items-center gap-3" role="group" aria-label={label}>
+      <span className="w-28 shrink-0 font-display text-[0.95rem] leading-tight">{label}</span>
+      <div className="grid flex-1 grid-cols-3 gap-2">
+        {RULE_PREFS.map((v) => (
+          <button key={v} type="button" aria-pressed={value === v} onClick={() => onChange(v)} className={`opt-tile !min-h-0 justify-center !py-1.5 font-display text-[0.95rem] ${value === v ? 'opt-tile-on' : ''}`}>
+            {RULE_LABEL[v]}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function storedPref(key: string, def: string): string {
   try {
     return localStorage.getItem(key) ?? def;
@@ -173,6 +208,12 @@ function RankedMatch({ client, onExit, onGame }: { client: NetClient; onExit: ()
   }, []);
   const inGame = !!(ctl && snap.room);
   useEffect(() => onGame(inGame), [inGame]); // eslint-disable-line react-hooks/exhaustive-deps
+  // A rated result changes your rating: reload the signed-in account so every place that shows it
+  // (the header chip, "Your rating", the next queue) agrees with your profile straight away.
+  const rated = !!snap.room?.result?.ratings;
+  useEffect(() => {
+    if (rated) void refreshAccount();
+  }, [rated]);
   if (ctl && snap.room) {
     const tc = timeControl(snap.room.timeControl);
     return <GameScreen ctl={ctl} onExit={onExit} title={`Ranked${tc ? ` · ${tc.label}` : ''}`} />;
@@ -188,6 +229,7 @@ function RankedMatch({ client, onExit, onGame }: { client: NetClient; onExit: ()
           <div className="space-y-1 text-sm font-bold text-slate-300">
             <div className="font-display text-3xl">{Math.floor(waited / 60)}:{String(waited % 60).padStart(2, '0')}</div>
             <div>{timeControl(q.timeControl)?.label} · {q.style === 'any' ? 'any draft style' : `${q.style} draft`} · {q.searching} searching</div>
+            <div>Legendaries: {RULE_LABEL[q.legendaries].toLowerCase()} · Trainers: {RULE_LABEL[q.trainers].toLowerCase()}</div>
             <div className="text-xs text-slate-400">A bot account of similar rating joins if nobody is found in a few seconds.</div>
           </div>
         )}

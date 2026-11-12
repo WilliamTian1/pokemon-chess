@@ -110,8 +110,8 @@ def overall(per):
 fmt = lambda per: ' · '.join(f'{g} {per[g]:.4f}' for g in groups if g in per)  # noqa: E731
 everything = np.ones(F, dtype=bool)
 best = None
-for lam, delta, inter in [(0.001, 0.01, 0.001), (0.001, 0.01, 0.01), (0.001, 0.03, 0.003), (0.0003, 0.01, 0.003), (0.003, 0.01, 0.003),
-                          (0.001, 0.01, 0.03), (0.001, 0.003, 0.01)]:
+for lam, delta, inter in [(0.001, 0.01, 0.003), (0.0003, 0.01, 0.003), (0.0001, 0.01, 0.003), (0.0001, 0.003, 0.003), (0.0001, 0.003, 0.001),
+                          (0.0001, 0.001, 0.001), (0.00003, 0.003, 0.001), (0.0003, 0.003, 0.001)]:
     pen = penalties(lam, delta, inter)
     per = cv(everything, pen)
     loss = overall(per)

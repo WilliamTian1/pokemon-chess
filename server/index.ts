@@ -10,7 +10,7 @@ import {
   applyAction, decider, deciders, hiddenView, isSimultaneous, newGame, randomSeed, seededRng,
 } from '../src/engine';
 import {
-  type AccountView, type ClientMsg, type ClockView, type MatchResult, type RoomView, type ServerMsg, type StylePref, TIME_CONTROLS,
+  type AccountView, type ClientMsg, type ClockView, type MatchResult, RULE_PREFS, type RoomView, type RulePref, type ServerMsg, type StylePref, TIME_CONTROLS,
   type TimeControl, timeControl,
 } from '../src/net/protocol';
 import { Accounts, accountView } from './accounts';
@@ -113,6 +113,8 @@ interface QueueEntry {
   conn: Conn;
   tc: TimeControl;
   style: StylePref;
+  legendaries: RulePref;
+  trainers: RulePref;
   since: number;
 }
 
@@ -374,7 +376,12 @@ function runBot(room: Room, side: Side, level: Difficulty): void {
 
 // ---------------------------------------------------------------- ranked matchmaking
 
-const compatible = (a: StylePref, b: StylePref): boolean => a === b || a === 'any' || b === 'any';
+const compatible = (a: StylePref | RulePref, b: StylePref | RulePref): boolean => a === b || a === 'any' || b === 'any';
+/** Two queue entries can share a match: same clock, and no clash over draft style, legendaries or trainers. */
+const canPair = (a: QueueEntry, b: QueueEntry): boolean =>
+  a.tc.id === b.tc.id && compatible(a.style, b.style) && compatible(a.legendaries, b.legendaries) && compatible(a.trainers, b.trainers);
+/** The rule both sides accept; when neither minds, the standard game (on). */
+const resolveRule = (a: RulePref, b: RulePref = 'any'): boolean => (a !== 'any' ? a : b) !== 'off';
 function resolveStyle(a: StylePref, b: StylePref): DraftStyle {
   const s = a !== 'any' ? a : b !== 'any' ? b : (['classic', 'secret', 'auction'] as const)[randomSeed() % 3];
   return s;
@@ -383,7 +390,7 @@ function resolveStyle(a: StylePref, b: StylePref): DraftStyle {
 const ratingWindow = (ms: number): number => Math.min(800, 100 + (15 * ms) / 1000);
 
 function queueStatus(e: QueueEntry | null, ws: WebSocket): void {
-  send(ws, { t: 'queue', queue: e && { timeControl: e.tc.id, style: e.style, since: e.since, searching: [...queue.values()].filter((x) => x.tc.id === e.tc.id).length } });
+  send(ws, { t: 'queue', queue: e && { timeControl: e.tc.id, style: e.style, legendaries: e.legendaries, trainers: e.trainers, since: e.since, searching: [...queue.values()].filter((x) => x.tc.id === e.tc.id).length } });
 }
 
 function matchmake(): void {
@@ -392,18 +399,18 @@ function matchmake(): void {
   const taken = new Set<string>();
   for (const e of waiting) {
     if (taken.has(e.user.id)) continue;
-    const opp = waiting.find((o) => o !== e && !taken.has(o.user.id) && o.tc.id === e.tc.id && compatible(o.style, e.style)
+    const opp = waiting.find((o) => o !== e && !taken.has(o.user.id) && canPair(o, e)
       && Math.abs(o.user.rating - e.user.rating) <= Math.min(ratingWindow(now - e.since), ratingWindow(now - o.since)));
     if (opp) {
       taken.add(e.user.id).add(opp.user.id);
-      startRanked([e, opp], e.tc, resolveStyle(e.style, opp.style));
+      startRanked([e, opp], e.tc, resolveStyle(e.style, opp.style), { legendaries: resolveRule(e.legendaries, opp.legendaries), trainers: resolveRule(e.trainers, opp.trainers) });
     } else if (now - e.since >= BOT_FILL_MS) {
       const busy = new Set([...rooms.values()].filter((r) => r.idle && r.game?.phase !== 'over').flatMap((r) => Object.values(r.users ?? {}).map((u) => u.id)));
       const candidates = accounts.bots().filter((b) => !busy.has(b.id)).sort((a, b) => Math.abs(a.rating - e.user.rating) - Math.abs(b.rating - e.user.rating));
       if (!candidates.length) continue;
       const bot = candidates[randomSeed() % Math.min(3, candidates.length)];
       taken.add(e.user.id);
-      startRanked([e, bot], e.tc, resolveStyle(e.style, 'any'));
+      startRanked([e, bot], e.tc, resolveStyle(e.style, 'any'), { legendaries: resolveRule(e.legendaries), trainers: resolveRule(e.trainers) });
     }
   }
   for (const id of taken) queue.delete(id);
@@ -411,11 +418,13 @@ function matchmake(): void {
 }
 
 /** A ranked match between two queued players, or a queued player and a bot account. */
-function startRanked(seats: [QueueEntry, QueueEntry | User], tc: TimeControl | null, style: DraftStyle, idle = false): Room {
+function startRanked(
+  seats: [QueueEntry, QueueEntry | User], tc: TimeControl | null, style: DraftStyle, rules: { legendaries: boolean; trainers: boolean }, idle = false,
+): Room {
   const [a, b] = randomSeed() % 2 ? [seats[0], seats[1]] : [seats[1], seats[0]];
   const userOf = (x: QueueEntry | User): User => ('user' in x ? x.user : x);
   const room = makeRoom('server', {
-    mapId: MAP_LIST[randomSeed() % MAP_LIST.length].id, legendaries: true, trainers: true, style, tc,
+    mapId: MAP_LIST[randomSeed() % MAP_LIST.length].id, legendaries: rules.legendaries, trainers: rules.trainers, style, tc,
     users: { A: userOf(a), D: userOf(b) }, idle,
   });
   for (const [side, x] of [['A', a], ['D', b]] as const) {
@@ -448,7 +457,9 @@ function idleBots(): void {
   const near = all.filter((b) => b.id !== a.id && Math.abs(b.rating - a.rating) <= 250);
   if (!near.length) return;
   const b = near[randomSeed() % near.length];
-  startRanked([a as unknown as QueueEntry, b], null, (['classic', 'secret', 'auction'] as const)[randomSeed() % 3], true);
+  // Bots play every kind of ranked game, so their ratings hold whatever a player picks.
+  const rules = { legendaries: randomSeed() % 2 === 0, trainers: randomSeed() % 2 === 0 };
+  startRanked([a as unknown as QueueEntry, b], null, (['classic', 'secret', 'auction'] as const)[randomSeed() % 3], rules, true);
 }
 
 // ---------------------------------------------------------------- messages
@@ -483,7 +494,9 @@ function handle(ws: WebSocket, conn: Conn, msg: ClientMsg): void {
       if (!tc) return fail('Unknown time control.');
       const style: StylePref = ['classic', 'secret', 'auction', 'any'].includes(msg.style) ? msg.style : 'any';
       if (room) leaveRoom(ws, conn, true);
-      const e: QueueEntry = { user: conn.user, ws, conn, tc, style, since: Date.now() };
+      // Clients from before these options existed get the game ranked always was: both on.
+      const rule = (v: unknown): RulePref => (RULE_PREFS.includes(v as RulePref) ? (v as RulePref) : 'on');
+      const e: QueueEntry = { user: conn.user, ws, conn, tc, style, legendaries: rule(msg.legendaries), trainers: rule(msg.trainers), since: Date.now() };
       queue.set(conn.user.id, e);
       queueStatus(e, ws);
       return;

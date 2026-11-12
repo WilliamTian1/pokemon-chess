@@ -19,6 +19,9 @@ export const timeControl = (id: string | null | undefined): TimeControl | null =
 
 /** Ranked queue preference: a draft style, or any. */
 export type StylePref = DraftStyle | 'any';
+/** Ranked queue preference for an optional rule (legendaries, trainers): with it, without it, or either. */
+export type RulePref = 'on' | 'off' | 'any';
+export const RULE_PREFS: readonly RulePref[] = ['on', 'off', 'any'];
 
 /** A signed-in account as other players see it. */
 export interface AccountView {
@@ -44,7 +47,7 @@ export type ClientMsg =
   | { t: 'rematch'; swapRoles: boolean }
   | { t: 'leave' }
   /** Ranked matchmaking (signed-in players only). */
-  | { t: 'queue'; timeControl: string; style: StylePref }
+  | { t: 'queue'; timeControl: string; style: StylePref; legendaries?: RulePref; trainers?: RulePref }
   | { t: 'unqueue' };
 
 export interface PlayerView {
@@ -100,6 +103,8 @@ export interface RoomView {
 export interface QueueView {
   timeControl: string;
   style: StylePref;
+  legendaries: RulePref;
+  trainers: RulePref;
   since: number;
   /** Players currently searching (including you). */
   searching: number;

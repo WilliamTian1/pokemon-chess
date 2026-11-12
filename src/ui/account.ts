@@ -48,7 +48,9 @@ async function post(p: string, body: unknown): Promise<{ ok: boolean; data: { ac
 let started = false;
 export async function refreshAccount(): Promise<void> {
   const [me, cfg] = await Promise.all([getJson<{ account: AccountView | null }>('me'), getJson<{ googleClientId: string | null }>('config')]);
-  set({ account: me?.account ?? null, available: !!me, loaded: true, googleClientId: cfg?.googleClientId ?? null });
+  // A later refresh that can't reach the server keeps what is already known (no surprise sign-out).
+  if (!me && state.loaded) return;
+  set({ account: me?.account ?? null, available: !!me, loaded: true, googleClientId: cfg?.googleClientId ?? state.googleClientId });
 }
 
 export function useAccount(): AccountState {

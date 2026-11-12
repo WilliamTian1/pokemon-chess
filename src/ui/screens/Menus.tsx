@@ -1,5 +1,5 @@
 import { type ReactNode, useState } from 'react';
-import { DIFFICULTIES, type Difficulty } from '../../ai/bot';
+import { DIFFICULTIES, type Difficulty } from '../../ai/levels';
 import { CARD_LIST, type CardDef, type Side, TRAINER_LIST } from '../../engine';
 import { Art, Modal } from '../components/bits';
 import { CardDetail, MiniGrid } from '../components/CardView';

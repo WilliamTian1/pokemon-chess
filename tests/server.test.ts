@@ -162,11 +162,14 @@ describe('accounts and ranked play', () => {
     const a = new TestClient('t1', 'x', ca);
     const b = new TestClient('t2', 'y', cb);
     await Promise.all([a.open(), b.open()]);
-    a.send({ t: 'queue', timeControl: '5+3', style: 'classic' });
-    b.send({ t: 'queue', timeControl: '5+3', style: 'any' });
+    a.send({ t: 'queue', timeControl: '5+3', style: 'classic', legendaries: 'off', trainers: 'any' });
+    b.send({ t: 'queue', timeControl: '5+3', style: 'any', legendaries: 'any', trainers: 'any' });
     await a.until((m) => m.t === 'room' && !!m.room.game, 5000);
     await b.until((m) => m.t === 'room' && !!m.room.game, 5000);
     expect(a.room!.rated).toBe(true);
+    // One side asked for no legendaries and the other didn't mind; nobody minded trainers, so they're on.
+    expect(a.room).toMatchObject({ legendaries: false, trainers: true });
+    expect(a.room!.game!.draft.legendPool).toHaveLength(0);
     expect(a.room!.clock).toMatchObject({ A: 300_000, D: 300_000, incMs: 3000 });
     expect(a.room!.game!.draft.style).toBe('classic');
     const loser = a.room!.players.find((p) => p.id === a.id)!.side!;
@@ -185,11 +188,12 @@ describe('accounts and ranked play', () => {
     const cookie = await signup('Lonely1');
     const a = new TestClient('t3', 'z', cookie);
     await a.open();
-    a.send({ t: 'queue', timeControl: '10+5', style: 'classic' });
+    a.send({ t: 'queue', timeControl: '10+5', style: 'classic', legendaries: 'on', trainers: 'off' });
     await a.until((m) => m.t === 'room' && !!m.room.game, 8000);
     const side = a.room!.players.find((p) => p.id === a.id)!.side!;
     const botSide = side === 'A' ? 'D' : 'A';
     expect(a.room!.accounts?.[botSide]?.bot).toBeTruthy();
+    expect(a.room).toMatchObject({ legendaries: true, trainers: false });
     // The Attacker picks first; if that's the bot, wait for its pick, else pick and wait for its reply.
     if (side === 'A') a.send({ t: 'action', action: { type: 'draftPick', cardId: a.room!.game!.draft.pool[0] } });
     await a.until((m) => m.t === 'room' && (m.room.game?.draft.picks[botSide].length ?? 0) > 0, 30000);

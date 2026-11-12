@@ -1,5 +1,5 @@
 import { type Action, type GameState, type Side, randomSeed, seededRng } from '../engine';
-import { type Difficulty, decide } from './bot';
+import type { Difficulty } from './levels';
 
 export interface BotRequest {
   id: number;
@@ -42,7 +42,8 @@ function getWorker(): Worker | null {
 export function requestBotActions(state: GameState, side: Side, level: Difficulty): Promise<Action[]> {
   const seed = randomSeed();
   const w = getWorker();
-  if (!w) return Promise.resolve(decide(state, side, level, seededRng(seed)));
+  // No worker: run the bot on the page itself (loaded only then: it carries the value network).
+  if (!w) return import('./bot').then(({ decide }) => decide(state, side, level, seededRng(seed)));
   const id = nextId++;
   return new Promise((resolve) => {
     waiting.set(id, (r) => {
