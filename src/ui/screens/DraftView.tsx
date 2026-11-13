@@ -22,9 +22,11 @@ const CARD_COLUMNS = 'grid grid-cols-[repeat(auto-fill,minmax(min(100%,220px),1f
 
 /** The printed cards (card gallery). */
 export function CardGrid({ cards, onOpen }: { cards: CardDef[]; onOpen: (c: CardDef) => void }) {
+  const rank = (c: CardDef) => !c.legendary ? 0 : c.subrestricted ? 1 : 2;
+  const ordered = [...cards].sort((a, b) => rank(a) - rank(b));
   return (
     <div className={CARD_COLUMNS}>
-      {cards.map((c) => (
+      {ordered.map((c) => (
         <button key={c.id} type="button" onClick={() => onOpen(c)} className="rounded-lg text-left transition hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300">
           <CardImage id={c.id} name={c.name} />
         </button>
@@ -40,13 +42,12 @@ const DRAFT_LINE = 26;
  * Draft cards: the printed card, matchup badges and a Draft chip when the card can be taken now.
  * With `fit`, cards are sized so every one of them is on screen at once.
  */
-function DraftCards({ cards, fit, takenBy, pickable, canPick, legendTurn, onOpen, onDraft, onHover, focusId, badge }: {
+function DraftCards({ cards, fit, takenBy, pickable, canPick, onOpen, onDraft, onHover, focusId, badge }: {
   cards: CardDef[];
   fit: FitGrid | null;
   takenBy: Map<string, Side>;
   pickable: Set<string>;
   canPick: boolean;
-  legendTurn: boolean;
   onOpen: (c: CardDef) => void;
   onDraft: (c: CardDef) => void;
   onHover: (id: string | null) => void;
@@ -61,7 +62,7 @@ function DraftCards({ cards, fit, takenBy, pickable, canPick, legendTurn, onOpen
     >
       {cards.map((c) => {
         const taken = takenBy.get(c.id);
-        const offTurn = !taken && c.legendary !== legendTurn;
+        const offTurn = !taken && !pickable.has(c.id);
         return (
           <div
             key={c.id}
@@ -80,7 +81,7 @@ function DraftCards({ cards, fit, takenBy, pickable, canPick, legendTurn, onOpen
               )}
             </div>
             {/* Tags sit on the card's top edge so they don't hide its name or HP. */}
-            {c.legendary && <span className="absolute -top-2 left-2 chip bg-amber-400 text-slate-900 shadow">Legendary</span>}
+            {c.legendary && <span className={`absolute -top-2 left-2 chip shadow ${c.subrestricted ? 'bg-sky-300 text-slate-950' : 'bg-amber-400 text-slate-900'}`}>{c.subrestricted ? 'Subrestricted' : 'Legendary'}</span>}
             {taken && (
               <span className={`absolute -top-2 right-2 chip ${taken === 'A' ? 'bg-rose-500' : 'bg-sky-500'} text-white shadow`}>
                 {taken === 'A' ? 'Attacker' : 'Defender'}
@@ -365,7 +366,6 @@ export function DraftView({ ctl }: { ctl: Controller }) {
           takenBy={takenBy}
           pickable={pickable}
           canPick={mine}
-          legendTurn={legendTurn}
           onOpen={setDetail}
           onDraft={draft}
           onHover={onHover}
@@ -472,7 +472,9 @@ function AuctionBoard({ ctl, onRead }: { ctl: Controller; onRead: (id: string) =
           Lot {a.history.length + 1} · {a.deck.length} more to come
         </div>
         <CardImage id={lot} name={card.name} className="w-full max-w-[280px] shadow-xl phone:max-w-[190px]" />
-        {card.legendary && <span className="chip bg-amber-400 text-slate-950">★ Legendary · one per team</span>}
+        {card.legendary && <span className={`chip ${card.subrestricted ? 'bg-sky-300 text-slate-950' : 'bg-amber-400 text-slate-950'}`}>
+          ★ {card.subrestricted ? 'Subrestricted · normal pool' : 'Fully restricted · one per team'}
+        </span>}
       </div>
       <div className="panel space-y-4 p-4">
         <div className="grid grid-cols-2 gap-2">
@@ -493,7 +495,7 @@ function AuctionBoard({ ctl, onRead }: { ctl: Controller; onRead: (id: string) =
           </div>
           {(['A', 'D'] as const).filter(blocked).map((side) => (
             <div key={side} className="text-xs font-bold text-slate-400">
-              The {side === 'A' ? 'Attacker' : 'Defender'} can’t bid ({s.draft.picks[side].length >= TEAM_SIZE ? 'team full' : 'already has a legendary'}).
+              The {side === 'A' ? 'Attacker' : 'Defender'} can’t bid ({s.draft.picks[side].length >= TEAM_SIZE ? 'team full' : 'already has a fully restricted legendary'}).
             </div>
           ))}
         </div>

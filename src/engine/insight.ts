@@ -1,8 +1,8 @@
 import { typeMultiplier } from './data/typechart';
 import { canActNow, movementAllowance } from './engine';
 import { isSupportOnly, targeting, truantRests } from './moves';
-import { effectiveMov, inBounds, isTrebuchet, liveUnits, mapOf, moveOf, reachable } from './query';
-import type { AbilityId, CardDef, GameState, MoveDef, PType, Pos, Side, Unit } from './types';
+import { effectiveMov, inBounds, isTrebuchet, liveUnits, mapOf, moveIndexes, moveOf, reachable } from './query';
+import type { AbilityId, CardDef, GameState, MoveDef, MoveIndex, PType, Pos, Side, Unit } from './types';
 import { DIRS, TYPES } from './types';
 import { posKey } from './util';
 
@@ -66,7 +66,7 @@ export function isThreatMove(m: MoveDef): boolean {
 
 export interface DangerSource {
   unitId: string;
-  moveIndex: 0 | 1;
+  moveIndex: MoveIndex;
 }
 
 export interface DangerZone {
@@ -117,7 +117,7 @@ export function dangerZone(s: GameState, side: Side, onlyId?: string): DangerZon
     if (origins.some((p) => isTrebuchet(s, p))) trebuchet.push(e.id);
     // Its next activation's round (Gigaton Hammer only works in even rounds).
     const round = s.phase !== 'battle' ? 1 : e.side === s.side ? s.round : e.side === 'D' ? s.round : s.round + 1;
-    for (const moveIndex of [0, 1] as const) {
+    for (const moveIndex of moveIndexes(e)) {
       const mv = moveOf(e, moveIndex);
       if (!isThreatMove(mv) || e.locked.includes(mv.name) || (mv.fx.evenRoundsOnly && round % 2 !== 0)) continue;
       const src = { unitId: e.id, moveIndex };

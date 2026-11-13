@@ -1,10 +1,10 @@
 import { typeMultiplier } from './data/typechart';
 import {
-  abilityOf, adjacentToType, alliesOf, cardOf, effectiveMov, isNormalTerrain, liveUnits,
+  abilityOf, adjacentToType, alliesOf, cardOf, effectiveMov, isFlier, isNormalTerrain, isTrebuchet, liveUnits,
   terrainAt, terrainBonus, terrainMult, trainerOf, turnEffect, withAbility,
 } from './query';
 import type { GameState, MoveDef, PType, Pos, Unit } from './types';
-import { cheb, clamp, roundUp5 } from './util';
+import { cheb, clamp, roundUp5, steps } from './util';
 
 export interface AttackCtx {
   attacker: Unit;
@@ -39,7 +39,7 @@ export function makeAttackCtx(attacker: Unit, move: MoveDef | null, opts: {
 } = {}): AttackCtx {
   const ab = abilityOf(attacker);
   const attackerPos = opts.attackerPos ?? attacker.pos!;
-  let moveType = opts.moveType ?? (move ? move.type ?? 'Normal' : cardOf(attacker).types[0]);
+  let moveType = opts.moveType ?? (move?.fx.matchesUserType ? cardOf(attacker).types[0] : move ? move.type ?? 'Normal' : cardOf(attacker).types[0]);
   const pixilated = !!move && !!opts.s && moveType === 'Normal' && pixilateAt(opts.s, attacker, attackerPos);
   if (pixilated) moveType = 'Fairy';
   const extra = move?.extraType && move.extraType !== moveType ? [move.extraType] : [];
@@ -136,13 +136,18 @@ export interface DamageResult {
 
 /** Type effectiveness of the hit: the product over every type it carries. */
 export function hitTypeMultiplier(ac: AttackCtx, target: Unit): number {
-  return ac.types.reduce((m, t) => m * typeMultiplier(t, cardOf(target).types), 1);
+  return ac.types.reduce((m, t) => m * cardOf(target).types.reduce((d, defenderType) => {
+    if (ac.move?.fx.superEffectiveAgainst === defenderType) return d * Math.max(typeMultiplier(t, [defenderType]), 2);
+    if (ac.move?.fx.hitsFlying && defenderType === 'Flying' && t === 'Ground') return d;
+    return d * typeMultiplier(t, [defenderType]);
+  }, 1), 1);
 }
 
 export function isImmune(ac: AttackCtx, target: Unit): { immune: boolean; absorbed: boolean; wonderGuard?: boolean } {
   const dAb = ac.ignoreAbilities ? null : abilityOf(target);
   if (dAb === 'stormDrain' && ac.types.includes('Water')) return { immune: true, absorbed: true };
-  if (dAb === 'levitate' && ac.types.includes('Ground')) return { immune: true, absorbed: false };
+  if (dAb === 'levitate' && ac.types.includes('Ground') && !ac.move?.fx.hitsFlying) return { immune: true, absorbed: false };
+  if (dAb === 'telepathy' && ac.attacker.side === target.side && ac.move?.kind === 'attack') return { immune: true, absorbed: false };
   const mult = hitTypeMultiplier(ac, target);
   if (mult === 0) return { immune: true, absorbed: false };
   // Wonder Guard: only super-effective hits get through (Tinted Lens only lifts a hit to neutral).
@@ -187,12 +192,15 @@ export function computeDamage(s: GameState, ac: AttackCtx, target: Unit, base: n
   let mult = hitTypeMultiplier(ac, target);
   if (aAb === 'tintedLens' && mult < 1) mult = 1;
   const thickFat = dAb === 'thickFat' && (ac.types.includes('Fire') || ac.types.includes('Ice'));
+  const terrainBreak = turnEffect(s, A.side) === 'terrainBreak' &&
+    terrainBonus(s, A, ac.attackerPos) === null && terrainBonus(s, target) !== null;
 
   // The trebuchet is a flat 40 before type effectiveness: no stages, ability, terrain or burn
   // modifiers, except the ones that are about the trebuchet itself.
   if (ac.isTrebuchet) {
-    const extra = (aAb === 'artilleryExpertise' ? 20 : 0) + (trainerOf(s, A.side) === 'nobunaga' ? 10 : 0);
-    let raw = (40 + extra) * mult;
+    const extra = (aAb === 'artilleryExpertise' ? 20 : 0) + (trainerOf(s, A.side) === 'nobunaga' ? 10 : 0) +
+      (trainerOf(s, A.side) === 'motonari' ? 10 : 0);
+    let raw = (40 + extra + (terrainBreak ? 40 : 0) - (isTrebuchet(s, target.pos!) && trainerOf(s, target.side) === 'motonari' ? 30 : 0)) * mult;
     if (thickFat) raw *= 0.5;
     return { damage: roundUp5(raw), mult, immune: false, absorbed: false };
   }
@@ -226,6 +234,8 @@ export function computeDamage(s: GameState, ac: AttackCtx, target: Unit, base: n
     if (/punch|mash|fist/i.test(ac.moveName) && (aAb === 'ironFist' ||
       liveUnits(s).some((x) => x.id !== A.id && abilityOf(x) === 'ironFist' && cheb(x.pos!, ac.attackerPos) === 1))) mod += 20;
     if (ac.moveType === 'Dark' && withAbility(s, 'darkAura').length > 0) mod += 20;
+    if (ac.moveType === 'Fairy' && withAbility(s, 'fairyAura').length > 0) mod += 20;
+    if (ac.move?.fx.hitsFlying && isFlier(target)) mod += 30;
     if (ac.moveType === 'Normal' && (aAb === 'adaptability' ||
       liveUnits(s).some((x) => x.id !== A.id && abilityOf(x) === 'adaptability' && cheb(x.pos!, ac.attackerPos) === 1))) mod += 30;
     // Crawdaunt's Adaptability: the same for Water and Dark attacks.
@@ -250,7 +260,10 @@ export function computeDamage(s: GameState, ac: AttackCtx, target: Unit, base: n
   }
   if (dAb === 'resistance' && dist <= 1) mod += 20;
   if (!ac.ignoreAbilities && !defBoostsIgnored && flowerGiftAdjacent(s, target)) mod -= 30;
-  if (aAb !== 'airLock' && !ac.move?.fx.ignoreTerrain && terrainBonus(s, target) === 'bush') mod -= 30 * terrainMult(target);
+  if (aAb !== 'airLock' && !ac.move?.fx.ignoreTerrain && !terrainBreak && terrainBonus(s, target) === 'bush') mod -= 30 * terrainMult(target);
+  if (terrainBreak) mod += 40;
+  if (isTrebuchet(s, target.pos!) && trainerOf(s, target.side) === 'motonari') mod -= 30;
+  mod += liveUnits(s).filter((holder) => holder.id !== target.id && abilityOf(holder) === 'swordOfRuin' && steps(holder.pos!, target.pos!) <= 3).length * 30;
 
   // ---- status
   if (A.status === 'brn' && aAb !== 'guts') mod -= 30;
@@ -282,9 +295,11 @@ export function neverMisses(s: GameState, u: Unit, at?: Pos): boolean {
 }
 
 /** Serene Grace doubles secondary-effect chances for Togekiss's adjacent allies. */
-export function secondaryMult(s: GameState, u: Unit, at?: Pos): number {
+export function secondaryMult(s: GameState, u: Unit, at?: Pos, positive = false): number {
   const p = at ?? u.pos;
-  return p && alliesOf(s, u).some((a) => abilityOf(a) === 'sereneGrace' && cheb(a.pos!, p) === 1) ? 2 : 1;
+  const sereneGrace = !!p && alliesOf(s, u).some((a) => abilityOf(a) === 'sereneGrace' && cheb(a.pos!, p) === 1);
+  const hideyoshi = positive && trainerOf(s, u.side) === 'hideyoshi' && turnEffect(s, u.side) === 'perfectRolls';
+  return sereneGrace || hideyoshi ? 2 : 1;
 }
 
 export function typeEffectLabel(mult: number): string | null {

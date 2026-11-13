@@ -55,6 +55,14 @@ export function WonderIcon() {
   );
 }
 
+export function ElectricIcon() {
+  return (
+    <svg viewBox="0 0 40 40" className="h-[68%] w-[68%] drop-shadow" aria-hidden>
+      <path d="M23 3 10 22h9l-2 15 13-21h-9z" fill="#fde047" stroke="#713f12" strokeWidth="1.8" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 export function TrebuchetIcon() {
   return (
     <svg viewBox="0 0 40 40" className="h-[82%] w-[82%] drop-shadow" aria-hidden>

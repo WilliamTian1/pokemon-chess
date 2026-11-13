@@ -72,7 +72,7 @@ describe('Secret draft', () => {
 });
 
 describe('Freeplay draft', () => {
-  it('lets each side pick any roster card without same-team duplicates, while allowing cross-side duplicates', () => {
+  it('lets each side pick any roster card without normal-Pokémon duplicates, while allowing cross-side duplicates', () => {
     let s = newGame({ rng: seededRng(31), style: 'freeplay' });
     const option = draftOptions(s, 'A')[0];
     s = step(s, { type: 'draftPick', cardId: option, side: 'A' });
@@ -81,7 +81,22 @@ describe('Freeplay draft', () => {
     expect(s.draft.picks.A).toEqual([option]);
     expect(s.draft.picks.D).toEqual([option]);
     expect(new Set(s.draft.secret!.pools.A)).toEqual(new Set(DRAFTABLE.filter((c) => !c.legendary).map((c) => c.id)));
-    expect(new Set(s.draft.secret!.legendPools.A)).toEqual(new Set(DRAFTABLE.filter((c) => c.legendary).map((c) => c.id)));
+    expect(new Set(s.draft.secret!.legendPools.A)).toEqual(new Set(DRAFTABLE.filter((c) => c.legendary && !c.subrestricted).map((c) => c.id)));
+  });
+
+  it('allows multiple legendaries without same-team duplicates, while allowing cross-team duplicates', () => {
+    let s = newGame({ rng: seededRng(34), style: 'freeplay' });
+    const legendaries = s.draft.secret!.legendPools.A.slice(0, 4);
+    for (const side of ['A', 'D'] as const) {
+      for (const legendary of legendaries) {
+        expect(draftOptions(s, side)).toContain(legendary);
+        s = step(s, { type: 'draftPick', cardId: legendary, side });
+      }
+    }
+    expect(s.phase).toBe('placement');
+    expect(s.draft.picks.A).toEqual(legendaries);
+    expect(s.draft.picks.D).toEqual(legendaries);
+    expect(s.units.every((u) => CARDS[u.cardId].legendary)).toBe(true);
   });
 
   it('offers the full trainer roster independently to both sides and keeps selections hidden', () => {

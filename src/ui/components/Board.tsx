@@ -4,7 +4,7 @@ import {
 } from '../../engine';
 import type { EventBatch } from '../controller';
 import { Art, HpBar, StatusBadge } from './bits';
-import { BushIcon, DollIcon, FlowerIcon, SpikesIcon, TrebuchetIcon, WebIcon, WonderIcon } from './icons';
+import { BushIcon, DollIcon, ElectricIcon, FlowerIcon, SpikesIcon, TrebuchetIcon, WebIcon, WonderIcon } from './icons';
 
 export interface Overlay {
   reach?: Set<string>;
@@ -43,7 +43,7 @@ const TERRAIN_LABEL: Record<Terrain, string> = {
   normal: 'Grass', dirt: 'Dirt path', grass: 'Grass bridge', bridge: 'Bridge — ordinary ground', water: 'Water — only Water, Flying and Levitate Pokémon',
   flower: 'Flowers — +30 HP at the end of a Pokémon’s activation (not Flying or Levitate)', bush: 'Berry bush — takes 30 less damage (not Flying or Levitate)',
   wonder: 'Wonder tile — resets stat changes when entered or pushed onto',
-  wall: 'Wall', magma: 'Magma — only Fire, Flying and Levitate Pokémon can enter', ice: 'Ice — Pokémon slide when they enter (except Ice types, Flying and Levitate)', pit: 'Pit',
+  wall: 'Wall', electric: 'Electric terrain', magma: 'Magma — only Fire, Flying and Levitate Pokémon can enter', ice: 'Ice — Pokémon slide when they enter (except Ice types, Flying and Levitate)', pit: 'Pit',
 };
 
 /**
@@ -59,12 +59,14 @@ export interface BoardView {
  * A Pokémon's reach, one style per move so both read on any terrain: the first move fills tiles red,
  * the second outlines them in bright yellow, and a tile both reach gets both.
  */
-export const MOVE_RANGE: [CSSProperties, CSSProperties] = [
+export const MOVE_RANGE: [CSSProperties, CSSProperties, CSSProperties] = [
   { backgroundColor: 'rgba(239, 68, 68, 0.55)', boxShadow: 'inset 0 0 0 1px rgba(254, 202, 202, 0.8)' },
   { backgroundColor: 'rgba(253, 224, 71, 0.16)', boxShadow: 'inset 0 0 0 3px rgba(253, 224, 71, 0.95)' },
+  { backgroundColor: 'rgba(59, 130, 246, 0.38)', boxShadow: 'inset 0 0 0 3px rgba(147, 197, 253, 0.95)' },
 ];
 
 function rangeStyle(mask: number): CSSProperties {
+  if (mask & 4) return MOVE_RANGE[2];
   if (mask === 3) return { backgroundColor: MOVE_RANGE[0].backgroundColor, boxShadow: MOVE_RANGE[1].boxShadow };
   return MOVE_RANGE[mask === 2 ? 1 : 0];
 }
@@ -241,6 +243,7 @@ function BoardImpl({ state, view, overlay, previews, selectedId, hoverId, events
           {t === 'flower' && <FlowerIcon />}
           {t === 'bush' && <BushIcon />}
           {t === 'wonder' && <WonderIcon />}
+          {t === 'electric' && <ElectricIcon />}
           {treb.has(k) && <TrebuchetIcon />}
           {hz === 'spikes' && <span className="absolute inset-0 flex items-center justify-center"><SpikesIcon /></span>}
           {hz === 'web' && <span className="absolute inset-0 flex items-center justify-center"><WebIcon /></span>}

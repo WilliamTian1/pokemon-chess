@@ -1,20 +1,20 @@
 import { CARDS, DRAFTABLE, getCard } from './data/cards';
 import { DEFAULT_MAP_ID, getMap } from './data/maps';
-import { TRAINER_LIST, TRAINER_POOL_SIZE, getTrainer } from './data/trainers';
+import { TRAINER_LIST, TRAINER_POOL_SIZE, getTrainer, trainerMoveFor } from './data/trainers';
 import {
   UNCOPYABLE, aimOptions, canTargetFrom, dancerOptions, emergencyExitOptions, executeMove, followMeUsers,
   isHealingMove, isSupportOnly, liquidVoiceCopy, moveOffline, parseAim, targeting, trebuchetAttack, truantRests, weatherProof,
 } from './moves';
 import {
-  type Ctx, RuleError, applyStage, checkWin, cureStatus, dealDamage, emit, endGame, enterTile, heal, log, nameOf, resetStages,
+  type Ctx, RuleError, applyStage, checkWin, cureStatus, dealDamage, emit, endGame, enterTile, faint, heal, log, nameOf, resetStages, triggerProtosynthesis,
 } from './mutate';
 import {
   abilityOf, adjacentToType, adjacentUnits, alliesOf, cardOf, effectiveMov, enemiesOf, getUnit, hasType, hazardAt, isFlier,
-  isTrebuchet, liveUnits, moveOf, onBoard, reachable, type ReachInfo, terrainAt, terrainBonus, terrainMult, trainerOf, turnEffect, unitAt,
+  hazardDamage, isTrebuchet, liveUnits, moveIndexes, moveOf, onBoard, reachable, teleportDestinations, type ReachInfo, terrainAt, terrainBonus, terrainMult, trainerOf, turnEffect, unitAt, verticalOnly,
   withAbility,
 } from './query';
 import type { Action, ActiveActivation, Dir, DraftStyle, GameEvent, GameState, MoveDef, Pos, Rng, Side, Unit } from './types';
-import { SIDE_NAME, otherSide } from './types';
+import { SIDE_NAME, TYPES, otherSide } from './types';
 import { cheb, posKey, samePos, steps } from './util';
 
 export { RuleError } from './mutate';
@@ -24,7 +24,7 @@ export const DRAFT_POOL_SIZE = 15;
 /** Without legendaries the pool is bigger, and all four picks per side come from it. */
 export const NO_LEGEND_POOL_SIZE = 20;
 export const LEGEND_POOL_SIZE = 4;
-/** Picks per side from the normal pool; each side's last pick is a legendary. */
+/** Picks per side from the normal pool; each side's last pick is a fully restricted legendary. */
 export const NORMAL_PICKS = 3;
 export const MAX_ROUNDS = 10;
 
@@ -37,14 +37,14 @@ function shuffled(ids: string[], rng: Rng): string[] {
   return out;
 }
 
-/** `size` distinct non-legendary draftable card ids, chosen uniformly at random. */
-export function randomPool(rng: Rng, size = DRAFT_POOL_SIZE): string[] {
-  return shuffled(DRAFTABLE.filter((c) => !c.legendary).map((c) => c.id), rng).slice(0, size);
+/** `size` distinct normal-pool card ids, chosen uniformly at random. */
+export function randomPool(rng: Rng, size = DRAFT_POOL_SIZE, includeSubrestricted = false): string[] {
+  return shuffled(DRAFTABLE.filter((c) => !c.legendary || (includeSubrestricted && c.subrestricted)).map((c) => c.id), rng).slice(0, size);
 }
 
-/** `LEGEND_POOL_SIZE` distinct legendaries, chosen uniformly at random. */
+/** `LEGEND_POOL_SIZE` distinct fully restricted legendaries, chosen uniformly at random. */
 export function randomLegendPool(rng: Rng): string[] {
-  return shuffled(DRAFTABLE.filter((c) => c.legendary).map((c) => c.id), rng).slice(0, LEGEND_POOL_SIZE);
+  return shuffled(DRAFTABLE.filter((c) => c.legendary && !c.subrestricted).map((c) => c.id), rng).slice(0, LEGEND_POOL_SIZE);
 }
 
 /** Pokémon picks per side (the trainer pick comes after them). */
@@ -67,6 +67,11 @@ const SECRET_ORDER: Side[] = ['A', 'A', 'A', 'A', 'D', 'D', 'D', 'D'];
 export function secretNext(s: GameState, side: Side): 'pokemon' | 'legend' | 'trainer' | null {
   const sp = s.draft.secret!;
   const n = s.draft.picks[side].length;
+  if (draftStyle(s) === 'freeplay') {
+    if (n < TEAM_SIZE) return 'pokemon';
+    if (s.trainers && !s.trainers.picks[side]) return 'trainer';
+    return null;
+  }
   // Legendary mode deals both sides options (a hidden view only shows its own, so check either).
   const normals = sp.legendPools.A.length + sp.legendPools.D.length > 0 ? NORMAL_PICKS : TEAM_SIZE;
   if (n < normals) return 'pokemon';
@@ -123,8 +128,8 @@ export function draftOptions(s: GameState, side?: Side): string[] {
       return draftStyle(s) === 'freeplay' ? offered : offered.filter((id) => s.trainers!.picks.A !== id && s.trainers!.picks.D !== id);
     }
     if (draftStyle(s) === 'freeplay') {
-      return (next === 'legend' ? sp.legendPools[who] : next === 'pokemon' ? sp.pools[who] : [])
-        .filter((id) => !s.draft.picks[who].includes(id));
+      const offered = next === 'legend' ? sp.legendPools[who] : next === 'pokemon' ? [...sp.pools[who], ...sp.legendPools[who]] : [];
+      return offered.filter((id) => !s.draft.picks[who].includes(id));
     }
     const taken = new Set([...s.draft.picks.A, ...s.draft.picks.D]);
     return (next === 'legend' ? sp.legendPools[who] : next === 'pokemon' ? sp.pools[who] : []).filter((id) => !taken.has(id));
@@ -163,7 +168,7 @@ export function newGame(opts: {
     side: 'A',
     draft: {
       order: trainers ? [...ALTERNATE, 'A', 'D'] : [...ALTERNATE], index: 0, picks: { A: [], D: [] }, style: 'classic',
-      pool: opts.pool ?? randomPool(opts.rng, opts.legendaries === false ? NO_LEGEND_POOL_SIZE : DRAFT_POOL_SIZE),
+      pool: opts.pool ?? randomPool(opts.rng, opts.legendaries === false ? NO_LEGEND_POOL_SIZE : DRAFT_POOL_SIZE, opts.legendaries !== false),
       legendPool: opts.legendPool ?? (opts.legendaries === false ? [] : randomLegendPool(opts.rng)),
     },
     placement: { order: [...ALTERNATE], index: 0 },
@@ -171,9 +176,14 @@ export function newGame(opts: {
     hazards: [],
     substitute: null,
     futureSight: [],
+    wishes: [],
+    perishSongs: [],
     taunted: null,
     trainers: trainers
-      ? { pool: opts.trainerPool ?? randomTrainerPool(opts.rng), picks: { A: null, D: null }, used: { A: false, D: false }, effect: null }
+      ? {
+          pool: opts.trainerPool ?? randomTrainerPool(opts.rng), picks: { A: null, D: null }, hiddenPowerType: { A: null, D: null },
+          used: { A: false, D: false }, effect: null,
+        }
       : null,
     active: null,
     pending: [],
@@ -189,11 +199,13 @@ export function newGame(opts: {
 function styledGame(opts: Parameters<typeof newGame>[0], style: DraftStyle): GameState {
   const legendaries = opts.legendaries !== false;
   const size = legendaries ? DRAFT_POOL_SIZE : NO_LEGEND_POOL_SIZE;
-  const normals = shuffled(DRAFTABLE.filter((c) => !c.legendary).map((c) => c.id), opts.rng);
-  const legends = shuffled(DRAFTABLE.filter((c) => c.legendary).map((c) => c.id), opts.rng);
+  const normalCards = DRAFTABLE.filter((c) => !c.legendary || (legendaries && c.subrestricted));
+  const fullLegends = DRAFTABLE.filter((c) => c.legendary && !c.subrestricted);
+  const normals = shuffled(normalCards.map((c) => c.id), opts.rng);
+  const legends = shuffled(fullLegends.map((c) => c.id), opts.rng);
   if (style === 'freeplay') {
-    const allNormals = DRAFTABLE.filter((c) => !c.legendary).map((c) => c.id);
-    const allLegends = legendaries ? DRAFTABLE.filter((c) => c.legendary).map((c) => c.id) : [];
+    const allNormals = normalCards.map((c) => c.id);
+    const allLegends = legendaries ? fullLegends.map((c) => c.id) : [];
     const trainerPool = TRAINER_LIST.map((t) => t.id);
     const s = newGame({
       ...opts, style: 'classic', pool: allNormals, legendPool: allLegends,
@@ -236,11 +248,11 @@ function styledGame(opts: Parameters<typeof newGame>[0], style: DraftStyle): Gam
 function makeUnit(id: string, side: Side, cardId: string): Unit {
   const c = getCard(cardId);
   return {
-    id, side, cardId, draftId: cardId, hp: c.hp, maxHp: c.hp, pos: null, fainted: false,
+    id, side, cardId, draftId: cardId, hp: c.hp, maxHp: c.hp, pos: null, fainted: false, damageTaken: 0,
     stages: { atk: 0, def: 0, mov: 0 }, status: null, toxicN: 0, confused: false, flinched: false,
     sturdyBroken: false, nextTurn: { noMove: false, noAct: false },
     turn: { noMove: false, noAct: false, reasons: [] }, activated: false, actAgain: 0, gotAfterYou: false, followMe: null, wideGuard: null,
-    locked: [], dmgBonus: 0, movBonus: 0, ignoreDefBoosts: false,
+    locked: [], dmgBonus: 0, movBonus: 0, ignoreDefBoosts: false, suckerPunchFor: null,
   };
 }
 
@@ -268,8 +280,13 @@ export function cloneState(s: GameState, shareLog = false): GameState {
     hazards: s.hazards.map((h) => ({ kind: h.kind, pos: { ...h.pos } })),
     substitute: s.substitute && { pos: { ...s.substitute.pos }, ownerId: s.substitute.ownerId },
     futureSight: s.futureSight.map((f) => ({ ...f })),
+    wishes: s.wishes.map((w) => ({ ...w })),
+    perishSongs: s.perishSongs.map((p) => ({ ...p, center: { ...p.center } })),
     active: s.active && { ...s.active, from: { ...s.active.from } },
-    trainers: s.trainers && { pool: s.trainers.pool, picks: { ...s.trainers.picks }, used: { ...s.trainers.used }, effect: s.trainers.effect && { ...s.trainers.effect } },
+    trainers: s.trainers && {
+      pool: s.trainers.pool, picks: { ...s.trainers.picks }, hiddenPowerType: { ...s.trainers.hiddenPowerType },
+      used: { ...s.trainers.used }, effect: s.trainers.effect && { ...s.trainers.effect },
+    },
     pending: s.pending.map((p) => ({ ...p, options: [...p.options] }) as typeof p),
     log: shareLog ? s.log : [...s.log],
   };
@@ -339,6 +356,7 @@ export function applyInPlace(ctx: Ctx, action: Action): void {
     case 'move': return doMove(ctx, action.unitId, action.to);
     case 'undoMove': return undoMove(ctx, action.unitId);
     case 'useMove': return useMove(ctx, action);
+    case 'useFusion': return useFusion(ctx, action);
     case 'trebuchet': return useTrebuchet(ctx, action);
     case 'wait': return wait(ctx, action.unitId);
     case 'postMove': return postMove(ctx, action.unitId, action.to);
@@ -423,12 +441,12 @@ export function hiddenView(s: GameState, viewer: Side | null): GameState {
 /** Whether the auction is still running (afterwards the draft continues with the trainer picks). */
 export const auctionOpen = (s: GameState): boolean => draftStyle(s) === 'auction' && s.phase === 'draft' && s.draft.index < 2 * TEAM_SIZE;
 
-const hasLegend = (s: GameState, side: Side): boolean => s.draft.picks[side].some((id) => CARDS[id].legendary);
+const hasLegend = (s: GameState, side: Side): boolean => s.draft.picks[side].some((id) => CARDS[id].legendary && !CARDS[id].subrestricted);
 
 /** Whether `side` may bid for `cardId`: a free team slot, and at most one legendary per team. */
 export function canBidFor(s: GameState, side: Side, cardId: string | null): boolean {
   if (!cardId || s.draft.picks[side].length >= TEAM_SIZE) return false;
-  return !(CARDS[cardId].legendary && hasLegend(s, side));
+  return !(CARDS[cardId].legendary && !CARDS[cardId].subrestricted && hasLegend(s, side));
 }
 
 function auctionBid(ctx: Ctx, amount: number): void {
@@ -504,7 +522,7 @@ function fillAtRandom(ctx: Ctx, side: Side): void {
       id = k.id;
     } else {
       const used = new Set([...s.draft.picks.A, ...s.draft.picks.D, ...a.history.map((h) => h.cardId)]);
-      const spare = DRAFTABLE.filter((c) => !c.legendary && !used.has(c.id)).map((c) => c.id);
+      const spare = s.draft.pool.filter((id) => !used.has(id));
       id = spare[ctx.rng.int(spare.length)];
     }
     s.draft.picks[side].push(id);
@@ -565,11 +583,19 @@ function secretPick(ctx: Ctx, cardId: string, side: Side): void {
 function finishDraft(ctx: Ctx): void {
   const s = ctx.s;
   for (const sd of ['A', 'D'] as const) {
-    s.draft.picks[sd].forEach((id, i) => s.units.push(makeUnit(`${sd}${i}`, sd, id)));
+    s.draft.picks[sd].forEach((id, i) => {
+      const u = makeUnit(`${sd}${i}`, sd, id);
+      const trainerId = trainerOf(s, sd);
+      if (trainerId) u.trainerMove = trainerMoveFor(trainerId, s.trainers?.hiddenPowerType[sd]) ?? undefined;
+      s.units.push(u);
+    });
   }
   s.phase = 'placement';
   s.placement = { order: [...ALTERNATE], index: 0 };
   s.side = 'A';
+  for (const u of s.units.filter((x) => abilityOf(x) === 'omnipotent')) {
+    s.pending.push({ kind: 'arceusType', side: u.side, unitId: u.id, options: [...TYPES] });
+  }
   log(ctx, draftStyle(s) === 'secret' || draftStyle(s) === 'freeplay'
     ? 'Draft complete. Both sides place their Pokémon in secret.'
     : 'Draft complete. The Attacker places first.', 'system');
@@ -603,6 +629,11 @@ function startBattle(ctx: Ctx): void {
     const trainer = (x: Side) => (s.trainers?.picks[x] ? ` with ${getTrainer(s.trainers.picks[x]!).name}` : '');
     log(ctx, `Revealed! Attacker: ${team('A')}${trainer('A')}. Defender: ${team('D')}${trainer('D')}.`, 'system');
   }
+  for (const side of ['A', 'D'] as const) {
+    if (trainerOf(s, side) === 'youngster-joey') {
+      s.pending.push({ kind: 'trainerType', side, unitId: `${side}0`, options: [...TYPES] });
+    }
+  }
   log(ctx, 'The battle begins!', 'system');
   const all = liveUnits(s);
   for (const src of withAbility(s, 'sandStream')) {
@@ -630,6 +661,7 @@ function startBattle(ctx: Ctx): void {
       if (hasType(x, 'Fire')) applyStage(ctx, x, 'atk', 1, { source: src, label: 'Drought' });
       if (hasType(x, 'Water') && !weatherProof(s, x)) applyStage(ctx, x, 'atk', -1, { source: src, label: 'Drought' });
     }
+    triggerProtosynthesis(ctx);
   }
   startTurn(ctx, 'A');
 }
@@ -645,6 +677,7 @@ function startTurn(ctx: Ctx, side: Side): void {
     if (u.side !== side) continue;
     u.followMe = null;
     u.wideGuard = null;
+    if (u.suckerPunchFor === u.side) u.suckerPunchFor = null;
   }
 
   const due = s.futureSight.filter((f) => f.side === side);
@@ -657,15 +690,39 @@ function startTurn(ctx: Ctx, side: Side): void {
       continue;
     }
     const center = user.pos;
-    log(ctx, `${nameOf(user)}'s Future Sight strikes!`, 'info', side);
-    emit(ctx, { t: 'attack', unitId: user.id, name: 'Future Sight', tiles: liveUnits(s).filter((x) => steps(x.pos!, center) <= 3).map((x) => x.pos!) });
+    const damage = f.damage ?? 100;
+    const range = f.range ?? 3;
+    log(ctx, `${nameOf(user)}'s ${f.damage ? 'Doom Desire' : 'Future Sight'} strikes!`, 'info', side);
+    emit(ctx, { t: 'attack', unitId: user.id, name: f.damage ? 'Doom Desire' : 'Future Sight', tiles: liveUnits(s).filter((x) => steps(x.pos!, center) <= range).map((x) => x.pos!) });
     for (const x of liveUnits(s)) {
-      if (x.id !== user.id && steps(x.pos!, center) <= 3) dealDamage(ctx, x, 100, { source: user, label: 'Future Sight' });
+      if (x.id !== user.id && steps(x.pos!, center) <= range) dealDamage(ctx, x, damage, { source: user, label: f.damage ? 'Doom Desire' : 'Future Sight' });
     }
     if (checkWin(ctx)) return;
   }
 
+  const perish = s.perishSongs.filter((x) => x.side === side);
+  s.perishSongs = s.perishSongs.filter((x) => x.side !== side);
+  for (const song of perish) {
+    const user = getUnit(s, song.userId);
+    const center = onBoard(user) ? user.pos! : song.center;
+    log(ctx, `${nameOf(user)}'s Perish Song takes effect!`, 'bad', side);
+    const targets = liveUnits(s).filter((x) => steps(x.pos!, center) <= 4);
+    emit(ctx, { t: 'attack', unitId: user.id, name: 'Perish Song', tiles: targets.map((x) => x.pos!) });
+    for (const target of targets) faint(ctx, target, null);
+    if (checkWin(ctx)) return;
+  }
+
+  const wishes = s.wishes.filter((x) => x.side === side);
+  s.wishes = s.wishes.filter((x) => x.side !== side);
+  for (const wish of wishes) {
+    const user = getUnit(s, wish.userId);
+    const options = liveUnits(s, side).filter((x) => x.id !== user.id).map((x) => x.id);
+    if (options.length) s.pending.push({ kind: 'wish', side, unitId: user.id, options });
+    else log(ctx, `${nameOf(user)}'s Wish had no ally to heal.`, 'info', side);
+  }
+
   for (const u of liveUnits(s, side)) {
+    if (abilityOf(u) === 'omnipotent') heal(ctx, u, 30, 'Omnipotent');
     u.activated = false;
     u.actAgain = 0;
     u.gotAfterYou = false;
@@ -708,6 +765,7 @@ function startTurn(ctx: Ctx, side: Side): void {
 /** Movement left for a fresh activation (0 when the unit can't move this turn). */
 export function movementAllowance(s: GameState, u: Unit): number {
   if (u.turn.noMove || u.status === 'slp' || u.status === 'frz') return 0;
+  if (verticalOnly(s, u.side)) return getMap(s.mapId).width * getMap(s.mapId).height * 4;
   return effectiveMov(s, u) + u.movBonus + (turnEffect(s, u.side) === 'rally' ? 1 : 0);
 }
 
@@ -718,7 +776,7 @@ export const TRIAGE_EXTRA = 3;
 export function triageTiles(s: GameState, u: Unit, budget: number): Map<string, ReachInfo> {
   const out = new Map<string, ReachInfo>();
   if (abilityOf(u) !== 'triage' || budget <= 0 || !canActNow(u) || !u.pos) return out;
-  const heals = cardOf(u).moves.filter(isHealingMove);
+  const heals = [...cardOf(u).moves, ...(u.trainerMove ? [u.trainerMove] : [])].filter(isHealingMove);
   if (!heals.length) return out;
   const near = reachable(s, u, budget);
   for (const [k, r] of reachable(s, u, budget + TRIAGE_EXTRA)) {
@@ -734,7 +792,7 @@ export function triageTiles(s: GameState, u: Unit, budget: number): Map<string, 
 export function canAttackAnOpponent(s: GameState, u: Unit): boolean {
   if (!u.pos || !canActNow(u)) return false;
   if (isTrebuchet(s, u.pos) && enemiesOf(s, u).length > 0 && !truantRests(s, u)) return true;
-  return ([0, 1] as const).some((i) => {
+  return moveIndexes(u).some((i) => {
     const m = moveOf(u, i);
     if (m.kind !== 'attack' || moveBlocked(s, u, m)) return false;
     return aimOptions(s, u, m).some((a) => {
@@ -835,6 +893,7 @@ function doMove(ctx: Ctx, unitId: string, to: Pos): void {
   const triage = triageTiles(s, u, budget).get(posKey(to));
   const info = reachable(s, u, budget).get(posKey(to)) ?? triage;
   if (!info) throw new RuleError('That tile is out of reach.');
+  if (verticalOnly(s, u.side) && info.path.some((p) => p.x !== u.pos!.x)) throw new RuleError('Your Pokémon can only move vertically this turn.');
   const fmTiles = followMeTiles(s, u, budget);
   if (fmTiles && !fmTiles.has(posKey(to))) {
     throw new RuleError(`Follow Me: ${cardOf(u).name} must move where it can attack ${followMeUsers(s, u).map((f) => cardOf(f).name).join(' / ')}.`);
@@ -868,25 +927,26 @@ function useMove(ctx: Ctx, a: Extract<Action, { type: 'useMove' }>): void {
   const u = controllable(s, a.unitId);
   const act = activationFor(s, u);
   if (!canActNow(u)) throw new RuleError(`${cardOf(u).name} can't act this turn (${u.turn.reasons.join(', ') || u.status}).`);
-  if (a.moveIndex !== 0 && a.moveIndex !== 1) throw new RuleError('Unknown move.');
+  if (a.moveIndex !== 0 && a.moveIndex !== 1 && a.moveIndex !== 2) throw new RuleError('Unknown move.');
   const own = moveOf(u, a.moveIndex);
   const ownBlock = moveBlocked(s, u, own);
   if (ownBlock) throw new RuleError(`${own.name}: ${ownBlock}.`);
   let move = own;
-  if (own.fx.special === 'transform') {
-    // Transform: use a move of any other Pokémon on the field as Ditto's own.
+  if (own.fx.special === 'transform' || own.fx.special === 'mimic') {
+    const mimic = own.fx.special === 'mimic';
     const src = a.copy ? s.units.find((x) => x.id === a.copy!.unitId) : undefined;
     if (!src || !onBoard(src) || src.id === u.id || (a.copy!.moveIndex !== 0 && a.copy!.moveIndex !== 1)) {
-      throw new RuleError('Transform: choose a move of another Pokémon on the field.');
+      throw new RuleError(`${mimic ? 'Mimic' : 'Transform'}: choose a move of another Pokémon on the field.`);
     }
+    if (mimic && src.side === u.side) throw new RuleError('Mimic can only copy an opponent’s move.');
     move = moveOf(src, a.copy!.moveIndex);
-    if (UNCOPYABLE(move)) throw new RuleError(`Transform can't copy ${move.name}.`);
+    if (UNCOPYABLE(move)) throw new RuleError(`${mimic ? 'Mimic' : 'Transform'} can't copy ${move.name}.`);
     const block = moveBlocked(s, u, move);
     if (block && !move.fx.none) throw new RuleError(`${move.name}: ${block}.`);
   }
   const tg = targeting(s, u, move, { dir: a.dir, targetId: a.targetId });
   if (!tg.ok) throw new RuleError(tg.reason ?? 'Invalid target.');
-  const hitsPokemon = (move.target.kind === 'grid' || move.target.kind === 'range') && !isSupportOnly(move);
+  const hitsPokemon = (move.target.kind === 'grid' || move.target.kind === 'range') && !isSupportOnly(move) && move.fx.special !== 'suckerPunch';
   enforceFollowMe(s, u, hitsPokemon ? tg.targets.map((t) => t.id) : null);
 
   s.active = act;
@@ -898,8 +958,39 @@ function useMove(ctx: Ctx, a: Extract<Action, { type: 'useMove' }>): void {
     return;
   }
   const copied = move !== own;
-  if (copied) log(ctx, `${nameOf(u)} transformed to copy ${move.name}!`, 'info', u.side);
-  const res = executeMove(ctx, u, move, { dir: a.dir, targetId: a.targetId, moveIndex: copied ? undefined : a.moveIndex, copied: copied ? 'Transform' : undefined });
+  const copyLabel = own.fx.special === 'mimic' ? 'Mimic' : 'Transform';
+  if (copied) log(ctx, `${nameOf(u)} used ${copyLabel} to copy ${move.name}!`, 'info', u.side);
+  const res = executeMove(ctx, u, move, { dir: a.dir, targetId: a.targetId, moveIndex: copied ? undefined : a.moveIndex, copied: copied ? copyLabel : undefined });
+  afterAction(ctx, u, move.fx.postMove ?? 0, res.kos);
+}
+
+function useFusion(ctx: Ctx, a: Extract<Action, { type: 'useFusion' }>): void {
+  const s = ctx.s;
+  const u = controllable(s, a.unitId);
+  const act = activationFor(s, u);
+  if (abilityOf(u) !== 'fusion') throw new RuleError('Only Kyurem can use Fusion.');
+  if (!canActNow(u)) throw new RuleError(`${cardOf(u).name} can't act this turn.`);
+  const src = getUnit(s, a.copy.unitId);
+  if (!onBoard(src) || !['zekrom', 'reshiram'].includes(cardOf(src).id)) {
+    throw new RuleError('Fusion requires an on-field Zekrom or Reshiram.');
+  }
+  const move = moveOf(src, a.copy.moveIndex);
+  if (move.kind !== 'attack' || move.fx.none) throw new RuleError('Fusion can only copy an attack.');
+  const blocked = moveBlocked(s, u, move);
+  if (blocked) throw new RuleError(`${move.name}: ${blocked}.`);
+  const tg = targeting(s, u, move, { dir: a.dir, targetId: a.targetId });
+  if (!tg.ok) throw new RuleError(tg.reason ?? 'Invalid target.');
+  enforceFollowMe(s, u, tg.targets.map((t) => t.id));
+
+  s.active = act;
+  act.undoable = false;
+  if (u.confused && ctx.rng.chance(1 / 3)) {
+    log(ctx, `${nameOf(u)} is confused and hurt itself!`, 'bad', u.side);
+    dealDamage(ctx, u, 30, { label: 'confusion' });
+    afterAction(ctx, u, 0, 0);
+    return;
+  }
+  const res = executeMove(ctx, u, move, { dir: a.dir, targetId: a.targetId, copied: 'Fusion' });
   afterAction(ctx, u, move.fx.postMove ?? 0, res.kos);
 }
 
@@ -913,6 +1004,7 @@ function useTrebuchet(ctx: Ctx, a: Extract<Action, { type: 'trebuchet' }>): void
   if (truantRests(s, u)) throw new RuleError(`${cardOf(u).name} can only attack in odd-numbered rounds (Truant).`);
   const t = getUnit(s, a.targetId);
   if (!onBoard(t) || t.id === u.id) throw new RuleError('Choose a Pokémon to fire at.');
+  if (verticalOnly(s, u.side) && t.pos.x !== u.pos!.x) throw new RuleError('Your Pokémon can only attack vertically this turn.');
   enforceFollowMe(s, u, [t.id]);
   s.active = act;
   act.undoable = false;
@@ -967,8 +1059,10 @@ function postMove(ctx: Ctx, unitId: string, to: Pos): void {
   const a = s.active;
   if (!a || a.unitId !== unitId || a.stage !== 'acted') throw new RuleError('No movement available after acting.');
   const u = getUnit(s, unitId);
-  const info = reachable(s, u, a.postMove).get(posKey(to));
+  const budget = verticalOnly(s, u.side) ? movementAllowance(s, u) : a.postMove;
+  const info = reachable(s, u, budget).get(posKey(to));
   if (!info) throw new RuleError('That tile is out of reach.');
+  if (verticalOnly(s, u.side) && info.path.some((p) => p.x !== u.pos!.x)) throw new RuleError('Your Pokémon can only move vertically this turn.');
   a.movedThisActivation = true;
   walkPath(ctx, u, info.path, info.iceSlideFrom);
   if (u.fainted) {
@@ -1014,7 +1108,7 @@ function endOfActivation(ctx: Ctx, u: Unit, moved: boolean): void {
   if (!onBoard(u)) return;
   if (!moved && !isFlier(u)) {
     const hz = hazardAt(s, u.pos);
-    if (hz?.kind === 'spikes') dealDamage(ctx, u, 30, { label: 'Spikes' });
+    if (hz?.kind === 'spikes') dealDamage(ctx, u, hazardDamage(s, u, 30), { label: 'Spikes' });
     else if (hz?.kind === 'web') applyStage(ctx, u, 'mov', -1, { source: null, label: 'Sticky Web' });
   }
   if (!onBoard(u)) return;
@@ -1033,6 +1127,7 @@ function endOfActivation(ctx: Ctx, u: Unit, moved: boolean): void {
     log(ctx, `${nameOf(u)} is far from its opponents: ${u.locked.join(', ')} can be used again.`, 'good', u.side);
     u.locked = [];
   }
+  if (onBoard(u) && terrainAt(s, u.pos) === 'wonder') resetStages(ctx, u);
   if (onBoard(u) && ab === 'imposter') {
     const options = imposterOptions(s, u);
     if (options.length) s.pending.push({ kind: 'imposter', side: u.side, unitId: u.id, options });
@@ -1101,6 +1196,26 @@ function resolvePending(ctx: Ctx, option: string | null): void {
   const s = ctx.s;
   const p = s.pending[0];
   switch (p.kind) {
+    case 'arceusType': {
+      if (option === null || !p.options.includes(option as (typeof TYPES)[number])) throw new RuleError('Choose a type for Arceus.');
+      const u = getUnit(s, p.unitId);
+      if (u.fainted) throw new RuleError('Fainted Arceus cannot choose a type.');
+      u.typeOverride = option as (typeof TYPES)[number];
+      s.pending.shift();
+      log(ctx, `${nameOf(u)} became ${option}-type.`, 'info', u.side);
+      return;
+    }
+    case 'trainerType': {
+      if (option === null || !p.options.includes(option as (typeof TYPES)[number])) throw new RuleError('Choose a type for Hidden Power.');
+      if (!s.trainers || trainerOf(s, p.side) !== 'youngster-joey') throw new RuleError('Youngster Joey is not on this team.');
+      s.trainers.hiddenPowerType[p.side] = option as (typeof TYPES)[number];
+      for (const ally of s.units.filter((x) => x.side === p.side)) {
+        ally.trainerMove = trainerMoveFor('youngster-joey', s.trainers.hiddenPowerType[p.side])!;
+      }
+      s.pending.shift();
+      log(ctx, `${SIDE_NAME[p.side]} chose ${option} for Hidden Power.`, 'info', p.side);
+      return;
+    }
     case 'emergencyExit': {
       const g = getUnit(s, p.unitId);
       const opts = emergencyExitOptions(s, g);
@@ -1130,6 +1245,44 @@ function resolvePending(ctx: Ctx, option: string | null): void {
       const src = getUnit(s, option);
       u.stages = { ...src.stages };
       log(ctx, `${nameOf(u)} copied ${nameOf(src)}'s stat changes (Imposter).`, 'info', u.side);
+      return;
+    }
+    case 'teleport': {
+      if (option === null || !p.options.includes(option)) throw new RuleError('Choose a destination for Teleport.');
+      const u = getUnit(s, p.unitId);
+      if (!onBoard(u)) throw new RuleError('Fainted Pokémon cannot teleport.');
+      const [x, y] = option.split(',').map(Number);
+      const to = { x, y };
+      if (!teleportDestinations(s, u).some((dest) => samePos(dest, to))) throw new RuleError('That Teleport destination is no longer available.');
+      s.pending.shift();
+      enterTile(ctx, u, to);
+      emit(ctx, { t: 'move', unitId: u.id, path: [to] });
+      log(ctx, `${nameOf(u)} teleported to a tile beside an ally!`, 'info', u.side);
+      return;
+    }
+    case 'wish': {
+      if (option === null || !p.options.includes(option)) throw new RuleError('Choose an ally for Wish.');
+      const target = getUnit(s, option);
+      if (!onBoard(target) || target.side !== p.side) throw new RuleError('That ally is no longer available for Wish.');
+      s.pending.shift();
+      heal(ctx, target, target.maxHp, 'Wish');
+      return;
+    }
+    case 'voltSwitch': {
+      if (option === null || !p.options.includes(option)) throw new RuleError('Choose an ally to switch with.');
+      const user = getUnit(s, p.unitId);
+      const ally = getUnit(s, option);
+      if (!onBoard(user) || !onBoard(ally) || ally.side !== user.side) throw new RuleError('That ally is no longer available.');
+      const a = { ...user.pos! };
+      const b = { ...ally.pos! };
+      s.pending.shift();
+      (user as Unit).pos = null;
+      enterTile(ctx, ally, a);
+      if (!user.fainted) enterTile(ctx, user, b);
+      emit(ctx, { t: 'move', unitId: user.id, path: [b] });
+      emit(ctx, { t: 'move', unitId: ally.id, path: [a] });
+      log(ctx, `${nameOf(user)} switched places with ${nameOf(ally)}!`, 'info', user.side);
+      checkWin(ctx);
       return;
     }
     case 'metronome': {
@@ -1192,7 +1345,8 @@ export function canUseSpecial(s: GameState, side: Side): boolean {
 
 /** Pokémon Nobunaga's special can boost: the side's Pokémon that haven't been activated this turn. */
 export function specialTargets(s: GameState, side: Side): string[] {
-  return liveUnits(s, side).filter((u) => !u.activated).map((u) => u.id);
+  const trainer = trainerOf(s, side);
+  return liveUnits(s, side).filter((u) => trainer === 'motochika' || !u.activated).map((u) => u.id);
 }
 
 function trainerSpecial(ctx: Ctx, unitId?: string): void {
@@ -1205,9 +1359,13 @@ function trainerSpecial(ctx: Ctx, unitId?: string): void {
   if (s.active) throw new RuleError('Finish the current Pokémon’s activation first.');
   const name = getTrainer(id).name;
   let boosted: Unit | null = null;
-  if (id === 'nobunaga') {
+  if (id === 'nobunaga' || id === 'motochika') {
     boosted = (unitId && s.units.find((x) => x.id === unitId)) || null;
-    if (!boosted || !specialTargets(s, side).includes(boosted.id)) throw new RuleError(`${name}: choose one of your Pokémon that hasn't been activated this turn.`);
+    if (!boosted || boosted.side !== side || boosted.fainted || !specialTargets(s, side).includes(boosted.id)) {
+      throw new RuleError(id === 'nobunaga'
+        ? `${name}: choose one of your Pokémon that hasn't been activated this turn.`
+        : `${name}: choose one of your Pokémon.`);
+    }
   }
   emit(ctx, { t: 'special', side, trainer: id });
   log(ctx, `${SIDE_NAME[side]}'s trainer ${name} used their Special Move!`, 'system', side);
@@ -1238,6 +1396,31 @@ function trainerSpecial(ctx: Ctx, unitId?: string): void {
     case 'lance':
       s.trainers.effect = { side, kind: 'push2' };
       log(ctx, 'For the rest of this turn every attack pushes its target back two tiles.', 'good', side);
+      break;
+    case 'hideyoshi':
+      s.trainers.effect = { side, kind: 'perfectRolls' };
+      log(ctx, 'All damage dice roll 6, and positive secondary effects are twice as likely for the rest of this turn.', 'good', side);
+      break;
+    case 'jessie-james':
+      s.trainers.effect = { side, kind: 'vertical' };
+      log(ctx, 'Your Pokémon can move and attack vertically only for the rest of this turn.', 'good', side);
+      break;
+    case 'hiker-paul':
+      s.trainers.effect = { side, kind: 'terrainBreak' };
+      log(ctx, 'Pokémon on terrain without bonuses deal 40 extra damage to Pokémon on bonus terrain this turn.', 'good', side);
+      break;
+    case 'youngster-joey':
+      for (const x of liveUnits(s, side)) heal(ctx, x, x.maxHp, name);
+      break;
+    case 'motochika':
+      for (const x of liveUnits(s, side)) {
+        if (x.id === boosted!.id || cheb(x.pos!, boosted!.pos!) === 1) {
+          applyStage(ctx, x, 'atk', 2, { source: boosted, label: name });
+        }
+      }
+      break;
+    case 'motonari':
+      for (const x of liveUnits(s, side)) applyStage(ctx, x, 'mov', 1, { source: x, label: name });
       break;
   }
   checkWin(ctx);

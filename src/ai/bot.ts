@@ -1,8 +1,8 @@
 import {
-  type Action, CARD_LIST, type CardDef, type CopyOption, type Dir, type GameState, type MoveOption, type Pos, type Rng, type Side, type Unit,
+  type Action, CARD_LIST, type CardDef, type CopyOption, type Dir, type GameState, type MoveIndex, type MoveOption, type Pos, type Rng, type Side, type Unit,
   basePower, canUseSpecial, cardOf, cheb, computeDamage, decider, effectiveMov, expectedRng, getCard, getMap, getUnit, grazeApplies,
   auctionOpen, deciders, draftStyle, isTrainerPick, secretNext, specialTargets, trainerOf,
-  canPass, draftOptions, isImmune, isSupportOnly, isTrebuchet, liveUnits, makeAttackCtx, mapOf, moveOf, moveOptions, moveTargets, onBoard,
+  canPass, draftOptions, fusionOptions, isImmune, isSupportOnly, isTrebuchet, liveUnits, makeAttackCtx, mapOf, moveOf, moveOptions, moveTargets, onBoard,
   otherSide, parseGrid, posKey, reachable, seededRng, simulate, steps, terrainAt, terrainBonus, trebuchetCtx, trebuchetOption, waitBlock, zoneTiles,
 } from '../engine';
 import { bestDraftPick, bestTrainerPick, hasDraftModel } from './draft';
@@ -637,11 +637,11 @@ function actionCandidates(s: GameState, u: Unit): Action[] {
   const out: Action[] = [];
   // A Pokémon bound by Follow Me must take whatever attack it is allowed, useful or not.
   const forced = waitBlock(s, u) !== null;
-  const options: (MoveOption | (CopyOption & { moveIndex: 0 | 1; copy: { unitId: string; moveIndex: 0 | 1 } }))[] = [];
+  const options: (MoveOption | (CopyOption & { moveIndex: MoveIndex; copy: { unitId: string; moveIndex: 0 | 1 } }))[] = [];
   for (const o of moveOptions(s, u)) {
     if (!o.usable) continue;
     // Transform: every borrowable move becomes its own candidate.
-    if (o.aim === 'copy') for (const c of o.copies ?? []) options.push({ ...c, moveIndex: o.moveIndex, copy: { unitId: c.unitId, moveIndex: c.moveIndex } });
+    if (o.aim === 'copy' && o.moveIndex !== 2) for (const c of o.copies ?? []) options.push({ ...c, moveIndex: o.moveIndex, copy: { unitId: c.unitId, moveIndex: c.moveIndex } });
     else options.push(o);
   }
   for (const o of options) {
@@ -671,6 +671,19 @@ function actionCandidates(s: GameState, u: Unit): Action[] {
       }
     } else {
       out.push({ type: 'useMove', unitId: u.id, moveIndex: o.moveIndex, ...copy });
+    }
+  }
+  for (const cp of fusionOptions(s, u)) {
+    if (cp.aim === 'dir') {
+      for (const d of cp.dirs) {
+        if (forced || d.tg.targets.some((t) => t.side !== u.side)) {
+          out.push({ type: 'useFusion', unitId: u.id, copy: { unitId: cp.unitId, moveIndex: cp.moveIndex }, dir: d.dir });
+        }
+      }
+    } else if (cp.aim === 'unit') {
+      for (const targetId of cp.units) {
+        if (getUnit(s, targetId).side !== u.side) out.push({ type: 'useFusion', unitId: u.id, copy: { unitId: cp.unitId, moveIndex: cp.moveIndex }, targetId });
+      }
     }
   }
   const tr = trebuchetOption(s, u);
@@ -765,7 +778,8 @@ function battleStep(s: GameState, side: Side, level: Difficulty, rng: Rng): Acti
     if (special) return [special];
   } else if (level === 'easy' && canUseSpecial(s, side) && rng.chance(0.15)) {
     const targets = specialTargets(s, side);
-    return [{ type: 'trainerSpecial', unitId: trainerOf(s, side) === 'nobunaga' ? targets[rng.int(targets.length)] : undefined }];
+    const trainer = trainerOf(s, side);
+    return [{ type: 'trainerSpecial', unitId: trainer === 'nobunaga' || trainer === 'motochika' ? targets[rng.int(targets.length)] : undefined }];
   }
 
   if (level === 'hard') return hardBattle(s, side);
@@ -793,7 +807,8 @@ function chooseSpecial(s: GameState, side: Side, level: Difficulty): Action | nu
   const deadline = performance.now() + SEARCH.budgetMs / 2;
   const turnValue = (st: GameState): number => beamTurn(st, side, new Evaluator(st, side, 'hard'), width, perUnit, deadline)[0]?.score ?? -Infinity;
   const base = turnValue(s);
-  const options: Action[] = trainerOf(s, side) === 'nobunaga'
+  const trainer = trainerOf(s, side);
+  const options: Action[] = trainer === 'nobunaga' || trainer === 'motochika'
     ? specialTargets(s, side).map((unitId): Action => ({ type: 'trainerSpecial', unitId }))
     : [{ type: 'trainerSpecial' }];
   let bestAct: Action | null = null;

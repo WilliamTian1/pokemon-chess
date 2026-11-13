@@ -32,13 +32,17 @@ interface CardInput {
 }
 
 /** Page 7 of the card PDF. */
-const LEGENDARIES = new Set(['lunala', 'yveltal', 'mewtwo', 'zekrom', 'rayquaza', 'reshiram', 'kyogre', 'groudon']);
+const LEGENDARIES = new Set([
+  'lunala', 'yveltal', 'mewtwo', 'zekrom', 'rayquaza', 'reshiram', 'kyogre', 'groudon',
+  'arceus', 'lugia', 'dialga', 'zygarde', 'kyurem', 'xerneas', 'solgaleo',
+]);
+const SUBRESTRICTED = new Set(['mew', 'celebi', 'suicune', 'zapdos', 'chien-pao', 'jirachi', 'scream-tail', 'iron-valiant']);
 
 function card(c: CardInput): CardDef {
   const { ability, ...rest } = c;
   return {
     ...rest, ability: ability[0], abilityName: ability[1], abilityText: ability[2], draftable: c.draftable ?? true,
-    legendary: LEGENDARIES.has(c.id),
+    legendary: LEGENDARIES.has(c.id) || SUBRESTRICTED.has(c.id), subrestricted: SUBRESTRICTED.has(c.id),
   };
 }
 
@@ -90,6 +94,7 @@ const A = {
   synchronize: ['synchronize', 'Synchronize', 'When an opposing pokemon gives this pokemon a status condition, they receive the status condition as well.'],
   runAway: ['runAway', 'Run Away', 'This pokemon can use its unused movement after acting.'],
   regenerator: ['regenerator', 'Regenerator', 'This pokemon gets healed by 30 hp every time it ends its turn with no enemies within 3 spaces of it.'],
+  insomnia: ['insomnia', 'Insomnia', 'This pokemon cannot fall asleep.'],
   sturdy: ['sturdy', 'Sturdy', 'This pokemon cannot be knocked out in one hit. If all of their health is taken in one attack, they will faint the next time they are hurt.'],
   moxie: ['moxie', 'Moxie', 'The user’s attack goes up after KOing an opponent.'],
   guts: ['guts', 'Guts', 'The user deals 30 extra damage per attack if they have a status condition. Ignores the attack drop from burns.'],
@@ -237,6 +242,14 @@ export const CARD_LIST: CardDef[] = [
       atk('Hyper Beam', 'Normal', 95, grid('.O./.O./.O./.G.'), 'The user cannot move next turn.', { nextTurn: { noMove: true } }),
     ],
     ability: ['angerPoint', 'Anger Point', 'If this pokemon’s stats get lowered, its attack gets boosted to its maximum.'],
+  }),
+  card({
+    id: 'tauros-paldean', name: 'Tauros (Paldean)', types: ['Fighting'], hp: 140, mov: 4, page: 14,
+    moves: [
+      atk('Raging Bull', 'Fighting', 55, grid('.R./.O./.G.'), 'Ignores the opponent’s defense boosts.', { ignoreDefBoosts: true }),
+      sts('Scary Face', grid('.../.O./.G.'), 'Lowers the target’s movement by two stages.', { targetStages: { stages: { mov: -2 }, chance: 1 } }),
+    ],
+    ability: A.angerPoint,
   }),
   card({
     id: 'snorlax', name: 'Snorlax', types: ['Normal'], hp: 260, mov: 2, page: 2,
@@ -535,6 +548,14 @@ export const CARD_LIST: CardDef[] = [
       sts('Sticky Web', { kind: 'place', grid: '.O./.../.G.', place: 'web' }, 'Places a sticky web down that can lower the opponent’s speed. Fails if an opponent or hazard is in the way.'),
     ],
     ability: ['compoundEyes', 'Compound Eyes', 'This pokemon and adjacent allies never miss or graze attacks.'],
+  }),
+  card({
+    id: 'banette', name: 'Banette', types: ['Ghost'], hp: 95, mov: 3, page: 14,
+    moves: [
+      atk('Poltergeist', 'Ghost', 85, { kind: 'range', range: 5, min: 3 }, 'Pulls the target to an adjacent tile. Only deals damage if the target has a positive stat boost.', { special: 'poltergeist' }),
+      atk('Shadow Claw', 'Ghost', 55, grid('.O./.G.'), '10% chance to deal 55 extra damage.', { bonus: [{ when: 'chance', chance: 0.1, amount: 55 }] }),
+    ],
+    ability: A.insomnia,
   }),
   // ------------------------------------------------------------ page 7
   card({
@@ -979,6 +1000,146 @@ export const CARD_LIST: CardDef[] = [
       sts('Swords Dance', SELF, 'Raises the user’s attack stat by two stages.', { selfStages: { stages: { atk: 2 } } }),
     ],
     ability: A.moldBreaker,
+  }),
+  // ------------------------------------------------------------ legendary card sheet
+  card({
+    id: 'arceus', name: 'Arceus', types: ['Normal'], hp: 270, mov: 4, page: 14,
+    moves: [
+      atk('Judgement', 'Normal', 75, grid('OOO/OGO/OOO'), 'This move matches the type chosen for Arceus.', { matchesUserType: true }),
+      atk('Extreme Speed', 'Normal', 60, { kind: 'range', range: 4 }, 'Hits any Pokémon 4 or fewer tiles away.'),
+    ],
+    ability: ['omnipotent', 'Omnipotent', 'At the beginning of the match, choose one type. This Pokémon becomes that type. Heals 30 HP at the start of each turn.'],
+  }),
+  card({
+    id: 'lugia', name: 'Lugia', types: ['Psychic', 'Flying'], hp: 285, mov: 4, page: 14,
+    moves: [
+      atk('Aeroblast', 'Flying', 55, grid('.O./.O./.O./.G.'), '10% chance to deal 55 extra damage.', { bonus: [{ when: 'chance', chance: 0.1, amount: 55 }] }),
+      sts('Trick', grid('.O./.G.'), 'Swaps stat boosts with the target.', { special: 'trick' }),
+    ],
+    ability: ['multiscale', 'Multiscale', 'This Pokémon takes 30 less damage when at full HP.'],
+  }),
+  card({
+    id: 'dialga', name: 'Dialga', types: ['Steel', 'Dragon'], hp: 220, mov: 3, page: 14,
+    moves: [
+      atk('Roar of Time', 'Dragon', 140, grid('OOO/OOO/.O./.G.'), 'The user must recharge for a turn.', { nextTurn: { noMove: true, noAct: true } }),
+      atk('Steel Beam', 'Steel', 130, grid('.O./.O./.O./.G.'), 'The user takes 80 recoil damage.', { recoil: 80 }),
+    ],
+    ability: ['telepathy', 'Telepathy', 'The user does not get hit by allied attacks that would deal direct damage.'],
+  }),
+  card({
+    id: 'zygarde', name: 'Zygarde (50%)', types: ['Dragon', 'Ground'], hp: 230, mov: 3, page: 14,
+    moves: [
+      atk('Thousand Waves', 'Ground', 55, grid('O.O/.O./O.O/.G.'), '20% chance to paralyze the target.', { status: { id: 'par', chance: 0.2 } }),
+      sts('Glare', grid('.O./.../.G.'), 'Paralyzes the target.', { status: { id: 'par', chance: 1 } }),
+    ],
+    ability: ['powerConstruct', 'Power Construct', 'After taking 100 damage, transforms into its 100% form.'],
+    forms: ['zygarde-100'],
+  }),
+  card({
+    id: 'zygarde-100', name: 'Zygarde (100%)', types: ['Dragon', 'Ground'], hp: 395, mov: 3, page: 14,
+    moves: [
+      atk('Thousand Arrows', 'Ground', 55, grid('.O./OOO/OOO/OOO/.G.'), 'Hits Flying and Levitate Pokémon, dealing 30 extra damage to them.', { hitsFlying: true }),
+      atk('Core Enforcer', 'Dragon', 65, grid('.O./OOO/OOO/OOO/.G.'), 'Ignores the opponents’ abilities.', { ignoreAbilities: true }),
+    ],
+    ability: ['powerConstruct', 'Power Construct', 'This Pokémon has unlocked its true form.'],
+    draftable: false, formOf: 'zygarde', formLabel: '100%',
+  }),
+  card({
+    id: 'kyurem', name: 'Kyurem', types: ['Ice', 'Dragon'], hp: 220, mov: 3, page: 14,
+    moves: [
+      atk('Blizzard', 'Ice', 95, grid('OOO/OOO/.../.G.'), '30% chance to graze for 25 damage unless the user is on ice or next to an Ice type; otherwise, 10% chance to freeze each target.', {
+        graze: { chance: 0.3, power: 25, negateNear: 'ice' }, status: { id: 'frz', chance: 0.1, noGraze: true },
+      }),
+      atk('Freeze-Dry', 'Ice', 60, grid('.O./OOO/.O./.G.'), 'Super effective against Water types instead of resisted.', { superEffectiveAgainst: 'Water' }),
+    ],
+    ability: ['fusion', 'Fusion', 'If Zekrom or Reshiram is on the field, this Pokémon can copy their attacks.'],
+  }),
+  card({
+    id: 'xerneas', name: 'Xerneas', types: ['Fairy'], hp: 230, mov: 3, page: 14,
+    moves: [
+      atk('Moonblast', 'Fairy', 80, grid('.O./.../.G.'), '30% chance to lower the target’s attack.', { targetStages: { stages: { atk: -1 }, chance: 0.3 } }),
+      sts('Geomancy', SELF, 'Maximizes the user’s stats. The user must recharge next turn.', {
+        selfStages: { stages: { atk: 6, def: 6, mov: 6 } }, nextTurn: { noMove: true, noAct: true },
+      }),
+    ],
+    ability: ['fairyAura', 'Fairy Aura', 'Fairy-type moves deal 20 extra damage for all Pokémon on the field.'],
+  }),
+  card({
+    id: 'solgaleo', name: 'Solgaleo', types: ['Psychic', 'Steel'], hp: 250, mov: 3, page: 14,
+    moves: [
+      atk('Sunsteel Strike', 'Steel', 90, grid('.R./ROR/OBO/.G.'), 'Ignores opponents’ abilities.', { ignoreAbilities: true }),
+      sts('Teleport', SELF, 'The user teleports to a tile adjacent to an ally.', { special: 'teleport' }),
+    ],
+    ability: ['fullMetalBody', 'Full Metal Body', 'This Pokémon’s stats cannot be lowered.'],
+  }),
+  // ------------------------------------------------------------ subrestricted legendary card sheet
+  card({
+    id: 'mew', name: 'Mew', types: ['Psychic'], hp: 200, mov: 3, page: 15,
+    moves: [
+      atk('Psychic', 'Psychic', 55, grid('.O./.O./.G.'), '10% chance to lower the opponent’s defense.', { targetStages: { stages: { def: -1 }, chance: 0.1 } }),
+      sts('Mimic', SELF, 'Uses a move of any opponent on the field.', { special: 'mimic' }),
+    ],
+    ability: ['synchronize', 'Synchronize', 'If another Pokémon gives this one a status condition through an attack, they get it as well.'],
+  }),
+  card({
+    id: 'celebi', name: 'Celebi', types: ['Grass', 'Psychic'], hp: 200, mov: 3, page: 15,
+    moves: [
+      atk('Leaf Storm', 'Grass', 80, grid('.O./.O./.G.'), 'Lowers the user’s attack by two stages.', { selfStages: { stages: { atk: -2 } } }),
+      sts('Healing Wish', SELF, 'The user faints, but all allies have their HP and status conditions healed.', { special: 'healingWish' }),
+    ],
+    ability: ['naturalCure', 'Natural Cure', 'Heals status conditions when this Pokémon ends its turn more than 3 spaces from enemies.'],
+  }),
+  card({
+    id: 'suicune', name: 'Suicune', types: ['Water'], hp: 225, mov: 3, page: 15,
+    moves: [
+      atk('Hydro Pump', 'Water', 60, grid('.O./.O./.O./.G.'), '20% chance to miss.', { missChance: 0.2 }),
+      sts('Roar', grid('OOO/OGO/OOO'), 'Removes any stat changes from the targets.', { resetTargetStages: true }),
+    ],
+    ability: ['innerFocus', 'Inner Focus', 'This Pokémon cannot flinch.'],
+  }),
+  card({
+    id: 'zapdos', name: 'Zapdos', types: ['Electric', 'Flying'], hp: 170, mov: 3, page: 15,
+    moves: [
+      atk('Volt Switch', 'Electric', 55, grid('.O./.../.G.'), 'Switches with an allied Pokémon after attacking if possible.', { special: 'voltSwitch' }),
+      atk('Hurricane', 'Flying', 90, grid('OOO/OOO/.../.G.'), '30% chance to graze for 20 damage unless the user is on water or next to a Water type; otherwise, 30% chance to confuse.', {
+        graze: { chance: 0.3, power: 20, negateNear: 'water' }, confuse: { chance: 0.3, noGraze: true },
+      }),
+    ],
+    ability: ['static', 'Static', 'When an adjacent Pokémon hits this Pokémon, it has a 30% chance of being paralyzed.'],
+  }),
+  card({
+    id: 'chien-pao', name: 'Chien-Pao', types: ['Dark', 'Ice'], hp: 135, mov: 4, page: 15,
+    moves: [
+      atk('Icicle Crash', 'Ice', 65, grid('OOO/OOO/.../.G.'), '10% chance to miss. Otherwise, 30% chance to flinch the targets.', {
+        missChance: 0.1, flinch: { chance: 0.3 },
+      }),
+      atk('Sucker Punch', 'Dark', 55, { kind: 'range', range: 4 }, 'Any Pokémon that attacks within 4 spaces of this Pokémon on the opponent’s next turn gets hit by this move.', { special: 'suckerPunch' }),
+    ],
+    ability: ['swordOfRuin', 'Sword of Ruin', 'All other Pokémon within 3 spaces take 30 more damage from attacks.'],
+  }),
+  card({
+    id: 'jirachi', name: 'Jirachi', types: ['Psychic', 'Steel'], hp: 200, mov: 3, page: 15,
+    moves: [
+      sts('Doom Desire', SELF, 'Deals a flat 120 damage at the start of your next turn to any Pokémon within 3 spaces of this Pokémon.', { special: 'doomDesire' }),
+      sts('Wish', SELF, 'At the start of your next turn, an ally of your choice is healed to full HP.', { special: 'wish' }),
+    ],
+    ability: ['sereneGrace', 'Serene Grace', 'Adjacent allies have the chance of secondary effects on their moves doubled.'],
+  }),
+  card({
+    id: 'scream-tail', name: 'Scream Tail', types: ['Fairy', 'Psychic'], hp: 235, mov: 4, page: 15,
+    moves: [
+      atk('Boomburst', 'Normal', 50, grid('OOO/OOO/.../.G.'), ''),
+      sts('Perish Song', SELF, 'At the start of its next turn, all Pokémon 4 or fewer tiles away faint, as well as this Pokémon.', { special: 'perishSong' }),
+    ],
+    ability: ['protosynthesis', 'Protosynthesis', 'Gains Defense when a Pokémon uses Sunny Day or when Drought activates.'],
+  }),
+  card({
+    id: 'iron-valiant', name: 'Iron Valiant', types: ['Fighting', 'Fairy'], hp: 130, mov: 4, page: 15,
+    moves: [
+      atk('Drain Punch', 'Fighting', 60, grid('.O./.O./.G.'), 'Heals the user by 30 HP.', { drain: 30 }),
+      atk('Spirit Break', 'Fairy', 60, grid('OOO/.O./.G.'), 'Lowers the target’s attack by one stage.', { targetStages: { stages: { atk: -1 }, chance: 1 } }),
+    ],
+    ability: ['quarkDrive', 'Quark Drive', 'This Pokémon can move +2 spaces when standing on an electric tile.'],
   }),
 ];
 

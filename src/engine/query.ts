@@ -1,13 +1,16 @@
 import { getCard } from './data/cards';
 import { getMap } from './data/maps';
 import type {
-  AbilityId, CardDef, Dir, GameState, Hazard, MapDef, MoveDef, PType, Pos, Side, Terrain, Unit,
+  AbilityId, CardDef, Dir, GameState, Hazard, MapDef, MoveDef, MoveIndex, PType, Pos, Side, Terrain, Unit,
 } from './types';
 import { ORTHO, addPos, cheb, posKey, rotate, samePos, steps } from './util';
 
 // ---------------------------------------------------------------- units & cards
 
-export const cardOf = (u: Unit): CardDef => getCard(u.cardId);
+export const cardOf = (u: Unit): CardDef => {
+  const c = getCard(u.cardId);
+  return u.typeOverride ? { ...c, types: [u.typeOverride] } : c;
+};
 export const abilityOf = (u: Unit): AbilityId => cardOf(u).ability;
 export const hasType = (u: Unit, t: PType): boolean => cardOf(u).types.includes(t);
 /** Flying types and Levitate users cross water/pits and ignore hazards. */
@@ -30,17 +33,43 @@ export const adjacentUnits = (s: GameState, u: Unit): Unit[] =>
 /** Live units with this ability anywhere on the field. */
 export const withAbility = (s: GameState, a: AbilityId): Unit[] => liveUnits(s).filter((u) => abilityOf(u) === a);
 
+export function teleportDestinations(s: GameState, u: Unit): Pos[] {
+  if (!u.pos) return [];
+  const allies = alliesOf(s, u);
+  const occupied = liveUnits(s).map((x) => x.pos!);
+  const map = getMap(s.mapId);
+  const out: Pos[] = [];
+  for (let y = 0; y < map.height; y++) {
+    for (let x = 0; x < map.width; x++) {
+      const p = { x, y };
+      if (samePos(p, u.pos) || occupied.some((q) => samePos(p, q)) || !canStand(u, map.tiles[y][x])) continue;
+      if (allies.some((a) => cheb(p, a.pos!) === 1)) out.push(p);
+    }
+  }
+  return out;
+}
+
 /** The trainer `side` picked (trainer mode), or null. */
 export const trainerOf = (s: GameState, side: Side): string | null => s.trainers?.picks[side] ?? null;
+export const hazardDamage = (s: GameState, u: Unit, amount: number): number =>
+  amount * (trainerOf(s, u.side === 'A' ? 'D' : 'A') === 'hiker-paul' ? 2 : 1);
 /** The trainer Special Move in effect for `side`'s current turn, if any. */
-export const turnEffect = (s: GameState, side: Side): 'sureHit' | 'rally' | 'push2' | null =>
+export const turnEffect = (s: GameState, side: Side): 'sureHit' | 'rally' | 'push2' | 'perfectRolls' | 'vertical' | 'terrainBreak' | null =>
   s.trainers?.effect?.side === side ? s.trainers.effect.kind : null;
+export const verticalOnly = (s: GameState, side: Side): boolean => turnEffect(s, side) === 'vertical';
 /** Leaf Guard / Snow Cloak double the effect of berry bushes and flowers. */
 export const terrainMult = (u: Unit): number => (abilityOf(u) === 'leafGuard' || abilityOf(u) === 'snowCloak' ? 2 : 1);
 
-export function moveOf(u: Unit, index: 0 | 1): MoveDef {
-  return cardOf(u).moves[index];
+const NO_TRAINER_MOVE: MoveDef = {
+  name: '—', type: null, power: null, kind: 'status', target: { kind: 'self' }, text: '', fx: { none: true },
+};
+
+export function moveOf(u: Unit, index: MoveIndex): MoveDef {
+  if (index === 2) return u.trainerMove ?? NO_TRAINER_MOVE;
+  const move = cardOf(u).moves[index];
+  return move.fx.matchesUserType && u.typeOverride ? { ...move, type: u.typeOverride } : move;
 }
+export const moveIndexes = (u: Unit): MoveIndex[] => u.trainerMove ? [0, 1, 2] : [0, 1];
 
 // ---------------------------------------------------------------- map
 
@@ -51,7 +80,7 @@ export const inBounds = (s: GameState, p: Pos): boolean => {
 };
 export const terrainAt = (s: GameState, p: Pos): Terrain => mapOf(s).tiles[p.y][p.x];
 /** "Normal" terrain: no bonuses and no movement limitations (dirt, grass and bridges are cosmetic). */
-export const isNormalTerrain = (t: Terrain): boolean => t === 'normal' || t === 'dirt' || t === 'grass' || t === 'bridge';
+export const isNormalTerrain = (t: Terrain): boolean => t === 'normal' || t === 'dirt' || t === 'grass' || t === 'bridge' || t === 'electric';
 /** Berry bushes and flowers only help Pokémon standing in them: Flying and Levitate Pokémon hover above. */
 export function terrainBonus(s: GameState, u: Unit, at?: Pos | null): 'bush' | 'flower' | null {
   const p = at ?? u.pos;
@@ -116,6 +145,9 @@ export function effectiveMov(s: GameState, u: Unit, at?: Pos): number {
         break;
       case 'slushRush':
         if (adjacentToType(s, u, 'Ice', p) || terrainAt(s, p) === 'ice') m += 2;
+        break;
+      case 'quarkDrive':
+        if (terrainAt(s, p) === 'electric') m += 2;
         break;
     }
   }

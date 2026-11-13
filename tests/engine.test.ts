@@ -7,9 +7,9 @@ import {
 import { act, noLuck, park, scriptedRng, setup, unit } from './helpers';
 
 describe('card data', () => {
-  it('has the full pages 1–9 roster', () => {
-    expect(CARD_LIST).toHaveLength(100);
-    expect(DRAFTABLE).toHaveLength(98);
+  it('has the full roster, including both legendary card sheets', () => {
+    expect(CARD_LIST).toHaveLength(118);
+    expect(DRAFTABLE).toHaveLength(115);
   });
 
   it('every grid parses with a user tile and at least one target', () => {
@@ -89,14 +89,22 @@ describe('map', () => {
     expect(unit(onSchedule.state, 'A0').stages).toEqual({ atk: 0, def: 0, mov: 0 });
     expect(unit(onSchedule.state, 'D0').stages).toEqual({ atk: 0, def: 0, mov: 0 });
   });
-  it('resets stat stages when a Pokémon walks onto a wonder tile', () => {
+  it('resets stat stages at the end of an activation on a wonder tile, not when walking over it', () => {
     const tile = MAPS.meadow.tiles[6][4];
     MAPS.meadow.tiles[6][4] = 'wonder';
     try {
       const s = setup(['tauros'], [], { A0: { x: 4, y: 7 } });
       unit(s, 'A0').stages = { atk: 2, def: -1, mov: 1 };
       const n = act(s, { type: 'move', unitId: 'A0', to: { x: 4, y: 6 } });
-      expect(unit(n, 'A0').stages).toEqual({ atk: 0, def: 0, mov: 0 });
+      expect(unit(n, 'A0').stages).toEqual({ atk: 2, def: -1, mov: 1 });
+      const done = act(n, { type: 'wait', unitId: 'A0' });
+      expect(unit(done, 'A0').stages).toEqual({ atk: 0, def: 0, mov: 0 });
+
+      const passing = setup(['tauros'], [], { A0: { x: 4, y: 7 } });
+      unit(passing, 'A0').stages = { atk: 2, def: -1, mov: 1 };
+      const crossed = act(passing, { type: 'move', unitId: 'A0', to: { x: 4, y: 5 } });
+      const finished = act(crossed, { type: 'wait', unitId: 'A0' });
+      expect(unit(finished, 'A0').stages).toEqual({ atk: 2, def: -1, mov: 1 });
     } finally {
       MAPS.meadow.tiles[6][4] = tile;
     }

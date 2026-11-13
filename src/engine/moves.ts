@@ -4,13 +4,13 @@ import {
 import { DRAFTABLE, getCard } from './data/cards';
 import {
   abilityOf, adjacentToType, alliesOf, canPlaceOn, canStand, gridTile, hasType, inBounds, liveUnits, moveOf,
-  onBoard, parseGrid, substituteAt, terrainAt, terrainBonus, trainerOf, turnEffect, unitAt, withAbility, zoneTiles,
+  onBoard, parseGrid, substituteAt, teleportDestinations, terrainAt, terrainBonus, trainerOf, turnEffect, unitAt, verticalOnly, withAbility, zoneTiles,
 } from './query';
 import {
-  type Ctx, RuleError, applySelfStages, applyStage, applyStatus, dealDamage, emit, enterTile, faint, heal, log,
-  nameOf, resetStages, transform, triggerLeech,
+  type Ctx, RuleError, applySelfStages, applyStage, applyStatus, cureStatus, dealDamage, emit, enterTile, faint, heal, log,
+  nameOf, resetStages, transform, triggerLeech, triggerProtosynthesis,
 } from './mutate';
-import type { Dir, GameState, MoveDef, PType, Pos, StatId, StatusId, Unit } from './types';
+import type { Dir, GameState, MoveDef, MoveIndex, PType, Pos, StatId, StatusId, Unit } from './types';
 import { DIRS, otherSide } from './types';
 import { DIR_VEC, addPos, cheb, posKey, steps } from './util';
 
@@ -22,6 +22,19 @@ export interface Targeting {
   targets: Unit[];
   substitute: boolean;
   placeAt?: Pos;
+}
+
+function triggerSuckerPunches(ctx: Ctx, attacker: Unit): void {
+  if (!onBoard(attacker)) return;
+  for (const holder of liveUnits(ctx.s)) {
+    if (holder.side === attacker.side || holder.suckerPunchFor !== attacker.side || !holder.pos || steps(holder.pos, attacker.pos) > 4) continue;
+    const source = moveOf(holder, 1);
+    if (source.fx.special !== 'suckerPunch') continue;
+    const move: MoveDef = { ...source, target: { kind: 'range', range: 4 }, fx: { ...source.fx, special: undefined } };
+    if (targeting(ctx.s, holder, move, { targetId: attacker.id }).ok) {
+      executeMove(ctx, holder, move, { targetId: attacker.id, copied: 'Sucker Punch', noEcho: true, noCounter: true });
+    }
+  }
 }
 
 const fail = (reason: string): Targeting => ({ ok: false, reason, zone: [], dashTo: null, targets: [], substitute: false });
@@ -50,6 +63,7 @@ export const isHealingMove = (m: MoveDef): boolean =>
 export function targeting(s: GameState, u: Unit, move: MoveDef, opts: TargetOpts): Targeting {
   const origin = opts.origin ?? u.pos;
   if (!origin) return fail('Not on the board');
+  if (move.fx.special === 'suckerPunch') return { ok: true, zone: [], dashTo: null, targets: [], substitute: false };
   const t = move.target;
   switch (t.kind) {
     case 'self':
@@ -60,17 +74,20 @@ export function targeting(s: GameState, u: Unit, move: MoveDef, opts: TargetOpts
       if (!tgt || !onBoard(tgt) || tgt.id === u.id) return fail('Choose a Pokémon to hit');
       const d = steps(origin, tgt.pos);
       if (d > t.range || d < (t.min ?? 0)) return fail(t.min ? `Target must be ${t.min}–${t.range} tiles away` : `Target must be within ${t.range} tiles`);
+      if (verticalOnly(s, u.side) && tgt.pos.x !== origin.x) return fail('Your Pokémon can only attack vertically this turn');
       return { ok: true, zone: [tgt.pos], dashTo: null, targets: [tgt], substitute: false };
     }
     case 'ally': {
       const tgt = opts.targetId ? s.units.find((x) => x.id === opts.targetId) : undefined;
       if (!tgt || !onBoard(tgt) || tgt.side !== u.side || tgt.id === u.id) return fail('Choose an ally to switch with');
       if (t.range !== undefined && steps(origin, tgt.pos) > t.range) return fail(`The ally must be within ${t.range} tiles`);
+      if (verticalOnly(s, u.side) && tgt.pos.x !== origin.x) return fail('Your Pokémon can only move vertically this turn');
       if (!canStand(u, terrainAt(s, tgt.pos)) || !canStand(tgt, terrainAt(s, origin))) return fail('Neither can stand on the other’s tile');
       return { ok: true, zone: [tgt.pos], dashTo: null, targets: [tgt], substitute: false };
     }
     case 'place': {
       if (!opts.dir) return fail('Choose a direction');
+      if (verticalOnly(s, u.side) && opts.dir !== 'N' && opts.dir !== 'S') return fail('Your Pokémon can only act vertically this turn');
       const g = parseGrid(t.grid);
       const p = gridTile(origin, g.targets[0], opts.dir);
       if (!inBounds(s, p)) return fail('Off the board');
@@ -86,6 +103,7 @@ export function targeting(s: GameState, u: Unit, move: MoveDef, opts: TargetOpts
     }
     case 'grid': {
       if (!opts.dir) return fail('Choose a direction');
+      if (verticalOnly(s, u.side) && opts.dir !== 'N' && opts.dir !== 'S') return fail('Your Pokémon can only act vertically this turn');
       const g = parseGrid(t.grid);
       let dashTo: Pos | null = null;
       if (g.dash) {
@@ -96,7 +114,8 @@ export function targeting(s: GameState, u: Unit, move: MoveDef, opts: TargetOpts
         }
         dashTo = p;
       }
-      const zone = zoneTiles(s, origin, g, opts.dir);
+      const tiles = zoneTiles(s, origin, g, opts.dir);
+      const zone = verticalOnly(s, u.side) ? tiles.filter((p) => p.x === origin.x) : tiles;
       const targets = zone.map((p) => unitAt(s, p)).filter((x): x is Unit => !!x && x.id !== u.id);
       const substitute = zone.some((p) => substituteAt(s, p));
       if (move.fx.healSelfAndAllies !== undefined || opts.allowEmpty) return { ok: true, zone, dashTo, targets, substitute };
@@ -167,7 +186,8 @@ export interface ExecOpts extends TargetOpts {
   copied?: string;
   /** A copy made by Liquid Voice or Dancer doesn't set off Liquid Voice or Dancer again. */
   noEcho?: boolean;
-  moveIndex?: 0 | 1;
+  noCounter?: boolean;
+  moveIndex?: MoveIndex;
 }
 
 export interface ExecResult {
@@ -184,7 +204,9 @@ export function executeMove(ctx: Ctx, u: Unit, move: MoveDef, opts: ExecOpts): E
   emit(ctx, { t: 'attack', unitId: u.id, name: move.name, tiles: tg.zone });
   const res: ExecResult = { hits: 0, kos: 0 };
 
-  switch (move.target.kind) {
+  if (move.fx.special === 'suckerPunch') {
+    selfMove(ctx, u, move);
+  } else switch (move.target.kind) {
     case 'self':
       selfMove(ctx, u, move);
       break;
@@ -227,8 +249,14 @@ export function executeMove(ctx: Ctx, u: Unit, move: MoveDef, opts: ExecOpts): E
       break;
   }
 
+  if (trainerOf(s, u.side) === 'motochika' && /dance|roar|boom/i.test(move.name)) {
+    applyStage(ctx, u, 'mov', 1, { source: u, label: 'Motochika' });
+  }
+  if (move.kind === 'attack' && move.target.kind !== 'self' && !opts.noCounter) triggerSuckerPunches(ctx, u);
   if (!opts.noEcho) {
-    const src = opts.moveIndex !== undefined ? { cardId: u.cardId, moveIndex: opts.moveIndex } : findSource(move);
+    const src = opts.moveIndex === 0 || opts.moveIndex === 1
+      ? { cardId: u.cardId, moveIndex: opts.moveIndex }
+      : opts.moveIndex === undefined ? findSource(move) : null;
     if (src) {
       queueLiquidVoice(ctx, u, move, src);
       queueDancer(ctx, u, move, src);
@@ -250,6 +278,36 @@ function selfMove(ctx: Ctx, u: Unit, move: MoveDef): void {
   const fx = move.fx;
   if (fx.selfStages) applySelfStages(ctx, u, fx.selfStages.stages);
   if (fx.selfHeal) heal(ctx, u, fx.selfHeal, move.name);
+  if (fx.special === 'teleport') {
+    const options = teleportDestinations(ctx.s, u).map(posKey);
+    if (!options.length) throw new RuleError('Teleport requires a free tile beside an ally.');
+    ctx.s.pending.push({ kind: 'teleport', side: u.side, unitId: u.id, options });
+    log(ctx, `${nameOf(u)} prepared to teleport beside an ally.`, 'info', u.side);
+  }
+  if (fx.special === 'suckerPunch') {
+    u.suckerPunchFor = otherSide(u.side);
+    log(ctx, `${nameOf(u)} prepared Sucker Punch for the opponent’s next turn!`, 'info', u.side);
+  }
+  if (fx.special === 'healingWish') {
+    for (const ally of alliesOf(ctx.s, u)) {
+      heal(ctx, ally, ally.maxHp, 'Healing Wish');
+      cureStatus(ctx, ally, 'Healing Wish');
+    }
+    faint(ctx, u, null);
+    log(ctx, `${nameOf(u)} sacrificed itself with Healing Wish!`, 'info', u.side);
+  }
+  if (fx.special === 'wish') {
+    ctx.s.wishes.push({ userId: u.id, side: u.side });
+    log(ctx, `${nameOf(u)} made a Wish for the start of its next turn.`, 'info', u.side);
+  }
+  if (fx.special === 'doomDesire') {
+    ctx.s.futureSight.push({ userId: u.id, side: u.side, damage: 120, range: 3 });
+    log(ctx, `${nameOf(u)} foresaw Doom Desire!`, 'info', u.side);
+  }
+  if (fx.special === 'perishSong') {
+    ctx.s.perishSongs.push({ userId: u.id, side: u.side, center: { ...u.pos! } });
+    log(ctx, `${nameOf(u)} sang Perish Song; it will take effect on its next turn.`, 'info', u.side);
+  }
   if (fx.special === 'followMe' || fx.special === 'ragePowder') {
     u.followMe = { kind: fx.special, duringTurnOf: otherSide(u.side) };
     log(ctx, `${nameOf(u)} became the centre of attention!`, 'info', u.side);
@@ -293,6 +351,7 @@ function globalMove(ctx: Ctx, u: Unit, move: MoveDef): void {
   if (kind) emit(ctx, { t: 'field', kind, side: u.side });
   switch (move.fx.special) {
     case 'sunnyDay':
+      triggerProtosynthesis(ctx);
       for (const x of all) {
         if (hasType(x, 'Fire')) capped(x, 'atk', 1, 'Sunny Day');
         if (hasType(x, 'Water') && hurt.includes(x)) capped(x, 'atk', -1, 'Sunny Day');
@@ -382,10 +441,11 @@ function zoneMove(ctx: Ctx, u: Unit, move: MoveDef, moveType: PType | null, tg: 
 
   const ac = makeAttackCtx(u, move, { moveType: moveType ?? 'Normal', attackerPos, targetCount: tg.targets.length, s });
   if (ac.pixilated) log(ctx, `Pixilate turned ${move.name} Fairy type!`, 'info', u.side);
-  const dice = fx.dice ? rng.d6() : null;
+  const dice = fx.dice ? (trainerOf(s, u.side) === 'hideyoshi' && turnEffect(s, u.side) === 'perfectRolls' ? 6 : rng.d6()) : null;
   if (dice !== null) log(ctx, `${nameOf(u)} rolled a ${dice}! (+${dice * 10} power)`, 'info', u.side);
   const sm = secondaryMult(s, u);
-  const chance = (p: number): boolean => rng.chance(Math.min(1, p * sm));
+  const chance = (p: number, positive = true): boolean =>
+    rng.chance(Math.min(1, p * (positive && turnEffect(s, u.side) === 'perfectRolls' ? Math.max(sm, 2) : sm)));
 
   // Decoy: Wobbuffet is hit first. If it survives, nobody else in the zone takes damage and the
   // attacker takes the same damage in return.
@@ -424,9 +484,14 @@ function zoneMove(ctx: Ctx, u: Unit, move: MoveDef, moveType: PType | null, tg: 
         else log(ctx, `${move.name} had no effect on ${nameOf(t)}.`, 'info', t.side);
         hits.push(t);
       } else {
+        if (fx.special === 'poltergeist' && t.stages.atk <= 0 && t.stages.def <= 0 && t.stages.mov <= 0) {
+          log(ctx, `${nameOf(t)} has no positive stat boosts; Poltergeist dealt no damage.`, 'info', t.side);
+          hits.push(t);
+          continue;
+        }
         const grazed = grazeApplies(s, ac) && rng.chance(fx.graze!.chance);
         const bonus = fx.bonus?.find((b) => b.when === 'chance');
-        const chanceBonus = !!bonus && bonus.when === 'chance' && chance(bonus.chance);
+        const chanceBonus = !!bonus && bonus.when === 'chance' && chance(bonus.chance, true);
         const base = basePower(s, ac, t, dice, chanceBonus);
         const dmg = computeDamage(s, ac, t, base, grazed ? fx.graze!.power : null);
         if (grazed) log(ctx, `The attack only grazed ${nameOf(t)}.`, 'info', t.side);
@@ -481,6 +546,20 @@ function zoneMove(ctx: Ctx, u: Unit, move: MoveDef, moveType: PType | null, tg: 
     const far = [...hits].sort((a, b) => cheb(b.pos ?? attackerPos, attackerPos) - cheb(a.pos ?? attackerPos, attackerPos));
     for (const t of far) if (!t.fainted && t.pos) knockback(ctx, t, opts.dir ?? awayFrom(attackerPos, t.pos), k, turnEffect(s, u.side) === 'push2');
   }
+  if (fx.special === 'poltergeist' && u.pos) {
+    for (const t of hits) {
+      if (t.fainted || !t.pos) continue;
+      const from = { ...t.pos };
+      const destination = DIRS.map((dir) => addPos(u.pos!, DIR_VEC[dir]))
+        .filter((p) => inBounds(s, p) && canStand(t, terrainAt(s, p)) && !unitAt(s, p))
+        .sort((a, b) => cheb(a, from) - cheb(b, from) || a.y - b.y || a.x - b.x)[0];
+      if (!destination) continue;
+      t.pos = null;
+      enterTile(ctx, t, destination);
+      emit(ctx, { t: 'move', unitId: t.id, path: [destination] });
+      log(ctx, `${nameOf(t)} was pulled beside ${nameOf(u)} by Poltergeist.`, 'info', t.side);
+    }
+  }
   finish();
 }
 
@@ -516,10 +595,13 @@ function reactiveAbilities(ctx: Ctx, u: Unit, t: Unit, attackerPos: Pos, targetP
   if (ab === 'justified' && moveType === 'Dark' && !t.fainted) applyStage(ctx, t, 'atk', 1, { source: u, label: 'Justified' });
 }
 
-function secondary(ctx: Ctx, u: Unit, t: Unit, move: MoveDef, grazed: boolean, chance: (p: number) => boolean, ignoreAbilities: boolean): void {
+function secondary(ctx: Ctx, u: Unit, t: Unit, move: MoveDef, grazed: boolean, chance: (p: number, positive?: boolean) => boolean, ignoreAbilities: boolean): void {
   const fx = move.fx;
   const ok = (c?: { noGraze?: boolean }): boolean => !(c?.noGraze && grazed);
-  if (fx.status && ok(fx.status) && chance(fx.status.chance)) {
+  const trainerPoisons = trainerOf(ctx.s, u.side) === 'jessie-james' && move.type === 'Poison';
+  if (trainerPoisons && (!fx.status || ok(fx.status))) {
+    applyStatus(ctx, t, 'psn', { source: u, ignoreAbilities });
+  } else if (fx.status && ok(fx.status) && chance(fx.status.chance)) {
     applyStatus(ctx, t, fx.status.id, { source: u, ignoreAbilities, quiet: fx.status.chance < 1 });
   }
   if (fx.triStatus && chance(fx.triStatus)) {
@@ -531,7 +613,7 @@ function secondary(ctx: Ctx, u: Unit, t: Unit, move: MoveDef, grazed: boolean, c
     emit(ctx, { t: 'status', unitId: t.id, status: 'confused' });
     log(ctx, `${nameOf(t)} became confused!`, 'bad', t.side);
   }
-  if (fx.flinch && ok(fx.flinch) && chance(fx.flinch.chance)) {
+  if (fx.flinch && abilityOf(t) !== 'innerFocus' && ok(fx.flinch) && chance(fx.flinch.chance)) {
     t.flinched = true;
     emit(ctx, { t: 'status', unitId: t.id, status: 'flinched' });
     log(ctx, `${nameOf(t)} flinched! It will lose its next activation.`, 'bad', t.side);
@@ -564,6 +646,24 @@ function statusEffects(ctx: Ctx, u: Unit, t: Unit, move: MoveDef): void {
   if (fx.special === 'psycheUp') {
     u.stages = { ...t.stages };
     log(ctx, `${nameOf(u)} copied ${nameOf(t)}'s stat changes (Psyche Up).`, 'info', u.side);
+  }
+  if (fx.special === 'trick') {
+    const own = { ...u.stages };
+    const theirs = { ...t.stages };
+    if ((abilityOf(u) === 'fullMetalBody' && (['atk', 'def', 'mov'] as const).some((k) => theirs[k] < own[k])) ||
+        (abilityOf(t) === 'fullMetalBody' && (['atk', 'def', 'mov'] as const).some((k) => own[k] < theirs[k]))) {
+      log(ctx, `${nameOf(t)}'s Full Metal Body prevented Trick from lowering stats.`, 'info', t.side);
+      return;
+    }
+    u.stages = theirs;
+    t.stages = own;
+    for (const stat of ['atk', 'def', 'mov'] as const) {
+      if (own[stat] !== theirs[stat]) {
+        emit(ctx, { t: 'stage', unitId: u.id, stat, delta: theirs[stat] - own[stat] });
+        emit(ctx, { t: 'stage', unitId: t.id, stat, delta: own[stat] - theirs[stat] });
+      }
+    }
+    log(ctx, `${nameOf(u)} and ${nameOf(t)} swapped their stat changes (Trick).`, 'info', u.side);
   }
 }
 
@@ -601,6 +701,7 @@ function knockback(ctx: Ctx, t: Unit, dir: Dir, k: number, collide = false): voi
     if (unitAt(s, np) || substituteAt(s, np)) break;
     path.push(np);
     enterTile(ctx, t, np);
+    if (terrainAt(s, np) === 'wonder') resetStages(ctx, t);
     if (t.fainted) break;
   }
   if (path.length) {
@@ -628,7 +729,9 @@ function afterEffects(ctx: Ctx, u: Unit, move: MoveDef, hits: Unit[], res: ExecR
   }
   if (fx.selfStages) {
     if (fx.selfStages.chance === undefined) applySelfStages(ctx, u, fx.selfStages.stages);
-    else if (n > 0 && ctx.rng.chance(Math.min(1, fx.selfStages.chance * secondaryMult(s, u)))) applySelfStages(ctx, u, fx.selfStages.stages);
+    else if (n > 0 && ctx.rng.chance(Math.min(1, fx.selfStages.chance * secondaryMult(s, u, undefined, Object.values(fx.selfStages.stages).some((d) => d !== undefined && d > 0))))) {
+      applySelfStages(ctx, u, fx.selfStages.stages);
+    }
   }
   if (fx.selfSleepChance && ctx.rng.chance(fx.selfSleepChance)) {
     log(ctx, `${nameOf(u)} is exhausted from its rampage…`, 'bad', u.side);
@@ -650,6 +753,10 @@ function afterEffects(ctx: Ctx, u: Unit, move: MoveDef, hits: Unit[], res: ExecR
   if (fx.lockUntilFar && !u.fainted && !u.locked.includes(move.name) && !lanceCooldown(ctx, u)) {
     u.locked.push(move.name);
     log(ctx, `${move.name} is on cooldown until ${nameOf(u)} ends its turn ${fx.lockUntilFar}+ tiles from every opponent.`, 'info', u.side);
+  }
+  if (fx.special === 'voltSwitch' && !u.fainted) {
+    const options = alliesOf(s, u).map((a) => a.id);
+    if (options.length) s.pending.push({ kind: 'voltSwitch', side: u.side, unitId: u.id, options });
   }
   if (fx.selfFaint) {
     log(ctx, `${nameOf(u)} is spent from the blast.`, 'info', u.side);
@@ -732,7 +839,7 @@ function queueDancer(ctx: Ctx, u: Unit, move: MoveDef, source: { cardId: string;
 }
 
 /** Moves Transform and Metronome can't borrow. */
-export const UNCOPYABLE = (m: MoveDef): boolean => !!m.fx.none || m.fx.special === 'transform' || m.fx.special === 'metronome';
+export const UNCOPYABLE = (m: MoveDef): boolean => !!m.fx.none || m.fx.special === 'transform' || m.fx.special === 'metronome' || m.fx.special === 'mimic' || m.fx.special === 'suckerPunch';
 
 /**
  * Ways `u` could use `move` right now: "dir", "@unitId", or "" for self and field moves. With

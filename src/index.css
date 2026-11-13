@@ -253,6 +253,16 @@ input[type='range'] {
   background-size: 100% 100%, 100% 100%, 100% 100%, 100% 100%, 100% 100%;
   animation: waterShimmer 4s ease-in-out infinite alternate;
 }
+.tile-electric {
+  background:
+    radial-gradient(ellipse at 50% 50%, rgba(255, 230, 80, 0.14), transparent 62%),
+    linear-gradient(145deg, #555, #353535);
+}
+.tile-electric.alt {
+  background:
+    radial-gradient(ellipse at 50% 50%, rgba(255, 230, 80, 0.11), transparent 62%),
+    linear-gradient(145deg, #4b4b4b, #303030);
+}
 .tile-ice {
   background:
     linear-gradient(34deg, transparent 0 42%, rgba(255, 255, 255, 0.62) 43% 44%, transparent 45% 100%),

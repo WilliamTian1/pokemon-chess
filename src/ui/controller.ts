@@ -72,7 +72,10 @@ function scenarioGame(sc: Scenario, mapId: string, rng: ReturnType<typeof seeded
     const u = s.units.find((x) => x.id === id);
     if (u && pos) u.pos = pos;
   });
-  if (sc.trainers) s.trainers = { pool: [sc.trainers.A, sc.trainers.D], picks: { ...sc.trainers }, used: { A: false, D: false }, effect: null };
+  if (sc.trainers) s.trainers = {
+    pool: [sc.trainers.A, sc.trainers.D], picks: { ...sc.trainers }, hiddenPowerType: { A: null, D: null },
+    used: { A: false, D: false }, effect: null,
+  };
   return s;
 }
 

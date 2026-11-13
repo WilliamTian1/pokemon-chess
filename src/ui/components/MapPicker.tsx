@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { DEFAULT_MAP_ID, MAPS, MAP_LIST, type MapDef, type Terrain } from '../../engine';
 import { Art } from './bits';
 import type { DraftStyle } from '../../engine';
-import { BushIcon, CardsIcon, CoinIcon, FlowerIcon, PokeBallIcon, SealedIcon, TrebuchetIcon, WonderIcon } from './icons';
+import { BushIcon, CardsIcon, CoinIcon, ElectricIcon, FlowerIcon, PokeBallIcon, SealedIcon, TrebuchetIcon, WonderIcon } from './icons';
 
 /** A numbered heading for a step of a setup screen. */
 export function SetupHeading({ n, children }: { n: number; children: ReactNode }) {
@@ -40,7 +40,7 @@ export function OptionTiles<T>({ options, value, onChange, cols = options.length
 
 const TILE: Record<Terrain, string> = {
   normal: 'var(--tile-normal)', dirt: 'var(--tile-dirt)', grass: 'var(--tile-grass)', bridge: 'var(--tile-bridge)', water: 'var(--tile-water)',
-  flower: 'var(--tile-normal)', bush: 'var(--tile-normal)', wonder: 'var(--tile-normal)', wall: '#57534e', magma: 'var(--tile-magma)', ice: '#bae6fd', pit: '#1c1917',
+  flower: 'var(--tile-normal)', bush: 'var(--tile-normal)', wonder: 'var(--tile-normal)', wall: '#57534e', electric: '#454545', magma: 'var(--tile-magma)', ice: '#bae6fd', pit: '#1c1917',
 };
 
 const MAP_KEY = 'pcc-map';
@@ -181,7 +181,7 @@ export function MapPreview({ map, className = '' }: { map: MapDef; className?: s
           const sp = spawn(x, y);
           const treb = map.trebuchets.some((p) => p.x === x && p.y === y);
           const base = BASE[t] ?? t;
-          const painted = ['normal', 'dirt', 'grass', 'bridge', 'water', 'ice', 'magma'].includes(base);
+          const painted = ['normal', 'dirt', 'grass', 'bridge', 'water', 'ice', 'magma', 'electric'].includes(base);
           return (
             <div
               key={`${x},${y}`}
@@ -191,6 +191,7 @@ export function MapPreview({ map, className = '' }: { map: MapDef; className?: s
               {t === 'flower' && <span className="h-[80%] w-[80%]"><FlowerIcon /></span>}
               {t === 'bush' && <span className="h-[85%] w-[85%]"><BushIcon /></span>}
               {t === 'wonder' && <WonderIcon />}
+              {t === 'electric' && <ElectricIcon />}
               {treb && <span className="h-[90%] w-[90%]"><TrebuchetIcon /></span>}
               {sp && <span className={`absolute inset-[18%] rounded-full border-2 border-[#fff3d6] ${sp === 'A' ? 'bg-[#c73a2e]' : 'bg-[#2f62b8]'} shadow`} />}
             </div>
@@ -232,6 +233,7 @@ export function MapPicker({ value, onChange }: { value: string; onChange: (id: s
         <span className="flex items-center gap-1"><span className="inline-block h-4 w-4"><BushIcon /></span>Berry bush</span>
         <span className="flex items-center gap-1"><span className="inline-block h-4 w-4"><FlowerIcon /></span>Flowers</span>
         <span className="flex items-center gap-1"><span className="inline-block h-4 w-4"><WonderIcon /></span>Wonder tile: resets stat changes on entry</span>
+        <span className="flex items-center gap-1"><span className="inline-block h-4 w-4"><ElectricIcon /></span>Electric tile: +2 movement for Quark Drive</span>
       </p>
     </div>
   );

@@ -3,19 +3,21 @@ import {
   type GameState, CARD_LIST, applyAction, decider, draftOptions, getCard, hitTypeMultiplier, isTrainerPick, makeAttackCtx,
   moveOptions, moveTargets, movementAllowance, newGame, previewAction, seededRng, targeting,
 } from '../src/engine';
+import { trainerMoveFor } from '../src/engine/data/trainers';
 import { act, park, scriptedRng, setup, unit } from './helpers';
 
 const P = (x: number, y: number) => ({ x, y });
 
 /** Gives `side` a trainer in a battle state built by `setup`. */
 function withTrainer(s: GameState, side: 'A' | 'D', id: string): GameState {
-  s.trainers = { pool: [id], picks: { A: null, D: null, [side]: id }, used: { A: false, D: false }, effect: null };
+  s.trainers = { pool: [id], picks: { A: null, D: null, [side]: id }, hiddenPowerType: { A: null, D: null }, used: { A: false, D: false }, effect: null };
+  for (const u of s.units.filter((x) => x.side === side)) u.trainerMove = trainerMoveFor(id) ?? undefined;
   return s;
 }
 
 describe('expansion cards', () => {
   it('adds the 19 expansion Pokémon', () => {
-    expect(CARD_LIST).toHaveLength(100);
+    expect(CARD_LIST).toHaveLength(118);
     const ids = ['flygon', 'hawlucha', 'sylveon', 'tinkaton', 'meganium', 'porygonz', 'corsola', 'vivillon', 'octillery', 'comfey',
       'wobbuffet', 'ditto', 'shedinja', 'ninjask', 'froslass', 'roserade', 'haxorus', 'oricorio', 'wigglytuff'];
     for (const id of ids) expect(getCard(id).draftable && !getCard(id).legendary).toBe(true);
@@ -133,8 +135,17 @@ describe('expansion cards', () => {
     expect(opt.copies!.some((c) => c.unitId === 'D0' && c.moveIndex === 0)).toBe(true);
     const n = act(s, { type: 'useMove', unitId: 'A0', moveIndex: 0, dir: 'N', copy: { unitId: 'D0', moveIndex: 0 } });
     expect(unit(n, 'D0').hp).toBeLessThan(unit(n, 'D0').maxHp);
-    expect(n.log.some((l) => l.text.includes('transformed to copy Flamethrower'))).toBe(true);
+    expect(n.log.some((l) => l.text.includes('used Transform to copy Flamethrower'))).toBe(true);
     expect(moveOptions(s, unit(s, 'A0'))[1]).toMatchObject({ usable: false, reason: 'No second move' });
+  });
+
+  it('Mew can Mimic an opponent’s Quiver Dance', () => {
+    const s = setup(['mew'], ['frosmoth'], { A0: P(9, 8), D0: P(9, 6) });
+    park(s, ['A0', 'D0']);
+    const mimic = moveOptions(s, unit(s, 'A0'))[1];
+    expect(mimic.copies?.some((copy) => copy.unitId === 'D0' && copy.moveIndex === 1 && copy.move.name === 'Quiver Dance')).toBe(true);
+    const n = act(s, { type: 'useMove', unitId: 'A0', moveIndex: 1, copy: { unitId: 'D0', moveIndex: 1 } });
+    expect(unit(n, 'A0').stages).toEqual({ atk: 1, def: 1, mov: 1 });
   });
 
   it('Metronome draws an unused card and lets the player use one of its moves', () => {
@@ -387,9 +398,106 @@ describe('trainers', () => {
     expect(blissey.pos).toEqual(P(11, 0));
     expect(n.log.some((l) => l.text.includes('collision'))).toBe(true);
   });
+
+  it('Hideyoshi grants Shove as a third, damage-free move', () => {
+    const s = withTrainer(setup(['tauros'], ['snorlax'], { A0: P(9, 8), D0: P(9, 7) }), 'A', 'hideyoshi');
+    park(s, ['A0', 'D0']);
+    expect(moveOptions(s, unit(s, 'A0'))[2].move.name).toBe('Shove');
+    const hp = unit(s, 'D0').hp;
+    const n = act(s, { type: 'useMove', unitId: 'A0', moveIndex: 2, dir: 'N' });
+    expect(unit(n, 'D0').pos).toEqual(P(9, 6));
+    expect(unit(n, 'D0').hp).toBe(hp);
+  });
+
+  it('Hideyoshi makes damage dice roll six', () => {
+    const s = withTrainer(setup(['mamoswine'], ['snorlax'], { A0: P(9, 8), D0: P(9, 6) }), 'A', 'hideyoshi');
+    park(s, ['A0', 'D0']);
+    const n = act(s, { type: 'trainerSpecial' });
+    const hit = act(n, { type: 'useMove', unitId: 'A0', moveIndex: 1, dir: 'N' });
+    expect(hit.log.some((entry) => entry.text.includes('rolled a 6'))).toBe(true);
+    expect(unit(hit, 'D0').hp).toBeLessThan(unit(s, 'D0').hp - 30);
+  });
+
+  it('Youngster Joey gives the whole team one shared Hidden Power type', () => {
+    const s = withTrainer(setup(['tauros', 'snorlax'], ['blissey'], { A0: P(9, 8), A1: P(11, 8) }), 'A', 'youngster-joey');
+    for (const ally of s.units.filter((u) => u.side === 'A')) ally.trainerMove = trainerMoveFor('youngster-joey', 'Fire')!;
+    expect(moveOptions(s, unit(s, 'A0'))[2].move).toMatchObject({ name: 'Hidden Power', type: 'Fire', power: 40 });
+    expect(moveOptions(s, unit(s, 'A1'))[2].move.type).toBe('Fire');
+  });
+
+  it('Jessie and James make Poison attacks always poison', () => {
+    const s = withTrainer(setup(['weezing'], ['snorlax'], { A0: P(9, 8), D0: P(9, 6) }), 'A', 'jessie-james');
+    park(s, ['A0', 'D0']);
+    const n = act(s, { type: 'useMove', unitId: 'A0', moveIndex: 1, dir: 'N' });
+    expect(unit(n, 'D0').status).toBe('psn');
+  });
+
+  it('Jessie and James restrict movement to vertical paths for the turn', () => {
+    const s = withTrainer(setup(['tauros'], ['snorlax'], { A0: P(9, 8), D0: P(9, 6) }), 'A', 'jessie-james');
+    const n = act(s, { type: 'trainerSpecial' });
+    expect(moveTargets(n, unit(n, 'A0')).has('9,7')).toBe(true);
+    expect(moveTargets(n, unit(n, 'A0')).has('10,8')).toBe(false);
+  });
+
+  it('Hiker Paul doubles damage from spikes', () => {
+    const s = withTrainer(setup(['tauros'], ['snorlax'], { A0: P(8, 7), D0: P(12, 1) }), 'D', 'hiker-paul');
+    park(s, ['A0', 'D0']);
+    s.hazards.push({ kind: 'spikes', pos: P(8, 6) });
+    const n = act(s, { type: 'move', unitId: 'A0', to: P(8, 6) });
+    expect(unit(n, 'A0').hp).toBe(unit(s, 'A0').hp - 60);
+  });
+
+  it('Motochika boosts the selected ally and its adjacent teammates', () => {
+    const s = withTrainer(setup(['snorlax', 'tauros', 'blastoise'], ['furret'], {
+      A0: P(9, 8), A1: P(10, 8), A2: P(12, 8),
+    }), 'A', 'motochika');
+    const n = act(s, { type: 'trainerSpecial', unitId: 'A0' });
+    expect(unit(n, 'A0').stages.atk).toBe(2);
+    expect(unit(n, 'A1').stages.atk).toBe(2);
+    expect(unit(n, 'A2').stages.atk).toBe(0);
+  });
+
+  it('Motochika raises movement after a Dance move', () => {
+    const s = withTrainer(setup(['haxorus'], ['snorlax'], { A0: P(9, 8), D0: P(9, 6) }), 'A', 'motochika');
+    park(s, ['A0', 'D0']);
+    const n = act(s, { type: 'useMove', unitId: 'A0', moveIndex: 1 });
+    expect(unit(n, 'A0').stages.mov).toBe(2);
+  });
+
+  it('Motonari adds trebuchet damage and raises the team’s movement', () => {
+    const s = withTrainer(setup(['tauros'], ['snorlax'], { A0: P(10, 4), D0: P(3, 3) }), 'A', 'motonari');
+    expect(previewAction(s, 'A0', 'treb', { targetId: 'D0' })[0].max).toBe(50);
+    const n = act(s, { type: 'trainerSpecial' });
+    expect(unit(n, 'A0').stages.mov).toBe(1);
+  });
+
+  it('Banette only damages stat-boosted targets with Poltergeist and pulls them adjacent', () => {
+    const s = setup(['banette'], ['charizard'], { A0: P(9, 8), D0: P(9, 4) });
+    park(s, ['A0', 'D0']);
+    unit(s, 'D0').stages.atk = 1;
+    expect(previewAction(s, 'A0', 0, { targetId: 'D0' })[0].min).toBeGreaterThan(0);
+    const n = act(s, { type: 'useMove', unitId: 'A0', moveIndex: 0, targetId: 'D0' });
+    expect(unit(n, 'D0').hp).toBeLessThan(unit(s, 'D0').hp);
+    expect(unit(n, 'D0').pos).toEqual(P(9, 7));
+
+    const unboosted = setup(['banette'], ['charizard'], { A0: P(9, 8), D0: P(9, 4) });
+    park(unboosted, ['A0', 'D0']);
+    const noDamage = act(unboosted, { type: 'useMove', unitId: 'A0', moveIndex: 0, targetId: 'D0' });
+    expect(unit(noDamage, 'D0').hp).toBe(unit(unboosted, 'D0').hp);
+    expect(unit(noDamage, 'D0').pos).toEqual(P(9, 7));
+  });
 });
 
 describe('card updates (2026-11-09 card file)', () => {
+  it('Volt Switch targets two tiles ahead, like Psyche Up', () => {
+    const s = setup(['zapdos'], ['snorlax'], { A0: P(9, 8), D0: P(9, 6) });
+    const move = getCard('zapdos').moves[0];
+    expect(move.target).toEqual(getCard('ninetales').moves[1].target);
+    expect(targeting(s, unit(s, 'A0'), move, { dir: 'N' }).targets.map((t) => t.id)).toContain('D0');
+    unit(s, 'D0').pos = P(9, 7);
+    expect(targeting(s, unit(s, 'A0'), move, { dir: 'N' }).targets).toHaveLength(0);
+  });
+
   it('reads the new types and abilities', () => {
     expect(getCard('amoonguss').types).toEqual(['Grass', 'Poison']);
     expect(getCard('oricorio').types).toEqual(['Flying', 'Ghost']);
