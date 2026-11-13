@@ -143,7 +143,8 @@ export function useCardFilter(all: CardDef[]) {
 export function DraftView({ ctl }: { ctl: Controller }) {
   const s = ctl.state;
   const style = draftStyle(s);
-  const secret = style === 'secret';
+  const freeplay = style === 'freeplay';
+  const secret = style === 'secret' || freeplay;
   const auction = auctionOpen(s);
   // Secret draft: both sides pick at once, each from its own pool, so the screen is about one side
   // (yours; in hot-seat GameScreen hands this view one side at a time). Its state is already a hidden
@@ -161,9 +162,9 @@ export function DraftView({ ctl }: { ctl: Controller }) {
   const [searching, setSearching] = useState(false);
   const takenBy = useMemo(() => {
     const m = new Map<string, Side>();
-    for (const side of ['A', 'D'] as const) for (const id of s.draft.picks[side]) m.set(id, side);
+    for (const side of (freeplay ? [turn] : ['A', 'D'] as const)) for (const id of s.draft.picks[side]) m.set(id, side);
     return m;
-  }, [s.draft.picks]);
+  }, [s.draft.picks, freeplay, turn]);
   // '?': a card hidden from this viewer (a spectator in a Secret draft sees neither side's pool).
   const normals = useMemo(() => (secret ? s.draft.secret!.pools[turn] : auction ? [] : s.draft.pool).filter((id) => id !== '?').map(getCard), [s.draft.pool, secret, auction, turn]); // eslint-disable-line react-hooks/exhaustive-deps
   const legends = useMemo(() => (secret ? s.draft.secret!.legendPools[turn] : auction ? [] : s.draft.legendPool).filter((id) => id !== '?').map(getCard), [s.draft.legendPool, secret, auction, turn]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -255,7 +256,7 @@ export function DraftView({ ctl }: { ctl: Controller }) {
               </div>
               <div className="mt-0.5 flex min-w-0 items-center gap-1.5 overflow-hidden phone:mt-0">
                 <span className="draft-phase shrink-0">
-                  {waiting ? 'Revealed when the battle begins' : trainerTurn ? (secret ? 'Secret trainer pick' : 'Trainer pick') : auction ? 'Auction' : secret ? (legendTurn ? '★ Secret legendary pick' : 'Secret pick') : legendTurn ? '★ Legendary pick' : 'Pool pick'}
+                  {waiting ? 'Revealed when the battle begins' : trainerTurn ? (secret ? (freeplay ? 'Freeplay trainer pick' : 'Secret trainer pick') : 'Trainer pick') : auction ? 'Auction' : secret ? (freeplay ? (legendTurn ? '★ Freeplay legendary pick' : 'Freeplay pick') : (legendTurn ? '★ Secret legendary pick' : 'Secret pick')) : legendTurn ? '★ Legendary pick' : 'Pool pick'}
                 </span>
                 {focusCard && (
                   <span className="draft-phase min-w-0 !bg-[#f2d27a] !text-[#4a2b16]" title={`Comparing with ${focusCard.name}`}>
@@ -333,6 +334,11 @@ export function DraftView({ ctl }: { ctl: Controller }) {
             <button type="button" className="btn-ghost shrink-0 phone:!px-2 phone:!py-1 phone:text-xs" onClick={() => setChart(true)}>
               Type chart
             </button>
+            {ctl.autofillTeam && (
+              <button type="button" className="btn-primary shrink-0 !px-2 phone:!py-1 phone:text-xs" onClick={ctl.autofillTeam}>
+                Autofill team
+              </button>
+            )}
           </div>
         </div>
         {!auction && <div className={`w-full border-t-2 border-dashed border-slate-700 pt-2 ${searching ? '' : 'phone:hidden'}`}>{filter.controls}</div>}
@@ -344,7 +350,7 @@ export function DraftView({ ctl }: { ctl: Controller }) {
           <div className="panel mb-2 flex items-center gap-3 p-3">
             <SealedIcon className="h-10 w-10 shrink-0" />
             <p className="text-sm font-bold text-slate-300">
-              Your team is sealed. {ctl.names[otherSide(turn)]} is still picking from a pool you can’t see; both teams and trainers are revealed when the battle begins.
+              Your team is sealed. {ctl.names[otherSide(turn)]} is still picking {freeplay ? 'from the full roster' : 'from a pool you can’t see'}; both teams and trainers are revealed when the battle begins.
             </p>
           </div>
         )}
@@ -388,7 +394,7 @@ export function DraftView({ ctl }: { ctl: Controller }) {
             <>
               <img src={trainerImg(readId)} alt={`${getTrainer(readId).name} card`} className="w-full rounded-lg shadow-2xl shadow-black/60" />
               <p className="text-center text-[11px] text-slate-400">
-                {secret ? 'Trainer: picked after your 4 Pokémon, in secret.' : 'Trainer: picked after the 8 Pokémon, the Attacker first.'} Its Special Move can be used once per game.
+              {secret ? `Trainer: picked after your 4 Pokémon, ${freeplay ? 'from the full roster' : 'in secret'}.` : 'Trainer: picked after the 8 Pokémon, the Attacker first.'} Its Special Move can be used once per game.
               </p>
             </>
           ) : readId ? (

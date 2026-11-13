@@ -5,6 +5,7 @@ import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
 import type { ClientMsg, RoomView, ServerMsg } from '../src/net/protocol';
+import { DRAFTABLE } from '../src/engine';
 
 const PORT = 18000 + Math.floor(Math.random() * 1000);
 let server: ChildProcess;
@@ -125,6 +126,34 @@ describe('room server', () => {
 
     for (const x of [a, b2, c]) x.close();
   });
+
+  it('starts Freeplay in private rooms and permits duplicate picks across teams', async () => {
+    const a = new TestClient('freeplay-a', 'Freeplay A');
+    const b = new TestClient('freeplay-b', 'Freeplay B');
+    await Promise.all([a.open(), b.open()]);
+    a.send({ t: 'create' });
+    const created = (await a.until((m) => m.t === 'room')) as Extract<ServerMsg, { t: 'room' }>;
+    b.send({ t: 'join', code: created.room.code });
+    await b.until((m) => m.t === 'room');
+    b.send({ t: 'seat', side: 'D' });
+    await b.until((m) => m.t === 'room' && m.room.players.some((p) => p.side === 'D'));
+    a.send({ t: 'start', randomRoles: false, style: 'freeplay', legendaries: false });
+    await a.until((m) => m.t === 'room' && !!m.room.game);
+    expect(a.room!.rated).toBeFalsy();
+    expect(a.room!.game!.draft.style).toBe('freeplay');
+    expect(a.room!.game!.draft.secret!.pools.A).toHaveLength(DRAFTABLE.filter((c) => !c.legendary).length);
+    expect(a.room!.game!.draft.secret!.legendPools.A).toEqual([]);
+
+    const pick = DRAFTABLE.find((c) => !c.legendary)!.id;
+    a.send({ t: 'action', action: { type: 'draftPick', cardId: pick } });
+    await a.until((m) => m.t === 'room' && !!m.room.game?.draft.picks.A.includes(pick));
+    b.send({ t: 'action', action: { type: 'draftPick', cardId: pick } });
+    await b.until((m) => m.t === 'room' && !!m.room.game?.draft.picks.D.includes(pick));
+    expect(a.room!.game!.draft.picks.A).toContain(pick);
+    expect(b.room!.game!.draft.picks.D).toContain(pick);
+    a.close();
+    b.close();
+  });
 });
 
 /** Signs up over HTTP and returns the session cookie. */
@@ -137,6 +166,15 @@ async function signup(username: string, password = 'hunter2hunter2'): Promise<st
 }
 
 describe('accounts and ranked play', () => {
+  it('rejects Freeplay from the ranked queue', async () => {
+    const cookie = await signup('FreeplayQueue');
+    const client = new TestClient('freeplay-queue', 'FreeplayQueue', cookie);
+    await client.open();
+    client.send({ t: 'queue', timeControl: '5+3', style: 'freeplay' } as unknown as ClientMsg);
+    expect(await client.until((m) => m.t === 'error')).toMatchObject({ message: expect.stringMatching(/only available in private matches/i) });
+    client.close();
+  });
+
   it('signs up, logs in, rejects bad passwords and duplicate names', async () => {
     const cookie = await signup('RedFan');
     const me = await (await fetch(`http://localhost:${PORT}/api/me`, { headers: { cookie } })).json();

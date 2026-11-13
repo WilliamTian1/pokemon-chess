@@ -15,7 +15,7 @@ import { trainerImg } from '../components/Trainers';
 import { useCardFilter } from './DraftView';
 
 const SIDE_LABEL: Record<Side, string> = { A: 'Attacker', D: 'Defender' };
-const STYLE_LABEL: Record<DraftStyle, string> = { classic: 'Classic', secret: 'Secret', auction: 'Auction' };
+const STYLE_LABEL: Record<DraftStyle, string> = { classic: 'Classic', secret: 'Secret', auction: 'Auction', freeplay: 'Freeplay' };
 const pct = (p: number): string => `${(100 * p).toFixed(1)}%`;
 /** A side's win chance from the Attacker's logit. */
 const forSide = (side: Side, logit: number): number => (side === 'A' ? winChance(logit) : 1 - winChance(logit));
@@ -109,7 +109,7 @@ type Analysis =
  */
 export function DraftLab({ onBack }: { onBack: () => void }) {
   const [mapId, setMapId] = useState(savedMapId);
-  const [style, setStyle] = useState<DraftStyle>(() => devStyle() ?? savedStyle());
+  const [style, setStyle] = useState<DraftStyle>(() => devStyle() ?? (savedStyle() === 'freeplay' ? 'classic' : savedStyle()));
   const [legends, setLegends] = useState(savedLegendaries);
   const [pool, setPool] = useState<string[]>(() => randomPool(seededRng(randomSeed()), legends ? DRAFT_POOL_SIZE : NO_LEGEND_POOL_SIZE));
   const [legendPool, setLegendPool] = useState<string[]>(() => randomLegendPool(seededRng(randomSeed())));

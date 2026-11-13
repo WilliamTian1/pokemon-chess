@@ -1,0 +1,18 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Final Freeplay Tests",
+			"type": "shell",
+			"command": "npm",
+			"args": [
+				"test",
+				"--",
+				"tests/draft-styles.test.ts",
+				"tests/bot.test.ts"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		}
+	]
+}

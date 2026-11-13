@@ -481,6 +481,7 @@ function handle(ws: WebSocket, conn: Conn, msg: ClientMsg): void {
       if (!conn.user) return fail('Sign in to play ranked.');
       const tc = timeControl(msg.timeControl);
       if (!tc) return fail('Unknown time control.');
+      if ((msg.style as string) === 'freeplay') return fail('Freeplay is only available in private matches.');
       const style: StylePref = ['classic', 'secret', 'auction', 'any'].includes(msg.style) ? msg.style : 'any';
       if (room) leaveRoom(ws, conn, true);
       const e: QueueEntry = { user: conn.user, ws, conn, tc, style, since: Date.now() };
@@ -537,7 +538,7 @@ function handle(ws: WebSocket, conn: Conn, msg: ClientMsg): void {
       }
       if (msg.legendaries !== undefined) room.legendaries = msg.legendaries !== false;
       if (msg.trainers !== undefined) room.trainers = msg.trainers === true;
-      if (msg.style !== undefined) room.style = msg.style === 'secret' || msg.style === 'auction' ? msg.style : 'classic';
+      if (msg.style !== undefined) room.style = msg.style === 'secret' || msg.style === 'auction' || msg.style === 'freeplay' ? msg.style : 'classic';
       if (msg.timeControl !== undefined) room.tc = timeControl(msg.timeControl);
       if (msg.randomRoles && randomSeed() % 2 === 0) for (const p of seated) p.side = p.side === 'A' ? 'D' : 'A';
       startGame(room);

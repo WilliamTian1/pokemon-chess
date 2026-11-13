@@ -89,8 +89,8 @@ export function LegendaryToggle({ value, onChange }: { value: boolean; onChange:
       value={value}
       onChange={choose}
       options={[
-        { value: true, title: 'With legendaries', sub: '3 from a pool of 15, then 1 of 4 legendaries', emblem: <Art id="rayquaza" className="h-full w-full rounded-full" /> },
-        { value: false, title: 'No legendaries', sub: 'All 4 picks from a bigger pool of 20', emblem: <Art id="pikachu" className="h-full w-full rounded-full" /> },
+        { value: true, title: 'With legendaries', sub: '3 Pokémon, then 1 legendary', emblem: <Art id="rayquaza" className="h-full w-full rounded-full" /> },
+        { value: false, title: 'No legendaries', sub: 'All 4 picks are non-legendary', emblem: <Art id="pikachu" className="h-full w-full rounded-full" /> },
       ]}
     />
   );
@@ -103,13 +103,13 @@ const STYLE_KEY = 'pcc-style';
 export function savedStyle(): DraftStyle {
   try {
     const v = localStorage.getItem(STYLE_KEY);
-    return v === 'secret' || v === 'auction' ? v : 'classic';
+    return v === 'secret' || v === 'auction' || v === 'freeplay' ? v : 'classic';
   } catch {
     return 'classic';
   }
 }
 
-/** Classic draft, Secret draft or Auction. */
+/** Classic, Secret, Auction or Freeplay draft. */
 export function StyleToggle({ value, onChange }: { value: DraftStyle; onChange: (s: DraftStyle) => void }) {
   const choose = (v: DraftStyle) => {
     try {
@@ -127,6 +127,7 @@ export function StyleToggle({ value, onChange }: { value: DraftStyle; onChange: 
         { value: 'classic' as const, title: 'Classic', sub: 'Take turns picking from one pool', emblem: <CardsIcon className="h-full w-full" /> },
         { value: 'secret' as const, title: 'Secret', sub: 'Both pick at once, hidden until battle', emblem: <SealedIcon className="h-full w-full" /> },
         { value: 'auction' as const, title: 'Auction', sub: 'Bid 20 coins, lot by lot', emblem: <CoinIcon className="h-full w-full" /> },
+        { value: 'freeplay' as const, title: 'Freeplay', sub: 'Pick any Pokémon and trainer in secret', emblem: <PokeBallIcon className="h-full w-full" /> },
       ]}
     />
   );

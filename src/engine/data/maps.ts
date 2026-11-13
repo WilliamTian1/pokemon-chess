@@ -200,7 +200,7 @@ export const MAPS: Record<string, MapDef> = {
   avia: {
     id: 'avia',
     name: 'Avia',
-    description: 'An indoor stone arena with pits, bonus tiles, wonder tiles, and a stage mist that clears all Pokémon’s stat changes every four rounds.',
+    description: 'Every 4 rounds, a haze appears that clears all stat changes.',
     music: 'battleFlying.mp3',
     stageMist: { everyRounds: 4 },
     width: AVIA_ROWS[0].length,

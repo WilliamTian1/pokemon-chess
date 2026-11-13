@@ -22,11 +22,11 @@ export function decide(s: GameState, side: Side, level: Difficulty, rng: Rng): A
   if (s.pending.length) return [choosePending(s, side, level)];
   if (s.phase === 'draft') {
     if (auctionOpen(s)) return [auctionAction(s, side, level, rng)];
-    if (draftStyle(s) === 'secret') return [{ type: 'draftPick', cardId: secretDraftPick(s, side, level, rng), side }];
+    if (draftStyle(s) === 'secret' || draftStyle(s) === 'freeplay') return [{ type: 'draftPick', cardId: secretDraftPick(s, side, level, rng), side }];
     return [{ type: 'draftPick', cardId: draftPick(s, side, level, rng) }];
   }
   // Secret draft: placement is blind, so there's no opponent to plan against yet.
-  if (s.phase === 'placement' && draftStyle(s) === 'secret') return [simplePlacement(s, side, level === 'easy' ? 'easy' : 'medium', rng)];
+  if (s.phase === 'placement' && (draftStyle(s) === 'secret' || draftStyle(s) === 'freeplay')) return [simplePlacement(s, side, level === 'easy' ? 'easy' : 'medium', rng)];
   if (s.phase === 'placement') return [placeNext(s, side, level, rng)];
   return battleStep(s, side, level, rng);
 }
@@ -53,7 +53,9 @@ function draftPick(s: GameState, side: Side, level: Difficulty, rng: Rng): strin
 /** Secret draft: the next pick from `side`'s own options (Pokémon, legendary or trainer), seeing nothing of the other side. */
 function secretDraftPick(s: GameState, side: Side, level: Difficulty, rng: Rng): string {
   if (secretNext(s, side) === 'trainer') return secretTrainerPick(s, side, level, rng);
-  return level === 'hard' && SEARCH.draftModel && hasDraftModel(s.mapId) ? bestSecretPick(s, side) : simpleSecretPick(s, side, level, rng);
+  return draftStyle(s) === 'secret' && level === 'hard' && SEARCH.draftModel && hasDraftModel(s.mapId)
+    ? bestSecretPick(s, side)
+    : simpleSecretPick(s, side, level, rng);
 }
 
 function draftValue(c: CardDef, side: Side, mine: CardDef[], theirs: CardDef[], level: Difficulty): number {

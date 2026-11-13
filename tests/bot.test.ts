@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { decide } from '../src/ai/bot';
 import { type DraftModel, bestDraftPick, teamLogit } from '../src/ai/draft';
-import { applyAction, newGame, seededRng } from '../src/engine';
+import { applyAction, draftOptions, newGame, seededRng } from '../src/engine';
 import { setup } from './helpers';
 
 const flat = (over: Partial<DraftModel> = {}): DraftModel => ({
@@ -9,6 +9,13 @@ const flat = (over: Partial<DraftModel> = {}): DraftModel => ({
 });
 
 describe('hard draft search', () => {
+  it('lets the hard bot pick quickly from the full Freeplay roster', () => {
+    const s = newGame({ rng: seededRng(12), style: 'freeplay' });
+    const action = decide(s, 'D', 'hard', seededRng(13))[0];
+    expect(action.type).toBe('draftPick');
+    if (action.type === 'draftPick') expect(draftOptions(s, 'D')).toContain(action.cardId);
+  });
+
   it('takes the card the model rates highest for its role', () => {
     const s = newGame({ rng: seededRng(5) });
     const star = s.draft.pool[7];

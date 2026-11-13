@@ -76,7 +76,7 @@ export function secretNext(s: GameState, side: Side): 'pokemon' | 'legend' | 'tr
 }
 
 /** Whether this is the simultaneous part of a Secret draft (its picks and its blind placement). */
-export const isSimultaneous = (s: GameState): boolean => draftStyle(s) === 'secret' && (s.phase === 'draft' || s.phase === 'placement');
+export const isSimultaneous = (s: GameState): boolean => (draftStyle(s) === 'secret' || draftStyle(s) === 'freeplay') && (s.phase === 'draft' || s.phase === 'placement');
 
 /**
  * Every side that may act right now: one side normally, both in the simultaneous Secret draft and its
@@ -94,7 +94,7 @@ export function deciders(s: GameState): Side[] {
 
 /** Pick number `index` (0-based, both sides) is a trainer pick: the two picks after the eight Pokémon. */
 export function isTrainerPick(s: GameState, index = s.draft.index): boolean {
-  if (draftStyle(s) === 'secret' && s.phase === 'draft') return index === s.draft.index && secretNext(s, decider(s)!) === 'trainer';
+  if ((draftStyle(s) === 'secret' || draftStyle(s) === 'freeplay') && s.phase === 'draft') return index === s.draft.index && secretNext(s, decider(s)!) === 'trainer';
   return !!s.trainers && index >= 2 * TEAM_SIZE;
 }
 
@@ -106,19 +106,26 @@ export function isLegendPick(s: GameState, index = s.draft.index): boolean {
   if (index >= 2 * TEAM_SIZE) return false;
   const style = draftStyle(s);
   if (style === 'auction') return false;
-  if (style === 'secret') return s.phase === 'draft' && index === s.draft.index && secretNext(s, decider(s)!) === 'legend';
+  if (style === 'secret' || style === 'freeplay') return s.phase === 'draft' && index === s.draft.index && secretNext(s, decider(s)!) === 'legend';
   return s.draft.legendPool.length > 0 && index >= 2 * NORMAL_PICKS;
 }
 
 /** Card (or trainer) ids the side on the clock (or, in a Secret draft, `side`) may draft right now. */
 export function draftOptions(s: GameState, side?: Side): string[] {
   if (s.phase !== 'draft') return [];
-  if (draftStyle(s) === 'secret') {
+  if (draftStyle(s) === 'secret' || draftStyle(s) === 'freeplay') {
     const who = side ?? decider(s);
     if (!who) return [];
     const sp = s.draft.secret!;
     const next = secretNext(s, who);
-    if (next === 'trainer') return sp.trainerPools?.[who] ?? [];
+    if (next === 'trainer') {
+      const offered = sp.trainerPools?.[who] ?? [];
+      return draftStyle(s) === 'freeplay' ? offered : offered.filter((id) => s.trainers!.picks.A !== id && s.trainers!.picks.D !== id);
+    }
+    if (draftStyle(s) === 'freeplay') {
+      return (next === 'legend' ? sp.legendPools[who] : next === 'pokemon' ? sp.pools[who] : [])
+        .filter((id) => !s.draft.picks[who].includes(id));
+    }
     const taken = new Set([...s.draft.picks.A, ...s.draft.picks.D]);
     return (next === 'legend' ? sp.legendPools[who] : next === 'pokemon' ? sp.pools[who] : []).filter((id) => !taken.has(id));
   }
@@ -184,6 +191,22 @@ function styledGame(opts: Parameters<typeof newGame>[0], style: DraftStyle): Gam
   const size = legendaries ? DRAFT_POOL_SIZE : NO_LEGEND_POOL_SIZE;
   const normals = shuffled(DRAFTABLE.filter((c) => !c.legendary).map((c) => c.id), opts.rng);
   const legends = shuffled(DRAFTABLE.filter((c) => c.legendary).map((c) => c.id), opts.rng);
+  if (style === 'freeplay') {
+    const allNormals = DRAFTABLE.filter((c) => !c.legendary).map((c) => c.id);
+    const allLegends = legendaries ? DRAFTABLE.filter((c) => c.legendary).map((c) => c.id) : [];
+    const trainerPool = TRAINER_LIST.map((t) => t.id);
+    const s = newGame({
+      ...opts, style: 'classic', pool: allNormals, legendPool: allLegends,
+      ...((opts.trainers || opts.trainerPool) ? { trainerPool } : {}),
+    });
+    const pools = { A: allNormals, D: allNormals };
+    const legendPools = { A: allLegends, D: allLegends };
+    const trainerPools = { A: trainerPool, D: trainerPool };
+    s.draft.style = 'freeplay';
+    s.draft.secret = { pools, legendPools, ...(s.trainers ? { trainerPools } : {}) };
+    s.draft.order = s.trainers ? [...SECRET_ORDER, 'A', 'D'] : [...SECRET_ORDER];
+    return s;
+  }
   if (style === 'secret') {
     const k = legendaries ? SECRET_LEGEND_OPTIONS : 0;
     const pools = { A: normals.slice(0, size), D: normals.slice(size, 2 * size) };
@@ -331,7 +354,7 @@ export function applyInPlace(ctx: Ctx, action: Action): void {
 function draftPick(ctx: Ctx, cardId: string, who?: Side): void {
   const s = ctx.s;
   if (s.phase !== 'draft') throw new RuleError('Not drafting.');
-  if (draftStyle(s) === 'secret') return secretPick(ctx, cardId, who ?? decider(s)!);
+  if (draftStyle(s) === 'secret' || draftStyle(s) === 'freeplay') return secretPick(ctx, cardId, who ?? decider(s)!);
   const side = s.draft.order[s.draft.index];
   if (isTrainerPick(s)) {
     if (!draftOptions(s).includes(cardId)) throw new RuleError('Choose one of the trainers on offer.');
@@ -379,13 +402,14 @@ export function hiddenView(s: GameState, viewer: Side | null): GameState {
   // Hidden legendary options keep their count ('?' each): it tells how many picks a side has.
   const legendPools = { A: see('A') ? d.secret.legendPools.A : d.secret.legendPools.A.map(() => '?'), D: see('D') ? d.secret.legendPools.D : d.secret.legendPools.D.map(() => '?') };
   const trainerPools = d.secret.trainerPools && { A: see('A') ? d.secret.trainerPools.A : [], D: see('D') ? d.secret.trainerPools.D : [] };
+  const publicPool = (a: string[], b: string[]) => draftStyle(s) === 'freeplay' ? [...new Set([...a, ...b])] : [...a, ...b];
   const picks = { A: see('A') ? d.picks.A : d.picks.A.map(() => '?'), D: see('D') ? d.picks.D : d.picks.D.map(() => '?') };
   return {
     ...s,
-    draft: { ...d, picks, pool: [...pools.A, ...pools.D], legendPool: [...legendPools.A, ...legendPools.D], secret: { pools, legendPools, trainerPools } },
+    draft: { ...d, picks, pool: publicPool(pools.A, pools.D), legendPool: publicPool(legendPools.A, legendPools.D), secret: { pools, legendPools, trainerPools } },
     trainers: s.trainers && {
       ...s.trainers,
-      pool: [...(trainerPools?.A ?? []), ...(trainerPools?.D ?? [])],
+      pool: publicPool(trainerPools?.A ?? [], trainerPools?.D ?? []),
       // '?' : picked, but hidden.
       picks: { A: see('A') || !s.trainers.picks.A ? s.trainers.picks.A : '?', D: see('D') || !s.trainers.picks.D ? s.trainers.picks.D : '?' },
     },
@@ -546,7 +570,9 @@ function finishDraft(ctx: Ctx): void {
   s.phase = 'placement';
   s.placement = { order: [...ALTERNATE], index: 0 };
   s.side = 'A';
-  log(ctx, draftStyle(s) === 'secret' ? 'Draft complete. Both sides place their Pokémon in secret.' : 'Draft complete. The Attacker places first.', 'system');
+  log(ctx, draftStyle(s) === 'secret' || draftStyle(s) === 'freeplay'
+    ? 'Draft complete. Both sides place their Pokémon in secret.'
+    : 'Draft complete. The Attacker places first.', 'system');
 }
 
 function place(ctx: Ctx, unitId: string, pos: Pos): void {
@@ -569,7 +595,7 @@ function place(ctx: Ctx, unitId: string, pos: Pos): void {
 
 function startBattle(ctx: Ctx): void {
   const s = ctx.s;
-  const revealing = draftStyle(s) === 'secret';
+  const revealing = draftStyle(s) === 'secret' || draftStyle(s) === 'freeplay';
   s.phase = 'battle';
   s.round = 1;
   if (revealing) {

@@ -292,7 +292,7 @@ export type Phase = 'draft' | 'placement' | 'battle' | 'over';
  * How teams are formed. classic: alternating picks from a shared pool; secret: each side picks from its
  * own hidden pool; auction: lots are revealed one at a time and bid for with 20 coins.
  */
-export type DraftStyle = 'classic' | 'secret' | 'auction';
+export type DraftStyle = 'classic' | 'secret' | 'auction' | 'freeplay';
 
 export interface AuctionLot {
   cardId: string;

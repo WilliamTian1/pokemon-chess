@@ -5,7 +5,7 @@ import { type LeaderRow, fetchLeaderboard, fetchProfile, useAccount } from '../a
 import { Art } from '../components/bits';
 import { PokeBallIcon } from '../components/icons';
 
-const STYLE_NAME = { classic: 'Classic', secret: 'Secret', auction: 'Auction' } as const;
+const STYLE_NAME = { classic: 'Classic', secret: 'Secret', auction: 'Auction', freeplay: 'Freeplay' } as const;
 const fmtDate = (t: number) => new Date(t).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 
 /** A player's page: rating, record, rating history and recent ranked games. */

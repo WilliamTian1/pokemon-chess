@@ -211,7 +211,7 @@ export function DraftTransition({ state, names }: { state: GameState; names: Rec
     const from = prev.current;
     prev.current = state.phase;
     // The versus screen marks the reveal: after the draft, or, in a Secret draft, when the battle begins.
-    const secret = state.draft.style === 'secret';
+    const secret = state.draft.style === 'secret' || state.draft.style === 'freeplay';
     if (secret ? from !== 'placement' || state.phase !== 'battle' : from !== 'draft' || state.phase !== 'placement') return;
     setShow(true);
     setCount(3);

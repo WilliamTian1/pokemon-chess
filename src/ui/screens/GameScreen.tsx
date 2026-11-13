@@ -88,11 +88,16 @@ export function GameScreen({ ctl: raw, onExit, title }: { ctl: Controller; onExi
             <SealedIcon className="mx-auto h-16 w-16" />
             <h2 className="font-display text-2xl text-lacquer">Pass the device to the {viewer === 'A' ? 'Attacker' : 'Defender'}</h2>
             <p className="text-sm font-bold text-slate-300">
-              Secret draft: the {viewer === 'A' ? 'Defender' : 'Attacker'} looks away. Picks, trainers and placements stay hidden until the battle begins.
+              {raw.state.draft.style === 'freeplay' ? 'Freeplay' : 'Secret'} draft: the {viewer === 'A' ? 'Defender' : 'Attacker'} looks away. Picks, trainers and placements stay hidden until the battle begins.
             </p>
             <button type="button" className="btn-primary w-full py-3 font-display text-lg" onClick={() => setHandedTo(viewer)}>
               I’m the {viewer === 'A' ? 'Attacker' : 'Defender'}: show my side
             </button>
+            {raw.autofillTeam && (
+              <button type="button" className="btn-ghost w-full" onClick={raw.autofillTeam}>
+                Autofill team
+              </button>
+            )}
           </div>
         </div>
       )}

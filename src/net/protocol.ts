@@ -17,8 +17,8 @@ export const TIME_CONTROLS: TimeControl[] = [
 ];
 export const timeControl = (id: string | null | undefined): TimeControl | null => TIME_CONTROLS.find((t) => t.id === id) ?? null;
 
-/** Ranked queue preference: a draft style, or any. */
-export type StylePref = DraftStyle | 'any';
+/** Ranked queue preference: freeplay is reserved for private matches. */
+export type StylePref = Exclude<DraftStyle, 'freeplay'> | 'any';
 
 /** A signed-in account as other players see it. */
 export interface AccountView {

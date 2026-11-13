@@ -906,7 +906,7 @@ export const CARD_LIST: CardDef[] = [
     id: 'wigglytuff', name: 'Wigglytuff', types: ['Fairy', 'Normal'], hp: 145, mov: 2, page: 13,
     moves: [
       sts('Metronome', SELF, 'Draw a random unused pokemon, and choose to use one of their moves in any direction if possible.', { special: 'metronome' }),
-      FAKE_OUT('.O./OOO/.O./.G.'),
+      FAKE_OUT('.O./.B./.../.G.'),
     ],
     ability: A.competitive,
   }),

@@ -72,6 +72,10 @@ describe('expansion cards', () => {
     expect(unit(n, 'A0').locked).toEqual([]);
   });
 
+  it('Wigglytuff has the same Fake Out hitbox as Tinkaton', () => {
+    expect(getCard('wigglytuff').moves[1].target).toEqual(getCard('tinkaton').moves[1].target);
+  });
+
   it('Gigaton Hammer only works in even rounds', () => {
     const s = setup(['tinkaton'], ['snorlax'], { A0: P(9, 8), D0: P(9, 7) });
     park(s, ['A0', 'D0']);
