@@ -6,6 +6,8 @@ The README spec, `Conquest Rules.pdf` and `Conquest Cards.pdf` leave some behavi
 
 Players choose a map before each match (online, the host chooses). Both maps are transcribed from hand-drawn photos.
 
+Wonder tiles have a reload icon. When a Pokémon enters one, including when it is pushed onto it, all of its Attack, Defense, and Movement stat stages reset to zero.
+
 ### Trebuchet Meadow
 
 - 14 columns × 9 rows. Defenders spawn on the top row at columns 3, 5, 8, 11; Attackers on the bottom row at columns 4, 6, 9, 11 (columns counted from 0 on the left).
@@ -32,6 +34,11 @@ Players choose a map before each match (online, the host chooses). Both maps are
 
 - Volcano-themed fields use dull-brown ordinary ground and red-orange magma.
 - Magma is impassable except to Fire- and Flying-type Pokémon and Pokémon with Levitate. Solar Power adds 30 damage when its holder attacks while standing on magma.
+
+### Avia
+
+- Avia is an indoor stone arena. Its pit, flower, berry bush, trebuchet and wonder tiles use the same rules as elsewhere.
+- At the end of the Attacker's turn every fourth round, a stage mist appears and resets Attack, Defense, and Movement stages for every Pokémon. This is a map rule, not the Haze move.
 
 ## Card grids
 

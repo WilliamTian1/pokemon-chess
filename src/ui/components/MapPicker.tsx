@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { DEFAULT_MAP_ID, MAPS, MAP_LIST, type MapDef, type Terrain } from '../../engine';
 import { Art } from './bits';
 import type { DraftStyle } from '../../engine';
-import { BushIcon, CardsIcon, CoinIcon, FlowerIcon, PokeBallIcon, SealedIcon, TrebuchetIcon } from './icons';
+import { BushIcon, CardsIcon, CoinIcon, FlowerIcon, PokeBallIcon, SealedIcon, TrebuchetIcon, WonderIcon } from './icons';
 
 /** A numbered heading for a step of a setup screen. */
 export function SetupHeading({ n, children }: { n: number; children: ReactNode }) {
@@ -38,16 +38,9 @@ export function OptionTiles<T>({ options, value, onChange, cols = options.length
   );
 }
 
-/** A line or two about each map for the picker. */
-const MAP_BLURB: Record<string, string> = {
-  meadow: 'Open fields around a central trebuchet, a dirt road and scattered ponds.',
-  river: 'A river snakes across the field: bridges and fords decide the fight.',
-  ice: 'A snowy field of slick ice. Pokémon slide in the direction they enter until they reach clear ground or an obstacle.',
-};
-
 const TILE: Record<Terrain, string> = {
   normal: 'var(--tile-normal)', dirt: 'var(--tile-dirt)', grass: 'var(--tile-grass)', bridge: 'var(--tile-bridge)', water: 'var(--tile-water)',
-  flower: 'var(--tile-normal)', bush: 'var(--tile-normal)', wall: '#57534e', magma: 'var(--tile-magma)', ice: '#bae6fd', pit: '#1c1917',
+  flower: 'var(--tile-normal)', bush: 'var(--tile-normal)', wonder: 'var(--tile-normal)', wall: '#57534e', magma: 'var(--tile-magma)', ice: '#bae6fd', pit: '#1c1917',
 };
 
 const MAP_KEY = 'pcc-map';
@@ -175,7 +168,7 @@ export function TrainerToggle({ value, onChange }: { value: boolean; onChange: (
 export function MapPreview({ map, className = '' }: { map: MapDef; className?: string }) {
   const spawn = (x: number, y: number) =>
     map.spawns.A.some((p) => p.x === x && p.y === y) ? 'A' : map.spawns.D.some((p) => p.x === x && p.y === y) ? 'D' : null;
-  const BASE: Partial<Record<Terrain, string>> = { flower: 'normal', bush: 'normal' };
+  const BASE: Partial<Record<Terrain, string>> = { flower: 'normal', bush: 'normal', wonder: 'normal' };
   return (
     <div
       className={`map-mini grid overflow-hidden ${map.theme ? `map-${map.theme}` : ''} ${className}`}
@@ -191,11 +184,12 @@ export function MapPreview({ map, className = '' }: { map: MapDef; className?: s
           return (
             <div
               key={`${x},${y}`}
-              className={`relative flex items-center justify-center ${painted ? `tile-${base} ${(x + y) % 2 ? 'alt' : ''}` : ''}`}
+              className={`relative flex items-center justify-center ${t === 'wonder' ? 'tile-wonder' : painted ? `tile-${base} ${(x + y) % 2 ? 'alt' : ''}` : ''}`}
               style={painted ? undefined : { background: TILE[t] }}
             >
               {t === 'flower' && <span className="h-[80%] w-[80%]"><FlowerIcon /></span>}
               {t === 'bush' && <span className="h-[85%] w-[85%]"><BushIcon /></span>}
+              {t === 'wonder' && <WonderIcon />}
               {treb && <span className="h-[90%] w-[90%]"><TrebuchetIcon /></span>}
               {sp && <span className={`absolute inset-[18%] rounded-full border-2 border-[#fff3d6] ${sp === 'A' ? 'bg-[#c73a2e]' : 'bg-[#2f62b8]'} shadow`} />}
             </div>
@@ -226,7 +220,7 @@ export function MapPicker({ value, onChange }: { value: string; onChange: (id: s
             <span className="font-display text-lg leading-tight">{m.name}</span>
             <span className="shrink-0 text-xs font-extrabold opacity-70">{m.width}×{m.height}</span>
           </div>
-          <p className="text-left text-xs font-bold leading-snug opacity-80">{MAP_BLURB[m.id] ?? ''}</p>
+          <p className="text-left text-xs font-bold leading-snug opacity-80">{m.description}</p>
           {value === m.id && <span className="map-chosen">Chosen</span>}
         </button>
       ))}
@@ -236,6 +230,7 @@ export function MapPicker({ value, onChange }: { value: string; onChange: (id: s
         <span className="flex items-center gap-1"><span className="inline-block h-4 w-4"><TrebuchetIcon /></span>Trebuchet</span>
         <span className="flex items-center gap-1"><span className="inline-block h-4 w-4"><BushIcon /></span>Berry bush</span>
         <span className="flex items-center gap-1"><span className="inline-block h-4 w-4"><FlowerIcon /></span>Flowers</span>
+        <span className="flex items-center gap-1"><span className="inline-block h-4 w-4"><WonderIcon /></span>Wonder tile: resets stat changes on entry</span>
       </p>
     </div>
   );

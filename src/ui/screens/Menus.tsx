@@ -1,6 +1,6 @@
 import { type ReactNode, useState } from 'react';
 import { DIFFICULTIES, type Difficulty } from '../../ai/bot';
-import { CARD_LIST, type CardDef, type Side, TRAINER_LIST } from '../../engine';
+import { CARD_LIST, type CardDef, type Side, MAP_LIST, TRAINER_LIST } from '../../engine';
 import { Art, Modal } from '../components/bits';
 import { CardDetail, MiniGrid } from '../components/CardView';
 import { BannerIcon, DiceIcon, GreatBallIcon, PokeBallIcon, ShieldIcon, SpearIcon, SwordsIcon, UltraBallIcon } from '../components/icons';
@@ -256,7 +256,9 @@ export function HowToPlay({ onBack }: { onBack: () => void }) {
       </section>
       <section className="panel space-y-2 p-4">
         <h3 className="font-display text-lg text-lacquer">The maps</h3>
-        <p>Choose Trebuchet Meadow or Winding River before each match. On Winding River the brown bridges are ordinary ground.</p>
+        <div className="space-y-1">
+          {MAP_LIST.map((map) => <p key={map.id}><b>{map.name}:</b> {map.description}</p>)}
+        </div>
         <div className="grid gap-1.5 sm:grid-cols-2">
           <Legend color="tile-water">Water: only Water, Flying and Levitate Pokémon can enter.</Legend>
           <Legend color="tile-dirt">Dirt paths are cosmetic — they play like grass.</Legend>

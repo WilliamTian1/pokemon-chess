@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  CARD_LIST, DRAFTABLE, DRAFT_POOL_SIZE, MAPS, applyAction, bestHit, canStand, dangerZone, decider, defenseProfile,
+  CARD_LIST, DRAFTABLE, DRAFT_POOL_SIZE, MAPS, MAP_LIST, applyAction, bestHit, canStand, dangerZone, decider, defenseProfile,
   draftOptions, getCard, getUnit, hitMultiplier, isLegendPick, isNormalTerrain, moveOptions, newGame, parseGrid, previewAction, quickGame, reachable,
   seededRng, terrainAt, typeMultiplier, zoneTiles,
 } from '../src/engine';
@@ -46,6 +46,73 @@ describe('map', () => {
   it('marks Nixtorm as a snow map with ice terrain', () => {
     expect(MAPS.ice.theme).toBe('snow');
     expect(MAPS.ice.tiles.flat().some((t) => t === 'ice')).toBe(true);
+  });
+  it('defines each map’s battle music on the map itself', () => {
+    expect(Object.fromEntries(Object.values(MAPS).map((map) => [map.id, map.music]))).toEqual({
+      meadow: 'battle.mp3',
+      river: 'battleRiver.mp3',
+      ice: 'battleIce.mp3',
+      volcano: 'battleFire.mp3',
+      avia: 'battleFlying.mp3',
+    });
+    expect(Object.values(MAPS).every((map) => map.description.length > 0)).toBe(true);
+  });
+  it('defines Avia with its supplied layout and stage-mist rule', () => {
+    expect(MAPS.avia).toMatchObject({
+      width: 20,
+      height: 14,
+      stageMist: { everyRounds: 4 },
+      trebuchets: [{ x: 9, y: 5 }],
+    });
+    expect(MAP_LIST.some((map) => map.id === 'avia')).toBe(true);
+    for (const side of ['A', 'D'] as const) {
+      for (const pos of MAPS.avia.spawns[side]) expect(MAPS.avia.tiles[pos.y][pos.x]).toBe('normal');
+    }
+    expect(MAPS.avia.tiles[1][5]).toBe('wonder');
+    expect(MAPS.avia.tiles[12][13]).toBe('wonder');
+  });
+  it('clears all Pokémon stat stages at the end of each configured fourth Attacker turn only', () => {
+    const earlyState = setup(['tauros'], ['snorlax'], { A0: { x: 2, y: 13 }, D0: { x: 2, y: 0 } }, { mapId: 'avia' });
+    unit(earlyState, 'A0').stages = { atk: 2, def: -1, mov: 1 };
+    unit(earlyState, 'D0').stages = { atk: -2, def: 1, mov: -1 };
+    earlyState.round = 3;
+    const early = applyAction(earlyState, { type: 'endTurn' }, noLuck());
+    expect(early.events.some((event) => event.t === 'field' && event.kind === 'stageMist')).toBe(false);
+    expect(unit(early.state, 'A0').stages.atk).toBe(2);
+
+    const scheduledState = setup(['tauros'], ['snorlax'], { A0: { x: 2, y: 13 }, D0: { x: 2, y: 0 } }, { mapId: 'avia' });
+    unit(scheduledState, 'A0').stages = { atk: 2, def: -1, mov: 1 };
+    unit(scheduledState, 'D0').stages = { atk: -2, def: 1, mov: -1 };
+    scheduledState.round = 4;
+    const onSchedule = applyAction(scheduledState, { type: 'endTurn' }, noLuck());
+    expect(onSchedule.events.some((event) => event.t === 'field' && event.kind === 'stageMist')).toBe(true);
+    expect(unit(onSchedule.state, 'A0').stages).toEqual({ atk: 0, def: 0, mov: 0 });
+    expect(unit(onSchedule.state, 'D0').stages).toEqual({ atk: 0, def: 0, mov: 0 });
+  });
+  it('resets stat stages when a Pokémon walks onto a wonder tile', () => {
+    const tile = MAPS.meadow.tiles[6][4];
+    MAPS.meadow.tiles[6][4] = 'wonder';
+    try {
+      const s = setup(['tauros'], [], { A0: { x: 4, y: 7 } });
+      unit(s, 'A0').stages = { atk: 2, def: -1, mov: 1 };
+      const n = act(s, { type: 'move', unitId: 'A0', to: { x: 4, y: 6 } });
+      expect(unit(n, 'A0').stages).toEqual({ atk: 0, def: 0, mov: 0 });
+    } finally {
+      MAPS.meadow.tiles[6][4] = tile;
+    }
+  });
+  it('resets stat stages when a Pokémon is pushed onto a wonder tile', () => {
+    const tile = MAPS.meadow.tiles[4][8];
+    MAPS.meadow.tiles[4][8] = 'wonder';
+    try {
+      const s = setup(['heracross'], ['snorlax'], { A0: { x: 8, y: 7 }, D0: { x: 8, y: 5 } });
+      unit(s, 'D0').stages = { atk: 2, def: -1, mov: 1 };
+      const n = act(s, { type: 'useMove', unitId: 'A0', moveIndex: 0, dir: 'N' });
+      expect(unit(n, 'D0').pos).toEqual({ x: 8, y: 4 });
+      expect(unit(n, 'D0').stages).toEqual({ atk: 0, def: 0, mov: 0 });
+    } finally {
+      MAPS.meadow.tiles[4][8] = tile;
+    }
   });
 });
 

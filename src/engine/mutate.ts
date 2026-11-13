@@ -1,5 +1,5 @@
 import { getCard } from './data/cards';
-import { abilityOf, cardOf, hasType, hazardAt, isFlier, withAbility } from './query';
+import { abilityOf, cardOf, hasType, hazardAt, isFlier, terrainAt, withAbility } from './query';
 import type { GameEvent, GameState, LogEntry, Pos, Rng, Side, StatId, StatusId, Unit } from './types';
 import { SIDE_NAME } from './types';
 import { clamp, roundUp5, steps } from './util';
@@ -242,9 +242,10 @@ export function cureStatus(ctx: Ctx, u: Unit, label: string): void {
 
 // ---------------------------------------------------------------- positioning
 
-/** Moves a unit onto a tile, triggering hazards ("walks through, lands on, or is hit into"). */
+/** Moves a unit onto a tile, triggering its effects ("walks through, lands on, or is hit into"). */
 export function enterTile(ctx: Ctx, u: Unit, p: Pos): void {
   u.pos = { x: p.x, y: p.y };
+  if (terrainAt(ctx.s, p) === 'wonder') resetStages(ctx, u);
   if (isFlier(u)) return;
   const hz = hazardAt(ctx.s, p);
   if (!hz) return;

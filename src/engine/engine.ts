@@ -1053,6 +1053,12 @@ function endTurn(ctx: Ctx): void {
   }
   if (s.trainers?.effect?.side === s.side) s.trainers.effect = null;
   if (s.taunted === s.side) s.taunted = null;
+  const stageMist = getMap(s.mapId).stageMist;
+  if (s.side === 'A' && stageMist && s.round % stageMist.everyRounds === 0) {
+    emit(ctx, { t: 'field', kind: 'stageMist', side: 'A' });
+    log(ctx, 'A stage mist swept over the battlefield, removing all stat changes.', 'info');
+    for (const u of s.units) resetStages(ctx, u);
+  }
   if (s.side === 'D') {
     if (s.round >= s.maxRounds) {
       endGame(ctx, 'D', `The Defender survived all ${s.maxRounds} rounds.`);

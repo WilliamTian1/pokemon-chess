@@ -26,6 +26,7 @@ export type Terrain =
   | 'water'
   | 'flower'
   | 'bush'
+  | 'wonder'
   | 'wall'
   | 'magma'
   | 'ice'
@@ -180,7 +181,12 @@ export interface CardDef {
 export interface MapDef {
   id: string;
   name: string;
-  theme?: 'snow' | 'volcano';
+  description: string;
+  theme?: 'snow' | 'volcano' | 'indoor';
+  /** MP3 filename under public/music/, e.g. "battleFlying.mp3". */
+  music: string;
+  /** Stage mist clears all Pokémon's stat stages every configured number of rounds. */
+  stageMist?: { everyRounds: number };
   width: number;
   height: number;
   tiles: Terrain[][];
@@ -400,7 +406,7 @@ export type GameEvent =
   /** A Pokémon changed form (Cherrim's Sunshine form, Minior's Core). */
   | { t: 'transform'; unitId: string; cardId: string }
   /** A move or ability that affects the whole field (weather, Light Screen, Taunt…). */
-  | { t: 'field'; kind: 'sun' | 'rain' | 'sand' | 'hail' | 'screen' | 'wind' | 'veil' | 'guard' | 'taunt' | 'flowers'; side: Side }
+  | { t: 'field'; kind: 'sun' | 'rain' | 'sand' | 'hail' | 'screen' | 'wind' | 'veil' | 'guard' | 'taunt' | 'flowers' | 'stageMist'; side: Side }
   | { t: 'text'; text: string };
 
 export interface Rng {

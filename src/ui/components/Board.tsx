@@ -4,7 +4,7 @@ import {
 } from '../../engine';
 import type { EventBatch } from '../controller';
 import { Art, HpBar, StatusBadge } from './bits';
-import { BushIcon, DollIcon, FlowerIcon, SpikesIcon, TrebuchetIcon, WebIcon } from './icons';
+import { BushIcon, DollIcon, FlowerIcon, SpikesIcon, TrebuchetIcon, WebIcon, WonderIcon } from './icons';
 
 export interface Overlay {
   reach?: Set<string>;
@@ -42,6 +42,7 @@ interface Props {
 const TERRAIN_LABEL: Record<Terrain, string> = {
   normal: 'Grass', dirt: 'Dirt path', grass: 'Grass bridge', bridge: 'Bridge — ordinary ground', water: 'Water — only Water, Flying and Levitate Pokémon',
   flower: 'Flowers — +30 HP at the end of a Pokémon’s activation (not Flying or Levitate)', bush: 'Berry bush — takes 30 less damage (not Flying or Levitate)',
+  wonder: 'Wonder tile — resets stat changes when entered or pushed onto',
   wall: 'Wall', magma: 'Magma — only Fire, Flying and Levitate Pokémon can enter', ice: 'Ice — Pokémon slide when they enter (except Ice types, Flying and Levitate)', pit: 'Pit',
 };
 
@@ -213,7 +214,7 @@ function BoardImpl({ state, view, overlay, previews, selectedId, hoverId, events
       const k = posKey(p);
       const d = disp(p);
       const t = map.tiles[y][x];
-      const base = t === 'flower' || t === 'bush' ? 'normal' : t;
+      const base = t === 'flower' || t === 'bush' || t === 'wonder' ? 'normal' : t;
       const alt = (x + y) % 2 === 1 ? 'alt' : '';
       // Bridge planks run across the crossing: a bridge (possibly several tiles wide) with water to its
       // left and right is crossed vertically (on screen, after any quarter turn of the board).
@@ -234,11 +235,12 @@ function BoardImpl({ state, view, overlay, previews, selectedId, hoverId, events
           aria-label={`Tile ${x},${y}: ${TERRAIN_LABEL[t]}`}
           onClick={() => onTile(p)}
           onMouseEnter={() => onHover(p)}
-          className={`tile-${base} ${alt} ${across} relative flex items-center justify-center outline-none ring-inset ring-black/10 focus-visible:ring-2 focus-visible:ring-amber-300`}
+          className={`${t === 'wonder' ? 'tile-wonder' : `tile-${base}`} ${alt} ${across} relative flex items-center justify-center outline-none ring-inset ring-black/10 focus-visible:ring-2 focus-visible:ring-amber-300`}
           style={{ gridColumn: d.x + 1, gridRow: d.y + 1, boxShadow: 'inset 0 0 0 0.5px rgba(0,0,0,.18)' }}
         >
           {t === 'flower' && <FlowerIcon />}
           {t === 'bush' && <BushIcon />}
+          {t === 'wonder' && <WonderIcon />}
           {treb.has(k) && <TrebuchetIcon />}
           {hz === 'spikes' && <span className="absolute inset-0 flex items-center justify-center"><SpikesIcon /></span>}
           {hz === 'web' && <span className="absolute inset-0 flex items-center justify-center"><WebIcon /></span>}

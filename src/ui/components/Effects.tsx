@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import { type GameEvent, type GameState, SIDE_NAME, type Side, getCard, getTrainer } from '../../engine';
-import { type Sfx, type Track, getAudioSettings, onAudioSettings, playMusic, setAudioSettings, sfx, speakTrainer } from '../audio';
+import { type MusicSelection, type Sfx, getAudioSettings, onAudioSettings, playMusic, setAudioSettings, sfx, speakTrainer } from '../audio';
 import type { EventBatch } from '../controller';
 import { Art } from './bits';
 import { trainerImg } from './Trainers';
@@ -12,7 +12,7 @@ const LITE = typeof window !== 'undefined' && !!window.matchMedia?.('(max-width:
 // ---------------------------------------------------------------- sound hooks
 
 /** Plays `track` while the calling screen is shown (switching tracks cross-fades); undefined leaves it alone. */
-export function useMusic(track: Track | null | undefined): void {
+export function useMusic(track: MusicSelection | null | undefined): void {
   useEffect(() => {
     if (track !== undefined) playMusic(track);
   }, [track]);
@@ -41,7 +41,7 @@ function sfxFor(e: GameEvent): Sfx | null {
     case 'move':
       return 'step';
     case 'field':
-      return e.kind;
+      return e.kind === 'stageMist' ? null : e.kind;
     case 'special':
       return 'special';
     case 'transform':
@@ -109,6 +109,7 @@ type FieldKind = Extract<GameEvent, { t: 'field' }>['kind'];
 const FIELD_TEXT: Record<FieldKind, string> = {
   sun: 'The sunlight turned harsh!', rain: 'It started to rain!', sand: 'A sandstorm kicked up!', hail: 'It started to hail!',
   screen: 'Light Screen!', wind: 'Tailwind!', veil: 'Aurora Veil!', guard: 'Wide Guard!', taunt: 'Taunt!', flowers: 'Flower Shield!',
+  stageMist: 'A stage mist swept over the battlefield!',
 };
 
 /** Weather and other field-wide moves wash over the screen for a moment. */
@@ -122,7 +123,7 @@ export function FieldFx({ events }: { events: EventBatch }) {
     return () => window.clearTimeout(t);
   }, [events.seq]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!fx) return null;
-  const n = fx.kind === 'rain' ? 70 : fx.kind === 'hail' ? 45 : fx.kind === 'sand' || fx.kind === 'wind' ? 60 : fx.kind === 'flowers' ? 30 : 0;
+  const n = fx.kind === 'rain' ? 70 : fx.kind === 'hail' ? 45 : fx.kind === 'sand' || fx.kind === 'wind' ? 60 : fx.kind === 'flowers' ? 30 : fx.kind === 'stageMist' ? 24 : 0;
   const drops = Array.from({ length: LITE ? Math.ceil(n / 3) : n }, (_, i) => i);
   return createPortal(
     <div key={fx.key} className="pointer-events-none fixed inset-0 z-[55] overflow-hidden animate-fieldFade">
@@ -131,6 +132,12 @@ export function FieldFx({ events }: { events: EventBatch }) {
       {fx.kind === 'veil' && <div className="absolute inset-0 animate-screenSweep bg-[linear-gradient(100deg,transparent_25%,rgba(167,243,208,.4)_40%,rgba(196,181,253,.4)_55%,rgba(253,186,116,.35)_70%,transparent_80%)]" />}
       {fx.kind === 'guard' && <div className="absolute inset-0 animate-tauntPulse bg-[radial-gradient(circle,transparent_45%,rgba(56,189,248,.45))]" />}
       {fx.kind === 'taunt' && <div className="absolute inset-0 animate-tauntPulse bg-[radial-gradient(circle,transparent_40%,rgba(225,29,72,.55))]" />}
+      {fx.kind === 'stageMist' && (
+        <>
+          <div className="absolute inset-0 bg-slate-200/20" />
+          <div className="absolute inset-y-[20%] -left-1/2 w-[200%] animate-screenSweep bg-[radial-gradient(ellipse_at_25%_50%,rgba(241,245,249,.56),transparent_58%),radial-gradient(ellipse_at_75%_45%,rgba(203,213,225,.46),transparent_60%)] blur-md" />
+        </>
+      )}
       {fx.kind === 'sand' && <div className="absolute inset-0 bg-amber-700/25" />}
       {fx.kind === 'rain' && <div className="absolute inset-0 bg-slate-900/25" />}
       {drops.map((i) => {
