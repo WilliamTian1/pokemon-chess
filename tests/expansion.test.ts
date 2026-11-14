@@ -501,6 +501,15 @@ describe('card updates (2026-11-09 card file)', () => {
     expect(spiritBreak.target).toMatchObject({ kind: 'grid', grid: '.O./OOO/OGO' });
   });
 
+  it('Geomancy makes Xerneas skip its next activation', () => {
+    let s = setup(['xerneas'], ['snorlax'], { A0: P(9, 8), D0: P(9, 6) });
+    s = act(s, { type: 'useMove', unitId: 'A0', moveIndex: 1 });
+    expect(unit(s, 'A0').nextTurn).toMatchObject({ noMove: true, noAct: true });
+    s = act(act(s, { type: 'endTurn' }), { type: 'endTurn' });
+    expect(unit(s, 'A0').turn).toMatchObject({ noMove: true, noAct: true });
+    expect(() => act(s, { type: 'useMove', unitId: 'A0', moveIndex: 0, dir: 'N' })).toThrow(/can't act this turn/);
+  });
+
   it('Mew’s Psychic matches Espeon’s Psychic hitbox', () => {
     expect(getCard('mew').moves[0].target).toEqual(getCard('espeon').moves[0].target);
   });

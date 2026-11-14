@@ -322,6 +322,7 @@ function selfMove(ctx: Ctx, u: Unit, move: MoveDef): void {
     emit(ctx, { t: 'field', kind: 'guard', side: u.side });
     log(ctx, `${nameOf(u)} put up a Wide Guard: next turn, attacks that hit it and other Pokémon fail.`, 'info', u.side);
   }
+  applyRecharge(ctx, u, move);
 }
 
 function stageAll(ctx: Ctx, target: Unit, stages: Partial<Record<StatId, number>>, source: Unit, ignoreAbilities = false): void {
@@ -737,19 +738,7 @@ function afterEffects(ctx: Ctx, u: Unit, move: MoveDef, hits: Unit[], res: ExecR
     log(ctx, `${nameOf(u)} is exhausted from its rampage…`, 'bad', u.side);
     applyStatus(ctx, u, 'slp', { source: u });
   }
-  if (fx.nextTurn) {
-    const nt = fx.nextTurn;
-    const skip = (nt.unlessAdjFire && adjacentToType(s, u, 'Fire')) || (nt.droughtSkips && withAbility(s, 'drought').length > 0);
-    if (skip) {
-      log(ctx, `${nameOf(u)} doesn't need to recharge.`, 'good', u.side);
-    } else if (lanceCooldown(ctx, u)) {
-      // Lance took the recharge as recoil instead.
-    } else {
-      if (nt.noMove) u.nextTurn.noMove = true;
-      if (nt.noAct) u.nextTurn.noAct = true;
-      log(ctx, `${nameOf(u)} must recharge: it can't ${nt.noAct ? 'move or act' : 'move'} next turn.`, 'info', u.side);
-    }
-  }
+  applyRecharge(ctx, u, move);
   if (fx.lockUntilFar && !u.fainted && !u.locked.includes(move.name) && !lanceCooldown(ctx, u)) {
     u.locked.push(move.name);
     log(ctx, `${move.name} is on cooldown until ${nameOf(u)} ends its turn ${fx.lockUntilFar}+ tiles from every opponent.`, 'info', u.side);
@@ -770,6 +759,19 @@ function lanceCooldown(ctx: Ctx, u: Unit): boolean {
   log(ctx, `${nameOf(u)} skips the cooldown and takes 40 recoil instead (Lance).`, 'info', u.side);
   dealDamage(ctx, u, 40, { label: 'recoil' });
   return true;
+}
+
+function applyRecharge(ctx: Ctx, u: Unit, move: MoveDef): void {
+  const nt = move.fx.nextTurn;
+  if (!nt) return;
+  const skip = (nt.unlessAdjFire && adjacentToType(ctx.s, u, 'Fire')) || (nt.droughtSkips && withAbility(ctx.s, 'drought').length > 0);
+  if (skip) {
+    log(ctx, `${nameOf(u)} doesn't need to recharge.`, 'good', u.side);
+  } else if (!lanceCooldown(ctx, u)) {
+    if (nt.noMove) u.nextTurn.noMove = true;
+    if (nt.noAct) u.nextTurn.noAct = true;
+    log(ctx, `${nameOf(u)} must recharge: it can't ${nt.noAct ? 'move or act' : 'move'} next turn.`, 'info', u.side);
+  }
 }
 
 function queueEmergencyExit(ctx: Ctx, t: Unit): void {
