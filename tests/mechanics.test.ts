@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { decider, getCard, previewAction, reachable, terrainBonus } from '../src/engine';
+import { MAPS, cliffDirections, decider, getCard, previewAction, reachable, targeting, terrainBonus, trebuchetOption } from '../src/engine';
 import { act, park, setup, unit } from './helpers';
 
 const P = (x: number, y: number) => ({ x, y });
@@ -34,6 +34,76 @@ describe('field objects', () => {
     unit(s, 'D0').stages.def = 3;
     const n = act(s, { type: 'trebuchet', unitId: 'A0', targetId: 'D0' });
     expect(unit(n, 'D0').hp).toBe(220);
+  });
+});
+
+describe('cliffs', () => {
+  it('decodes empty, single-edge, and connected two-edge grid cells', () => {
+    expect(cliffDirections('.')).toEqual([]);
+    expect(cliffDirections('^')).toEqual(['N']);
+    expect(cliffDirections('2')).toEqual(['S', 'E']);
+  });
+
+  it('only lets grounded Pokémon cross downhill, while Flying and Levitate cross either way', () => {
+    const grid = MAPS.ice.cliffs!;
+    const previous = grid[0];
+    grid[0] = `>${previous.slice(1)}`;
+    try {
+      const grounded = setup(['tauros'], ['snorlax'], { A0: P(0, 0), D0: P(15, 11) }, { mapId: 'ice' });
+      for (const u of grounded.units) if (u.id !== 'A0') u.pos = null;
+      expect(reachable(grounded, unit(grounded, 'A0'), 1).has('1,0')).toBe(true);
+      unit(grounded, 'A0').pos = P(1, 0);
+      expect(reachable(grounded, unit(grounded, 'A0'), 1).has('0,0')).toBe(false);
+
+      const flying = setup(['noivern'], ['snorlax'], { A0: P(1, 0), D0: P(15, 11) }, { mapId: 'ice' });
+      for (const u of flying.units) if (u.id !== 'A0') u.pos = null;
+      expect(reachable(flying, unit(flying, 'A0'), 1).has('0,0')).toBe(true);
+    } finally {
+      grid[0] = previous;
+    }
+  });
+
+  it('blocks ranged and grid attacks crossing a cliff', () => {
+    const grid = MAPS.ice.cliffs!;
+    const previous = grid[5];
+    grid[5] = `>${previous.slice(1)}`;
+    try {
+      const s = setup(['scizor'], ['snorlax'], { A0: P(0, 5), D0: P(2, 5) }, { mapId: 'ice' });
+      for (const u of s.units) if (u.id !== 'A0' && u.id !== 'D0') u.pos = null;
+      expect(targeting(s, unit(s, 'A0'), getCard('scizor').moves[1], { targetId: 'D0' }).ok).toBe(false);
+      expect(targeting(s, unit(s, 'A0'), getCard('hydreigon').moves[1], { dir: 'E' }).targets).not.toContain(unit(s, 'D0'));
+    } finally {
+      grid[5] = previous;
+    }
+  });
+
+  it('blocks trebuchet shots that cross a cliff', () => {
+    const grid = MAPS.ice.cliffs!;
+    const previous = grid[5];
+    grid[5] = `${previous.slice(0, 4)}>${previous.slice(5)}`;
+    try {
+      const s = setup(['tauros'], ['snorlax'], { A0: P(4, 5), D0: P(6, 5) }, { mapId: 'ice' });
+      for (const u of s.units) if (u.id !== 'A0' && u.id !== 'D0') u.pos = null;
+      expect(trebuchetOption(s, unit(s, 'A0')).targets).not.toContain('D0');
+      expect(() => act(s, { type: 'trebuchet', unitId: 'A0', targetId: 'D0' })).toThrow(/cliff blocks/);
+    } finally {
+      grid[5] = previous;
+    }
+  });
+
+  it('drops a hit Pokémon across a downhill edge when the attacker faces that way', () => {
+    const grid = MAPS.ice.cliffs!;
+    const previous = grid[5];
+    grid[5] = `${previous.slice(0, 5)}>${previous.slice(6)}`;
+    try {
+      const s = setup(['scizor'], ['snorlax'], { A0: P(4, 5), D0: P(5, 5) }, { mapId: 'ice' });
+      for (const u of s.units) if (u.id !== 'A0' && u.id !== 'D0') u.pos = null;
+      const n = act(s, { type: 'useMove', unitId: 'A0', moveIndex: 1, targetId: 'D0' });
+      expect(unit(n, 'D0').pos).toEqual(P(6, 5));
+      expect(n.log.some((entry) => entry.text.includes('fell off the cliff'))).toBe(true);
+    } finally {
+      grid[5] = previous;
+    }
   });
 });
 

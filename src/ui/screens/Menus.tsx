@@ -236,7 +236,7 @@ export function HowToPlay({ onBack }: { onBack: () => void }) {
       </section>
       <section className="panel space-y-2 p-4">
         <h3 className="font-display text-lg text-lacquer">Your turn</h3>
-        <p>Activate each of your Pokémon once, in any order: <b>move</b> up to its Mov (orthogonal steps, through allies but not enemies), then take <b>one action</b> — use a move, fire the trebuchet, or wait. Then press <b>End turn</b>.</p>
+        <p>Activate each of your Pokémon once, in any order: <b>move</b> up to its Mov (orthogonal steps, through allies but not enemies), then take <b>one action</b> — use a move, fire the trebuchet, or wait. Cliffs block attacks. Grounded Pokémon can cross a cliff only downhill; Flying and Levitate Pokémon can cross either way. A Pokémon hit while at a cliff edge falls across it if the attacker faces downhill. Then press <b>End turn</b>.</p>
         <p>Select a Pokémon, tap a blue tile to move, pick a move and aim it in one of four directions (or just click the Pokémon you want to hit). Previews show the damage range and KO chance on every Pokémon hit — allies included!</p>
         <p><b>Reach:</b> click an opposing Pokémon to see every tile it can attack on its next turn, after moving. Its first move's range is filled red, its second move's is outlined in yellow. Click it again or press Esc to hide it.</p>
         <p><b>Tags:</b> like tokens on a real table, stat changes and conditions are tags dropped onto the Pokémon's card: sword = Attack, shield = Defense, boot = Movement (one tag per stage, + or −), fire = burn, bubbles = poison (purple: badly poisoned), lightning = paralysis, Zzz = sleep, snowflake = frozen, sweat drop = flinched or recharging, and “!” for other effects (confusion, Taunt, Follow Me, cooldowns). A red number on a tag is how many of the Pokémon's turns the effect still lasts. Hover a tag for details.</p>
@@ -264,9 +264,10 @@ export function HowToPlay({ onBack }: { onBack: () => void }) {
           <Legend color="tile-ice">Ice: Pokémon slide in the direction they entered until they reach a non-ice tile or an obstacle.</Legend>
           <Legend color="tile-magma">Magma: non-Fire Pokémon take 30 damage when they enter; Fire Pokémon are unharmed.</Legend>
           <Legend color="tile-dirt">Dirt paths are cosmetic — they play like grass.</Legend>
+          <Legend color="bg-slate-400">Cliffs lie between tiles: arrows show downhill. Grounded Pokémon can only cross downhill; Flying and Levitate can cross either way. Cliffs block attacks.</Legend>
           <Legend color="bg-yellow-300">Flowers: +30 HP when a Pokémon ends its activation there (Flying and Levitate Pokémon hover over them: no bonus).</Legend>
           <Legend color="bg-red-500">Berry bushes: Pokémon standing there take 30 less damage (not Flying or Levitate Pokémon).</Legend>
-          <Legend color="bg-stone-600">Trebuchet: stand on it to hit any Pokémon for a flat 40, fired as whichever of the user's types does the most damage to it.</Legend>
+          <Legend color="bg-stone-600">Trebuchet: stand on it to hit any Pokémon for a flat 40, fired as whichever of the user's types does the most damage to it. Cliffs block the shot.</Legend>
         </div>
       </section>
       <section className="panel space-y-2 p-4">

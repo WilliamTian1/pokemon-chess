@@ -1,4 +1,4 @@
-import type { MapDef, Pos, Terrain } from '../types';
+import type { CliffCode, MapDef, Pos, Terrain } from '../types';
 import { isProcMapId, procMap } from './procmap';
 
 // Legend: . normal  w water  d dirt (cosmetic)  g grass (cosmetic land bridge)
@@ -47,6 +47,40 @@ const ICE_ROWS = [
   '................',
 
 ];
+// Cliff codes: . none, ^ north, > east, v south, < west;
+// 1 northeast, 2 southeast, 3 southwest, 4 northwest (two connected downhill edges).
+// Each character is one tile, aligned with ICE_ROWS; replace dots with cliff codes to draw the map.
+const ICE_CLIFF_ROWS = [
+  '................',
+  '................',
+  '.............<..',
+  '.............<..',
+  '.............<..',
+  '.............<..',
+  '.............<..',
+  '.............<..',
+  '.............<..',
+  '................',
+  '................',
+  '................',
+];
+
+const CLIFF_CODES: ReadonlySet<string> = new Set(['.', '^', '>', 'v', '<', '1', '2', '3', '4']);
+function isCliffCode(code: string): code is CliffCode {
+  return CLIFF_CODES.has(code);
+}
+
+function parseCliffRows(rows: string[]): string[] {
+  if (rows.length !== ICE_ROWS.length) throw new Error(`Bad Ice cliff grid: expected ${ICE_ROWS.length} rows`);
+  for (const [y, row] of rows.entries()) {
+    if (row.length !== ICE_ROWS[0].length) throw new Error(`Bad Ice cliff row ${y}: expected ${ICE_ROWS[0].length} cells`);
+    for (const code of row) {
+      if (!isCliffCode(code)) throw new Error(`Bad Ice cliff code ${code} at row ${y}`);
+    }
+  }
+  return rows;
+}
+const ICE_CLIFFS = parseCliffRows(ICE_CLIFF_ROWS);
 
 const VOLCANO_ROWS = [
   '..=.............',
@@ -176,6 +210,7 @@ export const MAPS: Record<string, MapDef> = {
     width: ICE_ROWS[0].length,
     height: ICE_ROWS.length,
     tiles: ice.tiles,
+    cliffs: ICE_CLIFFS,
     trebuchets: ice.trebuchets,
     spawns: {
       D: [{ x: 4, y: 0 }, { x: 6, y: 0 }, { x: 11, y: 0 }, { x: 13, y: 0 }],
