@@ -1,9 +1,9 @@
 import crypto from 'node:crypto';
 import type http from 'node:http';
-import type { Side } from '../src/engine/types';
-import type { AccountView, Profile, ProfileGame } from '../src/net/protocol';
+import type { DraftStyle, Side } from '../src/engine/types';
+import { DRAFT_STYLES, type AccountView, type ModeProfile, type Profile, type ProfileGame, type RankedDraftStyle } from '../src/net/protocol';
 import { cleanName } from './names';
-import type { SavedGame, Store, User } from './store';
+import type { ModeStats, SavedGame, Store, User } from './store';
 
 /**
  * Accounts: sign up with a username and password, or Sign in with Google (set GOOGLE_CLIENT_ID);
@@ -19,7 +19,17 @@ const SESSION_DAYS = 30;
 const USERNAME_RE = /^[A-Za-z0-9_-]{3,20}$/;
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID ?? '';
 
-export const accountView = (u: User): AccountView => ({ id: u.id, username: u.username, rating: u.rating, games: u.games, ...(u.bot ? { bot: u.bot } : {}) });
+/** The user's rating and record in one draft style, seeded from their overall record the first time. */
+export function modeStats(u: User, style: DraftStyle): ModeStats {
+  u.modes ??= {};
+  return (u.modes[style] ??= { rating: u.rating, peak: u.peak, games: u.games, wins: u.wins, losses: u.losses, history: [...u.history] });
+}
+
+const perMode = <T>(f: (style: RankedDraftStyle) => T): Record<RankedDraftStyle, T> => ({ classic: f('classic'), secret: f('secret'), auction: f('auction') });
+
+export const accountView = (u: User): AccountView => ({
+  id: u.id, username: u.username, ratings: perMode((s) => modeStats(u, s).rating), games: perMode((s) => modeStats(u, s).games), ...(u.bot ? { bot: u.bot } : {}),
+});
 
 const newId = (): string => crypto.randomBytes(9).toString('base64url');
 const sha256 = (s: string): string => crypto.createHash('sha256').update(s).digest('hex');
@@ -43,10 +53,11 @@ function checkPassword(pw: string, stored: string | undefined): boolean {
 // ---------------------------------------------------------------- Elo
 
 /** Rating changes for a finished game (score 1 = `a` won, 0.5 draw, 0 lost). */
-export function eloDeltas(a: User, b: User, score: number): [number, number] {
-  const expected = 1 / (1 + 10 ** ((b.rating - a.rating) / 400));
-  const k = (u: User) => (u.games < PROVISIONAL_GAMES * 2 ? 40 : u.rating >= 2000 ? 16 : 24);
-  return [Math.round(k(a) * (score - expected)), Math.round(k(b) * (1 - score - (1 - expected)))];
+export function eloDeltas(a: User, b: User, score: number, style: DraftStyle): [number, number] {
+  const [sa, sb] = [modeStats(a, style), modeStats(b, style)];
+  const expected = 1 / (1 + 10 ** ((sb.rating - sa.rating) / 400));
+  const k = (m: ModeStats) => (m.games < PROVISIONAL_GAMES * 2 ? 40 : m.rating >= 2000 ? 16 : 24);
+  return [Math.round(k(sa) * (score - expected)), Math.round(k(sb) * (1 - score - (1 - expected)))];
 }
 
 export class Accounts {
@@ -113,39 +124,44 @@ export class Accounts {
     return [...this.store.users.values()].filter((u) => u.bot);
   }
 
-  /** Applies a finished ranked game: Elo for both accounts, records, the saved game. */
+  /** Applies a finished ranked game: Elo (in the game's draft style) for both accounts, records, the saved game. */
   recordGame(g: Omit<SavedGame, 'players'>, users: Record<Side, User>): { deltas: Record<Side, number>; ratings: Record<Side, number>; game: SavedGame } {
     const score = g.winner === 'A' ? 1 : g.winner === 'D' ? 0 : 0.5;
-    const [dA, dD] = eloDeltas(users.A, users.D, score);
-    const before = { A: users.A.rating, D: users.D.rating };
+    const style = g.style;
+    const [dA, dD] = eloDeltas(users.A, users.D, score, style);
+    const before = { A: modeStats(users.A, style).rating, D: modeStats(users.D, style).rating };
     const deltas = { A: dA, D: dD };
     for (const side of ['A', 'D'] as const) {
       const u = users[side];
-      u.rating += deltas[side];
-      u.peak = Math.max(u.peak, u.rating);
-      u.games += 1;
-      if (g.winner === side) u.wins += 1;
-      else if (g.winner) u.losses += 1;
-      u.history.push({ t: g.endedAt, r: u.rating });
-      if (u.history.length > 300) u.history.splice(0, u.history.length - 300);
+      const m = modeStats(u, style);
+      m.rating += deltas[side];
+      m.peak = Math.max(m.peak, m.rating);
+      m.games += 1;
+      if (g.winner === side) m.wins += 1;
+      else if (g.winner) m.losses += 1;
+      m.history.push({ t: g.endedAt, r: m.rating });
+      if (m.history.length > 300) m.history.splice(0, m.history.length - 300);
       this.store.putUser(u);
     }
     const game: SavedGame = {
       ...g,
       players: {
-        A: { userId: users.A.id, username: users.A.username, before: before.A, after: users.A.rating, ...(users.A.bot ? { bot: users.A.bot } : {}) },
-        D: { userId: users.D.id, username: users.D.username, before: before.D, after: users.D.rating, ...(users.D.bot ? { bot: users.D.bot } : {}) },
+        A: { userId: users.A.id, username: users.A.username, before: before.A, after: modeStats(users.A, style).rating, ...(users.A.bot ? { bot: users.A.bot } : {}) },
+        D: { userId: users.D.id, username: users.D.username, before: before.D, after: modeStats(users.D, style).rating, ...(users.D.bot ? { bot: users.D.bot } : {}) },
       },
     };
     this.store.putGame(game);
-    return { deltas, ratings: { A: users.A.rating, D: users.D.rating }, game };
+    return { deltas, ratings: { A: game.players.A.after, D: game.players.D.after }, game };
   }
 
   // ---------------------------------------------------------------- profiles
 
-  leaderboard(limit = 100): (AccountView & { rank: number; provisional: boolean })[] {
+  /** The ladder for one draft style. */
+  leaderboard(style: DraftStyle, limit = 100): (AccountView & { rank: number; provisional: boolean })[] {
     // Bot accounts start with established ratings, so they're ranked from the first day.
-    const ranked = [...this.store.users.values()].filter((u) => u.games >= PROVISIONAL_GAMES || u.bot).sort((a, b) => b.rating - a.rating);
+    const ranked = [...this.store.users.values()]
+      .filter((u) => modeStats(u, style).games >= PROVISIONAL_GAMES || u.bot)
+      .sort((a, b) => modeStats(b, style).rating - modeStats(a, style).rating);
     return ranked.slice(0, limit).map((u, i) => ({ ...accountView(u), rank: i + 1, provisional: false }));
   }
 
@@ -165,12 +181,12 @@ export class Accounts {
         ratingBefore: g.players[side].before, ratingAfter: g.players[side].after, team: g.teams[side],
       });
     }
-    const board = this.leaderboard(10_000);
-    const rank = board.find((x) => x.id === u.id)?.rank ?? null;
-    return {
-      username: u.username, rating: u.rating, peak: u.peak, games: u.games, wins: u.wins, losses: u.losses, createdAt: u.createdAt,
-      ...(u.bot ? { bot: u.bot } : {}), history: u.history, recent, rank,
-    };
+    const modes = perMode((style): ModeProfile => {
+      const m = modeStats(u, style);
+      const rank = this.leaderboard(style, 10_000).find((x) => x.id === u.id)?.rank ?? null;
+      return { rating: m.rating, peak: m.peak, games: m.games, wins: m.wins, losses: m.losses, history: m.history, rank };
+    });
+    return { username: u.username, createdAt: u.createdAt, ...(u.bot ? { bot: u.bot } : {}), modes, recent };
   }
 
   // ---------------------------------------------------------------- HTTP
@@ -188,7 +204,10 @@ export class Accounts {
     if (req.method === 'GET') {
       if (p === '/api/config') return send(200, { googleClientId: GOOGLE_CLIENT_ID || null, storage: this.store.kind }), true;
       if (p === '/api/me') return send(200, { account: me ? accountView(me) : null }), true;
-      if (p === '/api/leaderboard') return send(200, { players: this.leaderboard(100) }), true;
+      if (p === '/api/leaderboard') {
+        const style = DRAFT_STYLES.find((x) => x === url.searchParams.get('style')) ?? 'classic';
+        return send(200, { style, players: this.leaderboard(style, 100) }), true;
+      }
       const m = /^\/api\/users\/([^/]+)$/.exec(p);
       if (m) {
         const prof = this.profile(decodeURIComponent(m[1]));

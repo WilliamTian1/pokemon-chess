@@ -178,11 +178,13 @@ function Clocks({ ctl }: { ctl: Controller }) {
         const ms = left(side);
         const running = !!c?.running.includes(side);
         const acc = ctl.accounts?.[side];
+        const style = ctl.state.draft.style ?? 'classic';
+        const rating = ctl.result?.ratings?.[side] ?? acc?.ratings[style === 'freeplay' ? 'classic' : style];
         return (
           <div key={side} className={`flex items-center gap-1.5 rounded-lg border-2 px-2 py-1 ${running ? 'border-[#d9ab45] bg-[#3a2414]' : 'border-transparent bg-black/20'}`}
-            title={acc ? `${acc.username} (${acc.rating})` : ctl.names[side]}>
+            title={acc ? `${acc.username} (${rating})` : ctl.names[side]}>
             <span className={`h-2.5 w-2.5 rounded-full ${side === 'A' ? 'bg-[#c73a2e]' : 'bg-[#2f62b8]'}`} />
-            {acc && <span className="hidden max-w-[7rem] truncate text-xs font-bold text-slate-300 lg:inline">{acc.username} <span className="text-[#f2d27a]">{acc.rating}</span></span>}
+            {acc && <span className="hidden max-w-[7rem] truncate text-xs font-bold text-slate-300 lg:inline">{acc.username} <span className="text-[#f2d27a]">{rating}</span></span>}
             {c && <span className={`font-mono text-base font-bold tabular-nums ${ms < 30_000 ? 'text-rose-300' : 'text-[#fff3d6]'}`}>{fmt(ms)}</span>}
           </div>
         );

@@ -8,7 +8,7 @@ The game server (`npm start`) serves the site, the WebSocket rooms, and the acco
 - **Ranked matches:** pick a time control (5+3, 10+5, 15+10, 30+20) and a draft style (Classic, Secret, Auction or Any) and press *Find a ranked match*.
   - Players are paired by rating. The acceptable gap widens the longer you wait.
   - If nobody turns up within 10 seconds, a **bot account** of similar rating takes the seat.
-  - Ranked games use legendaries and trainers on a random map.
+  - You also choose whether to play with legendaries and with trainers: On, Off or Either (Either matches anyone; if neither player minds, the rule is on). All ranked games are on a random map and count towards the same rating.
 - **Elo ratings:** everyone starts at 1200. K is 40 for your first 20 games, then 24 (16 above 2000). The ladder ranks players after 10 ranked games; bot accounts are ranked from the start.
 - **Profiles** (`/?u=<name>`): rating, peak, record, a rating-history chart and recent games. **Ladder:** the top 100 on the online page.
 - **Time controls:** chess-style clocks. A side's clock runs while it has to decide, and it gets the increment each time it hands the move over (each draft pick, bid, placement or finished turn). Running out of time loses.

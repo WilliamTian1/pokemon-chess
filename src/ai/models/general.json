@@ -3,1008 +3,4108 @@
     "One draft model for every map, mode and draft style. Written by scripts/train-draft-general.ts: retrain rather than edit.",
     "All numbers are log-odds. In every attacker/defender pair, higher = better for the side that drafts it.",
     "Rule of thumb near an even game: +0.10 is about +2.5 points of win chance, +0.40 about +10.",
-    "Score of a draft = baseline.attackerEdge + mapTraits.attackerEdge·(map traits)",
-    "  + the Attacker cards' values − the Defender cards' values (each: cards + namedMaps[map] + trainerMode + mapTraits terms)",
-    "  + typeMatchup × type-matchup balance + heuristicPrior × the heuristic team ratings + (trainer mode) the trainer terms.",
+    "Score of a draft = baseline.attackerEdge + mapTraits.attackerEdge\u00c2\u00b7(map traits)",
+    "  + the Attacker cards' values \u00e2\u02c6\u2019 the Defender cards' values (each: cards + namedMaps[map] + trainerMode + mapTraits terms)",
+    "  + typeMatchup \u00c3\u2014 type-matchup balance + heuristicPrior \u00c3\u2014 the heuristic team ratings + (trainer mode) the trainer terms.",
     "mapTraits.attacker[cardTrait][mapTrait]: extra value per unit of card trait on a map with that much of the map trait",
     "  (src/ai/mapFeatures.ts), which is how maps never trained on, like generated ones, still get sensible values.",
-    "namedMaps and trainerMode list only corrections of 0.005 or more. Cards are listed strongest first (mean of both columns)."
+    "namedMaps and trainerMode list only corrections of 0.005 or more. Cards are listed strongest first (mean of both columns).",
+    " ",
+    "T",
+    "h",
+    "e",
+    " ",
+    "t",
+    "r",
+    "a",
+    "i",
+    "n",
+    "i",
+    "n",
+    "g",
+    ".",
+    "g",
+    "a",
+    "m",
+    "e",
+    "s",
+    " ",
+    "a",
+    "n",
+    "d",
+    " ",
+    "h",
+    "e",
+    "l",
+    "d",
+    "O",
+    "u",
+    "t",
+    "L",
+    "o",
+    "g",
+    "L",
+    "o",
+    "s",
+    "s",
+    " ",
+    "f",
+    "i",
+    "e",
+    "l",
+    "d",
+    "s",
+    " ",
+    "d",
+    "e",
+    "s",
+    "c",
+    "r",
+    "i",
+    "b",
+    "e",
+    " ",
+    "t",
+    "h",
+    "e",
+    " ",
+    "6",
+    "4",
+    ",",
+    "0",
+    "0",
+    "0",
+    "-",
+    "g",
+    "a",
+    "m",
+    "e",
+    " ",
+    "b",
+    "a",
+    "s",
+    "e",
+    " ",
+    "f",
+    "i",
+    "t",
+    " ",
+    "a",
+    "n",
+    "d",
+    " ",
+    "d",
+    "o",
+    " ",
+    "n",
+    "o",
+    "t",
+    " ",
+    "v",
+    "a",
+    "l",
+    "i",
+    "d",
+    "a",
+    "t",
+    "e",
+    " ",
+    "s",
+    "u",
+    "p",
+    "p",
+    "l",
+    "e",
+    "m",
+    "e",
+    "n",
+    "t",
+    "a",
+    "l",
+    " ",
+    "e",
+    "n",
+    "t",
+    "r",
+    "i",
+    "e",
+    "s",
+    ".",
+    " ",
+    "M",
+    "i",
+    "s",
+    "s",
+    "i",
+    "n",
+    "g",
+    " ",
+    "c",
+    "a",
+    "r",
+    "d",
+    ",",
+    " ",
+    "t",
+    "r",
+    "a",
+    "i",
+    "n",
+    "e",
+    "r",
+    ",",
+    " ",
+    "a",
+    "n",
+    "d",
+    " ",
+    "m",
+    "a",
+    "p",
+    " ",
+    "c",
+    "o",
+    "r",
+    "r",
+    "e",
+    "c",
+    "t",
+    "i",
+    "o",
+    "n",
+    "s",
+    " ",
+    "f",
+    "o",
+    "r",
+    " ",
+    "n",
+    "e",
+    "w",
+    "e",
+    "r",
+    " ",
+    "c",
+    "o",
+    "n",
+    "t",
+    "e",
+    "n",
+    "t",
+    " ",
+    "a",
+    "r",
+    "e",
+    " ",
+    "r",
+    "e",
+    "t",
+    "a",
+    "i",
+    "n",
+    "e",
+    "d",
+    " ",
+    "f",
+    "r",
+    "o",
+    "m",
+    " ",
+    "t",
+    "h",
+    "e",
+    " ",
+    "6",
+    "0",
+    "0",
+    "-",
+    "g",
+    "a",
+    "m",
+    "e",
+    " ",
+    "e",
+    "x",
+    "t",
+    "e",
+    "n",
+    "s",
+    "i",
+    "o",
+    "n",
+    " ",
+    "f",
+    "i",
+    "t",
+    "."
   ],
   "version": 3,
   "training": {
-    "games":          600,
-    "heldOutLogLoss":  0.6800,
-    "penalties":      { "lambda":  0.0010, "delta":  0.0100, "inter":  0.0300 }
+    "games": 64000,
+    "heldOutLogLoss": 0.5411,
+    "penalties": {
+      "lambda": 3e-05,
+      "delta": 0.003,
+      "inter": 0.001
+    }
   },
   "baseline": {
-    "attackerEdge":   -0.0394,
-    "typeMatchup":     2.4919,
-    "heuristicPrior": { "attacker":  0.0784, "defender":  0.0411 }
+    "attackerEdge": -0.0267,
+    "typeMatchup": 2.1853,
+    "heuristicPrior": {
+      "attacker": -0.0038,
+      "defender": 0.0491
+    }
   },
   "cards": {
-    "milotic":        { "attacker":  0.5622, "defender":  0.9302 },
-    "xerneas":        { "attacker":  0.1231, "defender":  1.0942 },
-    "pelipper":       { "attacker":  0.9974, "defender":  0.1607 },
-    "arceus":         { "attacker":  0.3385, "defender":  0.8149 },
-    "togekiss":       { "attacker":  0.6131, "defender":  0.4709 },
-    "zygarde":        { "attacker":  0.0347, "defender":  1.0097 },
-    "meganium":       { "attacker":  0.5735, "defender":  0.3758 },
-    "metagross":      { "attacker":  0.7710, "defender":  0.1530 },
-    "luxray":         { "attacker":  0.3230, "defender":  0.5068 },
-    "cherrim":        { "attacker":  0.8337, "defender": -0.0278 },
-    "aurorus":        { "attacker":  0.7728, "defender":  0.0000 },
-    "blissey":        { "attacker":  0.6368, "defender":  0.1003 },
-    "reuniclus":      { "attacker":  0.3025, "defender":  0.4149 },
-    "zekrom":         { "attacker":  0.7059, "defender":  0.0067 },
-    "sinistcha":      { "attacker":  0.1951, "defender":  0.5092 },
-    "gyarados":       { "attacker":  0.7024, "defender":  0.0000 },
-    "kyurem":         { "attacker":  0.2566, "defender":  0.4226 },
-    "tyranitar":      { "attacker": -0.0613, "defender":  0.6938 },
-    "rayquaza":       { "attacker":  0.5867, "defender":  0.0000 },
-    "altaria":        { "attacker":  0.0124, "defender":  0.5498 },
-    "ditto":          { "attacker":  0.6527, "defender": -0.1420 },
-    "butterfree":     { "attacker":  0.3047, "defender":  0.2042 },
-    "minior":         { "attacker": -0.2881, "defender":  0.7866 },
-    "lumineon":       { "attacker":  0.5683, "defender": -0.0834 },
-    "amoonguss":      { "attacker":  0.0244, "defender":  0.4378 },
-    "golisopod":      { "attacker":  0.0313, "defender":  0.4192 },
-    "furret":         { "attacker":  0.0459, "defender":  0.3896 },
-    "blastoise":      { "attacker":  0.2422, "defender":  0.1740 },
-    "hawlucha":       { "attacker": -0.3201, "defender":  0.7273 },
-    "swalot":         { "attacker":  0.0000, "defender":  0.3993 },
-    "cinccino":       { "attacker":  0.0597, "defender":  0.3327 },
-    "volcarona":      { "attacker":  0.1516, "defender":  0.2304 },
-    "whimsicott":     { "attacker":  0.0000, "defender":  0.3574 },
-    "malamar":        { "attacker":  0.1953, "defender":  0.1592 },
-    "comfey":         { "attacker": -0.0859, "defender":  0.4383 },
-    "reshiram":       { "attacker":  0.5920, "defender": -0.2448 },
-    "mew":            { "attacker": -0.1024, "defender":  0.4369 },
-    "sylveon":        { "attacker": -0.1442, "defender":  0.4759 },
-    "scizor":         { "attacker":  0.0000, "defender":  0.3069 },
-    "banette":        { "attacker":  0.2902, "defender": -0.0359 },
-    "mewtwo":         { "attacker":  0.0000, "defender":  0.2158 },
-    "espeon":         { "attacker":  0.1353, "defender":  0.0799 },
-    "weezing":        { "attacker":  0.2065, "defender":  0.0077 },
-    "dodrio":         { "attacker": -0.2117, "defender":  0.4134 },
-    "wobbuffet":      { "attacker":  0.3113, "defender": -0.1241 },
-    "ferrothorn":     { "attacker":  0.4754, "defender": -0.3154 },
-    "frosmoth":       { "attacker": -0.1962, "defender":  0.3413 },
-    "tauros":         { "attacker":  0.1419, "defender":  0.0000 },
-    "octillery":      { "attacker":  0.0624, "defender":  0.0310 },
-    "venusaur":       { "attacker":  0.1150, "defender": -0.0618 },
-    "cetitan":        { "attacker":  0.1507, "defender": -0.1304 },
-    "chien-pao":      { "attacker": -0.1695, "defender":  0.1840 },
-    "lugia":          { "attacker": -0.0470, "defender":  0.0575 },
-    "haxorus":        { "attacker": -0.2333, "defender":  0.2402 },
-    "hydreigon":      { "attacker":  0.0629, "defender": -0.0654 },
-    "infernape":      { "attacker": -0.1505, "defender":  0.1089 },
-    "dragapult":      { "attacker":  0.1863, "defender": -0.2475 },
-    "slowbro":        { "attacker": -0.5648, "defender":  0.4883 },
-    "krookodile":     { "attacker": -0.1487, "defender":  0.0482 },
-    "slaking":        { "attacker":  0.0954, "defender": -0.1978 },
-    "porygonz":       { "attacker": -0.2318, "defender":  0.1281 },
-    "gengar":         { "attacker": -0.0303, "defender": -0.0760 },
-    "solgaleo":       { "attacker":  0.2638, "defender": -0.3722 },
-    "heracross":      { "attacker": -0.1104, "defender": -0.0042 },
-    "vivillon":       { "attacker": -0.0168, "defender": -0.1038 },
-    "arcanine":       { "attacker":  0.3544, "defender": -0.5012 },
-    "ninjask":        { "attacker":  0.0560, "defender": -0.2028 },
-    "ninetales":      { "attacker": -0.3305, "defender":  0.1609 },
-    "flygon":         { "attacker": -0.1739, "defender":  0.0015 },
-    "tauros-paldean": { "attacker": -0.2634, "defender":  0.0866 },
-    "noivern":        { "attacker": -0.5404, "defender":  0.3320 },
-    "iron-valiant":   { "attacker": -0.0964, "defender": -0.1231 },
-    "charizard":      { "attacker": -0.0262, "defender": -0.2418 },
-    "groudon":        { "attacker":  0.1290, "defender": -0.3972 },
-    "dialga":         { "attacker": -0.3011, "defender":  0.0312 },
-    "yveltal":        { "attacker": -0.2190, "defender": -0.0546 },
-    "raichu":         { "attacker":  0.0000, "defender": -0.2927 },
-    "kyogre":         { "attacker":  0.0000, "defender": -0.3241 },
-    "drapion":        { "attacker": -0.1376, "defender": -0.1880 },
-    "primarina":      { "attacker":  0.1305, "defender": -0.4573 },
-    "dewgong":        { "attacker":  0.1682, "defender": -0.5071 },
-    "froslass":       { "attacker": -0.1822, "defender": -0.1592 },
-    "archeops":       { "attacker":  0.1840, "defender": -0.5306 },
-    "lurantis":       { "attacker":  0.0426, "defender": -0.4054 },
-    "skarmory":       { "attacker":  0.0983, "defender": -0.4772 },
-    "dragonite":      { "attacker":  0.2268, "defender": -0.6325 },
-    "tinkaton":       { "attacker": -0.3563, "defender": -0.0809 },
-    "wigglytuff":     { "attacker": -0.1179, "defender": -0.3216 },
-    "sudowoodo":      { "attacker": -0.2142, "defender": -0.2261 },
-    "crawdaunt":      { "attacker": -0.3461, "defender": -0.1099 },
-    "zoroark-hisui":  { "attacker": -0.1422, "defender": -0.3151 },
-    "shedinja":       { "attacker": -0.3466, "defender": -0.1108 },
-    "corsola":        { "attacker": -0.4139, "defender": -0.0511 },
-    "suicune":        { "attacker": -0.3373, "defender": -0.1412 },
-    "golurk":         { "attacker": -0.7419, "defender":  0.2626 },
-    "jirachi":        { "attacker": -0.4256, "defender": -0.0675 },
-    "lapras":         { "attacker": -0.3132, "defender": -0.1934 },
-    "crobat":         { "attacker": -0.5810, "defender":  0.0254 },
-    "staraptor":      { "attacker": -0.0859, "defender": -0.4978 },
-    "roserade":       { "attacker": -0.1016, "defender": -0.5078 },
-    "scream-tail":    { "attacker": -0.6165, "defender":  0.0000 },
-    "breloom":        { "attacker": -0.1449, "defender": -0.5460 },
-    "oricorio":       { "attacker": -0.4198, "defender": -0.3061 },
-    "rampardos":      { "attacker": -0.4876, "defender": -0.2784 },
-    "umbreon":        { "attacker": -0.3193, "defender": -0.4675 },
-    "celebi":         { "attacker": -0.5496, "defender": -0.2639 },
-    "galvantula":     { "attacker": -0.1925, "defender": -0.7003 },
-    "zapdos":         { "attacker": -0.6882, "defender": -0.2161 },
-    "pikachu":        { "attacker": -0.7016, "defender": -0.2342 },
-    "gliscor":        { "attacker": -0.2623, "defender": -0.6845 },
-    "scrafty":        { "attacker": -0.7008, "defender": -0.3066 },
-    "snorlax":        { "attacker": -0.3999, "defender": -0.6118 },
-    "lunala":         { "attacker": -0.1580, "defender": -0.9825 },
-    "mamoswine":      { "attacker": -0.3658, "defender": -0.7879 },
-    "clefable":       { "attacker": -0.5881, "defender": -0.5729 }
+    "volcarona": {
+      "attacker": 1.3205,
+      "defender": 0.914
+    },
+    "aurorus": {
+      "attacker": 1.0972,
+      "defender": 1.0042
+    },
+    "whimsicott": {
+      "attacker": 0.9214,
+      "defender": 0.6249
+    },
+    "cherrim": {
+      "attacker": 0.6634,
+      "defender": 0.8094
+    },
+    "frosmoth": {
+      "attacker": 0.8273,
+      "defender": 0.5342
+    },
+    "groudon": {
+      "attacker": 0.6623,
+      "defender": 0.579
+    },
+    "xerneas": {
+      "attacker": 0.1231,
+      "defender": 1.0942
+    },
+    "ditto": {
+      "attacker": 0.7369,
+      "defender": 0.4666
+    },
+    "meganium": {
+      "attacker": 0.6151,
+      "defender": 0.58
+    },
+    "kyogre": {
+      "attacker": 0.5386,
+      "defender": 0.6417
+    },
+    "arceus": {
+      "attacker": 0.3385,
+      "defender": 0.8149
+    },
+    "minior": {
+      "attacker": 0.208,
+      "defender": 0.8518
+    },
+    "zygarde": {
+      "attacker": 0.0347,
+      "defender": 1.0097
+    },
+    "dragonite": {
+      "attacker": 0.4542,
+      "defender": 0.4441
+    },
+    "reuniclus": {
+      "attacker": 0.4166,
+      "defender": 0.4177
+    },
+    "blastoise": {
+      "attacker": 0.5256,
+      "defender": 0.295
+    },
+    "togekiss": {
+      "attacker": 0.5801,
+      "defender": 0.232
+    },
+    "lumineon": {
+      "attacker": 0.5254,
+      "defender": 0.269
+    },
+    "slaking": {
+      "attacker": 0.1553,
+      "defender": 0.6191
+    },
+    "hawlucha": {
+      "attacker": 0.4459,
+      "defender": 0.2936
+    },
+    "dragapult": {
+      "attacker": 0.3517,
+      "defender": 0.3466
+    },
+    "butterfree": {
+      "attacker": 0.5541,
+      "defender": 0.1307
+    },
+    "kyurem": {
+      "attacker": 0.2566,
+      "defender": 0.4226
+    },
+    "pelipper": {
+      "attacker": 0.3166,
+      "defender": 0.3329
+    },
+    "cetitan": {
+      "attacker": 0.3119,
+      "defender": 0.2989
+    },
+    "noivern": {
+      "attacker": 0.319,
+      "defender": 0.2671
+    },
+    "lunala": {
+      "attacker": 0.2392,
+      "defender": 0.316
+    },
+    "milotic": {
+      "attacker": 0.2423,
+      "defender": 0.3038
+    },
+    "yveltal": {
+      "attacker": 0.1924,
+      "defender": 0.2843
+    },
+    "wobbuffet": {
+      "attacker": -0.2041,
+      "defender": 0.6225
+    },
+    "haxorus": {
+      "attacker": 0.3302,
+      "defender": 0.0739
+    },
+    "comfey": {
+      "attacker": 0.2002,
+      "defender": 0.136
+    },
+    "mew": {
+      "attacker": -0.1024,
+      "defender": 0.4369
+    },
+    "amoonguss": {
+      "attacker": 0.1744,
+      "defender": 0.1451
+    },
+    "reshiram": {
+      "attacker": 0.0483,
+      "defender": 0.2491
+    },
+    "tinkaton": {
+      "attacker": 0.2372,
+      "defender": 0.0242
+    },
+    "octillery": {
+      "attacker": 0.1269,
+      "defender": 0.1336
+    },
+    "banette": {
+      "attacker": 0.2902,
+      "defender": -0.0359
+    },
+    "mewtwo": {
+      "attacker": 0.0792,
+      "defender": 0.1741
+    },
+    "scizor": {
+      "attacker": 0.1225,
+      "defender": 0.1219
+    },
+    "umbreon": {
+      "attacker": 0.1698,
+      "defender": 0.0197
+    },
+    "tyranitar": {
+      "attacker": 0.0879,
+      "defender": 0.0664
+    },
+    "espeon": {
+      "attacker": 0.0482,
+      "defender": 0.1018
+    },
+    "hydreigon": {
+      "attacker": 0.1122,
+      "defender": 0.027
+    },
+    "archeops": {
+      "attacker": 0.0637,
+      "defender": 0.0038
+    },
+    "ninjask": {
+      "attacker": 0.1305,
+      "defender": -0.0786
+    },
+    "rayquaza": {
+      "attacker": -0.0113,
+      "defender": 0.0369
+    },
+    "chien-pao": {
+      "attacker": -0.1695,
+      "defender": 0.184
+    },
+    "lugia": {
+      "attacker": -0.047,
+      "defender": 0.0575
+    },
+    "metagross": {
+      "attacker": 0.0255,
+      "defender": -0.1008
+    },
+    "porygonz": {
+      "attacker": -0.0241,
+      "defender": -0.0607
+    },
+    "solgaleo": {
+      "attacker": 0.2638,
+      "defender": -0.3722
+    },
+    "sylveon": {
+      "attacker": -0.2132,
+      "defender": 0.087
+    },
+    "tauros": {
+      "attacker": -0.1057,
+      "defender": -0.0222
+    },
+    "crobat": {
+      "attacker": -0.0406,
+      "defender": -0.0874
+    },
+    "arcanine": {
+      "attacker": -0.1052,
+      "defender": -0.0613
+    },
+    "tauros-paldean": {
+      "attacker": -0.2634,
+      "defender": 0.0866
+    },
+    "drapion": {
+      "attacker": -0.0677,
+      "defender": -0.1221
+    },
+    "ninetales": {
+      "attacker": -0.1127,
+      "defender": -0.0802
+    },
+    "gyarados": {
+      "attacker": -0.0656,
+      "defender": -0.1314
+    },
+    "iron-valiant": {
+      "attacker": -0.0964,
+      "defender": -0.1231
+    },
+    "zekrom": {
+      "attacker": -0.0575,
+      "defender": -0.1663
+    },
+    "sinistcha": {
+      "attacker": -0.0965,
+      "defender": -0.1363
+    },
+    "altaria": {
+      "attacker": -0.0983,
+      "defender": -0.1572
+    },
+    "galvantula": {
+      "attacker": -0.1534,
+      "defender": -0.1036
+    },
+    "gengar": {
+      "attacker": -0.0903,
+      "defender": -0.1681
+    },
+    "dialga": {
+      "attacker": -0.3011,
+      "defender": 0.0312
+    },
+    "krookodile": {
+      "attacker": -0.151,
+      "defender": -0.171
+    },
+    "blissey": {
+      "attacker": -0.4014,
+      "defender": 0.0732
+    },
+    "vivillon": {
+      "attacker": -0.1658,
+      "defender": -0.1737
+    },
+    "cinccino": {
+      "attacker": -0.2453,
+      "defender": -0.1068
+    },
+    "raichu": {
+      "attacker": -0.1514,
+      "defender": -0.2163
+    },
+    "swalot": {
+      "attacker": -0.4585,
+      "defender": 0.0728
+    },
+    "dewgong": {
+      "attacker": -0.3554,
+      "defender": -0.0391
+    },
+    "heracross": {
+      "attacker": -0.0851,
+      "defender": -0.31
+    },
+    "dodrio": {
+      "attacker": -0.0857,
+      "defender": -0.3114
+    },
+    "breloom": {
+      "attacker": -0.098,
+      "defender": -0.3098
+    },
+    "wigglytuff": {
+      "attacker": -0.2859,
+      "defender": -0.133
+    },
+    "venusaur": {
+      "attacker": -0.1689,
+      "defender": -0.295
+    },
+    "pikachu": {
+      "attacker": -0.2918,
+      "defender": -0.1754
+    },
+    "suicune": {
+      "attacker": -0.3373,
+      "defender": -0.1412
+    },
+    "jirachi": {
+      "attacker": -0.4256,
+      "defender": -0.0675
+    },
+    "ferrothorn": {
+      "attacker": -0.4255,
+      "defender": -0.069
+    },
+    "lapras": {
+      "attacker": -0.3458,
+      "defender": -0.1706
+    },
+    "slowbro": {
+      "attacker": -0.2825,
+      "defender": -0.2537
+    },
+    "malamar": {
+      "attacker": -0.1682,
+      "defender": -0.4051
+    },
+    "zoroark-hisui": {
+      "attacker": -0.2672,
+      "defender": -0.3079
+    },
+    "gliscor": {
+      "attacker": -0.3133,
+      "defender": -0.2683
+    },
+    "lurantis": {
+      "attacker": -0.3315,
+      "defender": -0.2643
+    },
+    "clefable": {
+      "attacker": -0.1484,
+      "defender": -0.4625
+    },
+    "scream-tail": {
+      "attacker": -0.6165,
+      "defender": 0.0
+    },
+    "furret": {
+      "attacker": -0.1888,
+      "defender": -0.4484
+    },
+    "luxray": {
+      "attacker": -0.3407,
+      "defender": -0.2975
+    },
+    "charizard": {
+      "attacker": -0.2731,
+      "defender": -0.3736
+    },
+    "flygon": {
+      "attacker": -0.2677,
+      "defender": -0.3842
+    },
+    "skarmory": {
+      "attacker": -0.2888,
+      "defender": -0.365
+    },
+    "mamoswine": {
+      "attacker": -0.4821,
+      "defender": -0.1897
+    },
+    "scrafty": {
+      "attacker": -0.3141,
+      "defender": -0.4525
+    },
+    "infernape": {
+      "attacker": -0.444,
+      "defender": -0.3296
+    },
+    "primarina": {
+      "attacker": -0.4367,
+      "defender": -0.3501
+    },
+    "golisopod": {
+      "attacker": -0.3316,
+      "defender": -0.48
+    },
+    "celebi": {
+      "attacker": -0.5496,
+      "defender": -0.2639
+    },
+    "zapdos": {
+      "attacker": -0.6882,
+      "defender": -0.2161
+    },
+    "froslass": {
+      "attacker": -0.595,
+      "defender": -0.3111
+    },
+    "rampardos": {
+      "attacker": -0.4332,
+      "defender": -0.4984
+    },
+    "roserade": {
+      "attacker": -0.4764,
+      "defender": -0.5405
+    },
+    "staraptor": {
+      "attacker": -0.5316,
+      "defender": -0.5089
+    },
+    "shedinja": {
+      "attacker": -0.7353,
+      "defender": -0.3351
+    },
+    "golurk": {
+      "attacker": -0.4553,
+      "defender": -0.6153
+    },
+    "crawdaunt": {
+      "attacker": -0.5648,
+      "defender": -0.5248
+    },
+    "snorlax": {
+      "attacker": -0.5894,
+      "defender": -0.52
+    },
+    "oricorio": {
+      "attacker": -0.5667,
+      "defender": -0.5649
+    },
+    "corsola": {
+      "attacker": -0.5579,
+      "defender": -0.6372
+    },
+    "weezing": {
+      "attacker": -0.6361,
+      "defender": -0.5617
+    },
+    "sudowoodo": {
+      "attacker": -0.6816,
+      "defender": -0.7113
+    }
   },
   "trainers": {
-    "youngster-joey": { "attacker":  0.2519, "defender":  0.2240, "synergyAttacker":  0.0000, "synergyDefender":  0.0000 },
-    "hiker-paul":     { "attacker":  0.4592, "defender":  0.0000, "synergyAttacker":  0.0000, "synergyDefender":  0.0000 },
-    "red":            { "attacker":  0.0551, "defender":  0.1076, "synergyAttacker":  0.0000, "synergyDefender":  0.0000 },
-    "motonari":       { "attacker": -0.0352, "defender":  0.1187, "synergyAttacker":  0.0000, "synergyDefender":  0.0000 },
-    "n":              { "attacker": -0.1331, "defender":  0.1523, "synergyAttacker":  0.2315, "synergyDefender": -3.0606 },
-    "hideyoshi":      { "attacker": -0.2697, "defender":  0.2165, "synergyAttacker":  0.0000, "synergyDefender":  0.0000 },
-    "blue":           { "attacker": -0.0238, "defender": -0.0520, "synergyAttacker":  1.0005, "synergyDefender":  1.1849 },
-    "lance":          { "attacker":  0.1996, "defender": -0.3403, "synergyAttacker": -1.6583, "synergyDefender":  0.0000 },
-    "motochika":      { "attacker": -0.3219, "defender":  0.1714, "synergyAttacker":  0.0000, "synergyDefender":  0.0000 },
-    "jessie-james":   { "attacker":  0.0377, "defender": -0.2449, "synergyAttacker":  0.0000, "synergyDefender":  0.0000 },
-    "nobunaga":       { "attacker": -0.2627, "defender":  0.0282, "synergyAttacker":  0.0690, "synergyDefender":  1.5258 },
-    "mitsuhide":      { "attacker":  0.1661, "defender": -0.5005, "synergyAttacker":  0.0000, "synergyDefender": -1.4087 }
+    "nobunaga": {
+      "attacker": 0.3493,
+      "defender": 0.4555,
+      "synergyAttacker": 0.033,
+      "synergyDefender": 0.0715
+    },
+    "blue": {
+      "attacker": 0.2249,
+      "defender": 0.1804,
+      "synergyAttacker": -0.0274,
+      "synergyDefender": 0.0982
+    },
+    "red": {
+      "attacker": 0.1337,
+      "defender": 0.2545,
+      "synergyAttacker": 0.4936,
+      "synergyDefender": 0.7082
+    },
+    "lance": {
+      "attacker": 0.1281,
+      "defender": -0.2669,
+      "synergyAttacker": 0.1263,
+      "synergyDefender": 0.1131
+    },
+    "n": {
+      "attacker": -0.3896,
+      "defender": -0.2611,
+      "synergyAttacker": 0.3034,
+      "synergyDefender": 0.3555
+    },
+    "mitsuhide": {
+      "attacker": -0.5247,
+      "defender": -0.4482,
+      "synergyAttacker": 0.3169,
+      "synergyDefender": 0.2645
+    },
+    "youngster-joey": {
+      "attacker": 0.2519,
+      "defender": 0.224,
+      "synergyAttacker": 0.0,
+      "synergyDefender": 0.0
+    },
+    "hiker-paul": {
+      "attacker": 0.4592,
+      "defender": 0.0,
+      "synergyAttacker": 0.0,
+      "synergyDefender": 0.0
+    },
+    "motonari": {
+      "attacker": -0.0352,
+      "defender": 0.1187,
+      "synergyAttacker": 0.0,
+      "synergyDefender": 0.0
+    },
+    "hideyoshi": {
+      "attacker": -0.2697,
+      "defender": 0.2165,
+      "synergyAttacker": 0.0,
+      "synergyDefender": 0.0
+    },
+    "motochika": {
+      "attacker": -0.3219,
+      "defender": 0.1714,
+      "synergyAttacker": 0.0,
+      "synergyDefender": 0.0
+    },
+    "jessie-james": {
+      "attacker": 0.0377,
+      "defender": -0.2449,
+      "synergyAttacker": 0.0,
+      "synergyDefender": 0.0
+    }
   },
   "mapTraits": {
-    "attackerEdge": { "area": -0.0111, "spawnDist": -0.0036, "water": -0.0047, "detour": -0.0005, "bush":  0.0084, "flower":  0.0020, "treb": -0.0035, "ice":  0.0009, "wall":  0.0080, "magma":  0.0041 },
+    "attackerEdge": {
+      "area": -0.0376,
+      "spawnDist": 0.0174,
+      "water": -0.0111,
+      "detour": -0.0194,
+      "bush": 0.0104,
+      "flower": -0.0017,
+      "treb": 0.0561,
+      "ice": 0.0011,
+      "wall": 0.0047,
+      "magma": -0.0014
+    },
     "attacker": {
-      "mov":       { "area":  0.0923, "spawnDist":  0.0211, "water": -0.0137, "detour":  0.0542, "bush":  0.0581, "flower":  0.0457, "treb": -0.0277, "ice": -0.0382, "wall": -0.0386, "magma":  0.0327 },
-      "hp":        { "area": -0.0729, "spawnDist":  0.0231, "water":  0.0423, "detour": -0.0195, "bush":  0.0141, "flower":  0.0072, "treb":  0.0534, "ice":  0.0047, "wall":  0.0671, "magma":  0.0726 },
-      "swim":      { "area": -0.1169, "spawnDist": -0.0210, "water":  0.0649, "detour": -0.0529, "bush": -0.1137, "flower": -0.0162, "treb":  0.0495, "ice": -0.0380, "wall":  0.0336, "magma": -0.0278 },
-      "fly":       { "area":  0.1322, "spawnDist":  0.0615, "water": -0.0341, "detour":  0.0309, "bush":  0.0272, "flower": -0.0716, "treb":  0.0055, "ice":  0.1214, "wall": -0.0306, "magma":  0.1048 },
-      "reach":     { "area": -0.1413, "spawnDist": -0.0519, "water":  0.0793, "detour": -0.0071, "bush": -0.0235, "flower":  0.0526, "treb": -0.0147, "ice": -0.0862, "wall":  0.0109, "magma": -0.0114 },
-      "waterAb":   { "area": -0.0342, "spawnDist": -0.0167, "water":  0.0371, "detour": -0.0011, "bush": -0.0529, "flower":  0.0055, "treb": -0.0024, "ice": -0.0402, "wall": -0.0103, "magma":  0.0040 },
-      "ice":       { "area":  0.0956, "spawnDist":  0.0318, "water": -0.0032, "detour":  0.0330, "bush": -0.1094, "flower": -0.0404, "treb":  0.0037, "ice": -0.0266, "wall": -0.0210, "magma":  0.1215 },
-      "fire":      { "area":  0.1343, "spawnDist":  0.0644, "water": -0.0022, "detour":  0.0345, "bush":  0.1226, "flower":  0.0351, "treb":  0.0196, "ice":  0.0397, "wall": -0.0403, "magma": -0.0066 },
-      "terrainAb": { "area":  0.0047, "spawnDist":  0.0104, "water": -0.0050, "detour":  0.0078, "bush": -0.0465, "flower":  0.0101, "treb":  0.0132, "ice": -0.0582, "wall":  0.0333, "magma":  0.0652 },
-      "artillery": { "area":  0.0059, "spawnDist":  0.0037, "water":  0.0033, "detour":  0.0014, "bush":  0.0286, "flower":  0.0148, "treb":  0.0021, "ice":  0.0003, "wall": -0.0044, "magma": -0.0194 },
-      "legend":    { "area": -0.0018, "spawnDist": -0.0114, "water":  0.0543, "detour":  0.0325, "bush":  0.0735, "flower":  0.0961, "treb": -0.0226, "ice": -0.0843, "wall": -0.0396, "magma": -0.0459 }
+      "mov": {
+        "area": -0.0123,
+        "spawnDist": 0.0488,
+        "water": 0.0201,
+        "detour": -0.1286,
+        "bush": 0.0543,
+        "flower": 0.0002,
+        "treb": 0.0527,
+        "ice": -0.0404,
+        "wall": -0.0528,
+        "magma": -0.0241
+      },
+      "hp": {
+        "area": -0.045,
+        "spawnDist": 0.0211,
+        "water": -0.0103,
+        "detour": -0.0975,
+        "bush": 0.0149,
+        "flower": -0.0224,
+        "treb": 0.0885,
+        "ice": 0.0237,
+        "wall": 0.0118,
+        "magma": 0.0214
+      },
+      "swim": {
+        "area": -0.0582,
+        "spawnDist": -0.0175,
+        "water": 0.1438,
+        "detour": 0.1824,
+        "bush": -0.0562,
+        "flower": 0.0323,
+        "treb": 0.0302,
+        "ice": 0.0195,
+        "wall": 0.0578,
+        "magma": -0.0149
+      },
+      "fly": {
+        "area": 0.046,
+        "spawnDist": 0.0229,
+        "water": 0.1392,
+        "detour": 0.3396,
+        "bush": -0.0978,
+        "flower": -0.0222,
+        "treb": 0.0091,
+        "ice": 0.0113,
+        "wall": 0.0166,
+        "magma": -0.0314
+      },
+      "reach": {
+        "area": -0.0101,
+        "spawnDist": 0.0405,
+        "water": 0.0347,
+        "detour": -0.0352,
+        "bush": 0.0267,
+        "flower": 0.0043,
+        "treb": 0.0448,
+        "ice": -0.0032,
+        "wall": -0.0262,
+        "magma": 0.0055
+      },
+      "waterAb": {
+        "area": 0.0645,
+        "spawnDist": 0.0572,
+        "water": 0.0039,
+        "detour": 0.1013,
+        "bush": -0.054,
+        "flower": 0.0236,
+        "treb": -0.0693,
+        "ice": -0.0045,
+        "wall": 0.0105,
+        "magma": -0.0086
+      },
+      "ice": {
+        "area": 0.079,
+        "spawnDist": 0.1353,
+        "water": 0.2026,
+        "detour": 0.0656,
+        "bush": -0.0034,
+        "flower": 0.0233,
+        "treb": -0.0611,
+        "ice": 0.0417,
+        "wall": 0.0337,
+        "magma": -0.0033
+      },
+      "fire": {
+        "area": 0.1123,
+        "spawnDist": 0.1962,
+        "water": -0.037,
+        "detour": -0.0617,
+        "bush": -0.0884,
+        "flower": 0.0581,
+        "treb": -0.0393,
+        "ice": -0.0021,
+        "wall": 0.0222,
+        "magma": 0.0067
+      },
+      "terrainAb": {
+        "area": -0.0592,
+        "spawnDist": -0.0176,
+        "water": 0.1016,
+        "detour": -0.0497,
+        "bush": -0.0098,
+        "flower": 0.0472,
+        "treb": 0.0823,
+        "ice": -0.0013,
+        "wall": -0.0034,
+        "magma": -0.0019
+      },
+      "artillery": {
+        "area": 0.0578,
+        "spawnDist": -0.0096,
+        "water": 0.0791,
+        "detour": -0.0717,
+        "bush": -0.065,
+        "flower": -0.0372,
+        "treb": 0.0523,
+        "ice": -0.0184,
+        "wall": -0.0205,
+        "magma": -0.0046
+      },
+      "legend": {
+        "area": 0.1027,
+        "spawnDist": 0.1579,
+        "water": 0.1894,
+        "detour": -0.0016,
+        "bush": 0.1283,
+        "flower": 0.0889,
+        "treb": 0.0008,
+        "ice": -0.0197,
+        "wall": -0.0749,
+        "magma": 0.0084
+      }
     },
     "defender": {
-      "mov":       { "area":  0.0568, "spawnDist":  0.0175, "water":  0.0065, "detour":  0.0012, "bush": -0.0864, "flower": -0.0370, "treb":  0.0162, "ice": -0.0041, "wall": -0.0245, "magma":  0.0232 },
-      "hp":        { "area":  0.1463, "spawnDist":  0.0780, "water": -0.0816, "detour":  0.0064, "bush":  0.0609, "flower": -0.0137, "treb":  0.0473, "ice":  0.0516, "wall":  0.0293, "magma":  0.0270 },
-      "swim":      { "area":  0.0299, "spawnDist":  0.0082, "water":  0.0705, "detour": -0.0019, "bush":  0.1219, "flower":  0.0669, "treb":  0.0112, "ice":  0.0205, "wall": -0.0865, "magma": -0.1754 },
-      "fly":       { "area":  0.0892, "spawnDist":  0.0297, "water": -0.0107, "detour":  0.0415, "bush":  0.0623, "flower":  0.0464, "treb": -0.0092, "ice": -0.0330, "wall": -0.0205, "magma":  0.0263 },
-      "reach":     { "area":  0.0383, "spawnDist":  0.0191, "water":  0.0835, "detour":  0.0331, "bush": -0.0848, "flower":  0.1183, "treb":  0.0359, "ice": -0.2327, "wall": -0.0089, "magma":  0.0193 },
-      "waterAb":   { "area":  0.0163, "spawnDist":  0.0061, "water": -0.0155, "detour":  0.0005, "bush":  0.0817, "flower":  0.0316, "treb": -0.0006, "ice":  0.0115, "wall": -0.0015, "magma": -0.0549 },
-      "ice":       { "area": -0.0446, "spawnDist": -0.0377, "water": -0.0124, "detour": -0.0187, "bush":  0.0004, "flower": -0.0220, "treb": -0.0279, "ice":  0.0366, "wall": -0.0158, "magma": -0.0683 },
-      "fire":      { "area": -0.0515, "spawnDist": -0.0187, "water": -0.0144, "detour": -0.0212, "bush":  0.0546, "flower": -0.0402, "treb": -0.0161, "ice":  0.1036, "wall":  0.0004, "magma": -0.0335 },
-      "terrainAb": { "area":  0.0143, "spawnDist":  0.0175, "water": -0.0007, "detour": -0.0077, "bush":  0.1381, "flower":  0.0112, "treb":  0.0073, "ice":  0.0938, "wall": -0.0195, "magma": -0.0765 },
-      "artillery": { "area":  0.0159, "spawnDist":  0.0067, "water":  0.0043, "detour":  0.0011, "bush":  0.0245, "flower": -0.0024, "treb":  0.0011, "ice":  0.0257, "wall": -0.0160, "magma": -0.0172 },
-      "legend":    { "area": -0.0118, "spawnDist":  0.0241, "water": -0.0689, "detour": -0.0405, "bush":  0.0338, "flower": -0.0633, "treb":  0.0361, "ice":  0.1115, "wall":  0.0683, "magma":  0.0112 }
+      "mov": {
+        "area": 0.0487,
+        "spawnDist": -0.0111,
+        "water": 0.009,
+        "detour": -0.0493,
+        "bush": -0.0136,
+        "flower": -0.0041,
+        "treb": -0.0149,
+        "ice": -0.0047,
+        "wall": -0.0396,
+        "magma": -0.0331
+      },
+      "hp": {
+        "area": 0.0652,
+        "spawnDist": -0.0014,
+        "water": 0.0326,
+        "detour": 0.1227,
+        "bush": 0.0209,
+        "flower": 0.043,
+        "treb": 0.0152,
+        "ice": -0.005,
+        "wall": 0.0705,
+        "magma": 0.0158
+      },
+      "swim": {
+        "area": 0.0117,
+        "spawnDist": -0.0816,
+        "water": 0.104,
+        "detour": 0.1087,
+        "bush": 0.0702,
+        "flower": 0.0037,
+        "treb": -0.0402,
+        "ice": 0.0417,
+        "wall": -0.0706,
+        "magma": -0.0053
+      },
+      "fly": {
+        "area": 0.0315,
+        "spawnDist": 0.0154,
+        "water": 0.1393,
+        "detour": 0.1473,
+        "bush": -0.0334,
+        "flower": -0.0524,
+        "treb": -0.0039,
+        "ice": -0.0281,
+        "wall": -0.007,
+        "magma": -0.0116
+      },
+      "reach": {
+        "area": 0.0615,
+        "spawnDist": 0.0026,
+        "water": 0.0196,
+        "detour": -0.1026,
+        "bush": 0.0437,
+        "flower": -0.0231,
+        "treb": -0.0381,
+        "ice": -0.0128,
+        "wall": -0.0442,
+        "magma": -0.0034
+      },
+      "waterAb": {
+        "area": -0.0267,
+        "spawnDist": -0.0132,
+        "water": 0.0916,
+        "detour": 0.0444,
+        "bush": -0.0035,
+        "flower": 0.071,
+        "treb": 0.0482,
+        "ice": 0.0211,
+        "wall": 0.0042,
+        "magma": 0.0216
+      },
+      "ice": {
+        "area": 0.083,
+        "spawnDist": 0.0455,
+        "water": -0.0554,
+        "detour": -0.0674,
+        "bush": 0.0561,
+        "flower": -0.092,
+        "treb": -0.014,
+        "ice": -0.0254,
+        "wall": -0.0571,
+        "magma": 0.0071
+      },
+      "fire": {
+        "area": -0.0097,
+        "spawnDist": 0.0307,
+        "water": 0.0039,
+        "detour": -0.0443,
+        "bush": 0.0245,
+        "flower": 0.0479,
+        "treb": 0.0109,
+        "ice": 0.0508,
+        "wall": -0.0063,
+        "magma": 0.0231
+      },
+      "terrainAb": {
+        "area": 0.0197,
+        "spawnDist": 0.0015,
+        "water": 0.0184,
+        "detour": -0.0262,
+        "bush": 0.0506,
+        "flower": 0.1151,
+        "treb": -0.0694,
+        "ice": -0.011,
+        "wall": 0.0071,
+        "magma": 0.006
+      },
+      "artillery": {
+        "area": 0.0271,
+        "spawnDist": 0.0365,
+        "water": -0.0703,
+        "detour": 0.1297,
+        "bush": -0.0678,
+        "flower": 0.0004,
+        "treb": -0.0121,
+        "ice": 0.0101,
+        "wall": 0.0363,
+        "magma": -0.0025
+      },
+      "legend": {
+        "area": 0.1156,
+        "spawnDist": 0.0661,
+        "water": 0.1395,
+        "detour": -0.1843,
+        "bush": 0.1177,
+        "flower": -0.0022,
+        "treb": 0.1973,
+        "ice": 0.0341,
+        "wall": -0.008,
+        "magma": -0.0199
+      }
     }
   },
   "namedMaps": {
-    "avia": {
-      "attackerEdge": -0.0177,
-      "cards": {
-        "ninetales":      { "attacker":  0.1326, "defender":  0.2019 },
-        "cetitan":        { "attacker":  0.1842, "defender":  0.0739 },
-        "groudon":        { "attacker": -0.0786, "defender": -0.1625 },
-        "infernape":      { "attacker":  0.0000, "defender": -0.2405 },
-        "archeops":       { "attacker":  0.1041, "defender":  0.1343 },
-        "zoroark-hisui":  { "attacker":  0.0783, "defender":  0.1339 },
-        "galvantula":     { "attacker":  0.0871, "defender": -0.1196 },
-        "golurk":         { "attacker": -0.0616, "defender":  0.1439 },
-        "drapion":        { "attacker":  0.0000, "defender": -0.2013 },
-        "roserade":       { "attacker":  0.0150, "defender": -0.1838 },
-        "tyranitar":      { "attacker": -0.1099, "defender":  0.0800 },
-        "espeon":         { "attacker": -0.0867, "defender": -0.0908 },
-        "gliscor":        { "attacker":  0.1386, "defender": -0.0374 },
-        "weezing":        { "attacker":  0.0744, "defender": -0.1003 },
-        "malamar":        { "attacker": -0.1032, "defender": -0.0688 },
-        "hydreigon":      { "attacker": -0.1069, "defender": -0.0644 },
-        "dewgong":        { "attacker": -0.0830, "defender":  0.0881 },
-        "tinkaton":       { "attacker": -0.0693, "defender":  0.1018 },
-        "suicune":        { "attacker": -0.0801, "defender": -0.0884 },
-        "primarina":      { "attacker": -0.1419, "defender":  0.0258 },
-        "heracross":      { "attacker":  0.1026, "defender": -0.0645 },
-        "dragapult":      { "attacker":  0.0730, "defender":  0.0884 },
-        "frosmoth":       { "attacker":  0.0689, "defender": -0.0902 },
-        "shedinja":       { "attacker": -0.0420, "defender": -0.1166 },
-        "breloom":        { "attacker": -0.1442, "defender": -0.0129 },
-        "crobat":         { "attacker": -0.1491, "defender": -0.0079 },
-        "reshiram":       { "attacker":  0.0907, "defender":  0.0609 },
-        "umbreon":        { "attacker":  0.1313, "defender": -0.0182 },
-        "pikachu":        { "attacker": -0.0392, "defender":  0.1098 },
-        "lumineon":       { "attacker":  0.1201, "defender":  0.0280 },
-        "blissey":        { "attacker": -0.1136, "defender":  0.0337 },
-        "gengar":         { "attacker":  0.0164, "defender": -0.1304 },
-        "froslass":       { "attacker":  0.0948, "defender": -0.0515 },
-        "butterfree":     { "attacker": -0.0942, "defender":  0.0515 },
-        "meganium":       { "attacker": -0.1017, "defender":  0.0427 },
-        "wigglytuff":     { "attacker": -0.0536, "defender": -0.0878 },
-        "amoonguss":      { "attacker":  0.1132, "defender":  0.0251 },
-        "porygonz":       { "attacker": -0.1029, "defender":  0.0322 },
-        "dragonite":      { "attacker":  0.1102, "defender":  0.0238 },
-        "furret":         { "attacker":  0.1323, "defender":  0.0000 },
-        "skarmory":       { "attacker": -0.0233, "defender":  0.1087 },
-        "raichu":         { "attacker":  0.0000, "defender":  0.1250 },
-        "solgaleo":       { "attacker": -0.0607, "defender": -0.0640 },
-        "lurantis":       { "attacker": -0.0181, "defender":  0.1065 },
-        "krookodile":     { "attacker":  0.1219, "defender":  0.0000 },
-        "ditto":          { "attacker": -0.0398, "defender":  0.0799 },
-        "wobbuffet":      { "attacker": -0.0594, "defender":  0.0569 },
-        "jirachi":        { "attacker": -0.0060, "defender": -0.1101 },
-        "aurorus":        { "attacker": -0.1161, "defender":  0.0000 },
-        "blastoise":      { "attacker": -0.0449, "defender":  0.0670 },
-        "sylveon":        { "attacker": -0.0435, "defender": -0.0678 },
-        "milotic":        { "attacker":  0.0138, "defender": -0.0956 },
-        "dodrio":         { "attacker":  0.0736, "defender": -0.0352 },
-        "tauros-paldean": { "attacker":  0.0383, "defender": -0.0672 },
-        "flygon":         { "attacker":  0.0317, "defender":  0.0735 },
-        "mew":            { "attacker":  0.0000, "defender": -0.1049 },
-        "slaking":        { "attacker": -0.0700, "defender":  0.0343 },
-        "snorlax":        { "attacker": -0.0379, "defender":  0.0653 },
-        "minior":         { "attacker":  0.0791, "defender":  0.0228 },
-        "staraptor":      { "attacker": -0.0677, "defender":  0.0319 },
-        "cherrim":        { "attacker": -0.0670, "defender":  0.0320 },
-        "ninjask":        { "attacker":  0.0772, "defender": -0.0184 },
-        "chien-pao":      { "attacker":  0.0887, "defender":  0.0066 },
-        "scrafty":        { "attacker": -0.0325, "defender": -0.0606 },
-        "arceus":         { "attacker":  0.0831, "defender":  0.0099 },
-        "banette":        { "attacker": -0.0455, "defender":  0.0468 },
-        "rampardos":      { "attacker":  0.0737, "defender": -0.0184 },
-        "altaria":        { "attacker": -0.0920, "defender":  0.0000 },
-        "charizard":      { "attacker":  0.0082, "defender": -0.0835 },
-        "volcarona":      { "attacker": -0.0189, "defender": -0.0725 },
-        "scream-tail":    { "attacker":  0.0852, "defender":  0.0000 },
-        "comfey":         { "attacker": -0.0313, "defender":  0.0527 },
-        "mamoswine":      { "attacker": -0.0142, "defender": -0.0663 },
-        "vivillon":       { "attacker":  0.0800, "defender":  0.0000 },
-        "togekiss":       { "attacker": -0.0481, "defender":  0.0272 },
-        "zygarde":        { "attacker": -0.0219, "defender":  0.0524 },
-        "cinccino":       { "attacker": -0.0680, "defender":  0.0050 },
-        "sinistcha":      { "attacker":  0.0181, "defender":  0.0549 },
-        "noivern":        { "attacker": -0.0163, "defender":  0.0562 },
-        "lugia":          { "attacker":  0.0608, "defender":  0.0100 },
-        "slowbro":        { "attacker":  0.0000, "defender": -0.0703 },
-        "reuniclus":      { "attacker":  0.0411, "defender":  0.0283 },
-        "sudowoodo":      { "attacker":  0.0317, "defender": -0.0351 },
-        "iron-valiant":   { "attacker":  0.0386, "defender": -0.0269 },
-        "kyogre":         { "attacker":  0.0000, "defender":  0.0652 },
-        "swalot":         { "attacker":  0.0000, "defender": -0.0646 },
-        "golisopod":      { "attacker": -0.0490, "defender":  0.0149 },
-        "xerneas":        { "attacker":  0.0269, "defender": -0.0341 },
-        "zapdos":         { "attacker":  0.0520, "defender":  0.0090 },
-        "corsola":        { "attacker":  0.0061, "defender":  0.0540 },
-        "kyurem":         { "attacker": -0.0601, "defender":  0.0000 },
-        "lunala":         { "attacker": -0.0526, "defender": -0.0068 },
-        "crawdaunt":      { "attacker": -0.0519, "defender":  0.0067 },
-        "luxray":         { "attacker":  0.0420, "defender":  0.0144 },
-        "zekrom":         { "attacker":  0.0259, "defender":  0.0301 },
-        "celebi":         { "attacker":  0.0000, "defender":  0.0532 },
-        "dialga":         { "attacker": -0.0083, "defender":  0.0410 },
-        "oricorio":       { "attacker": -0.0283, "defender":  0.0208 },
-        "clefable":       { "attacker":  0.0385, "defender":  0.0089 },
-        "ferrothorn":     { "attacker": -0.0314, "defender":  0.0149 },
-        "arcanine":       { "attacker":  0.0350, "defender": -0.0111 },
-        "octillery":      { "attacker":  0.0219, "defender":  0.0234 },
-        "haxorus":        { "attacker":  0.0077, "defender":  0.0360 },
-        "pelipper":       { "attacker": -0.0421, "defender":  0.0000 },
-        "yveltal":        { "attacker": -0.0192, "defender":  0.0222 },
-        "hawlucha":       { "attacker": -0.0319, "defender":  0.0052 },
-        "scizor":         { "attacker":  0.0000, "defender":  0.0342 },
-        "tauros":         { "attacker": -0.0320, "defender":  0.0000 },
-        "gyarados":       { "attacker": -0.0274, "defender":  0.0000 },
-        "mewtwo":         { "attacker":  0.0000, "defender":  0.0190 },
-        "metagross":      { "attacker":  0.0172, "defender":  0.0000 },
-        "venusaur":       { "attacker": -0.0124, "defender":  0.0000 }
-      }
-    },
-    "farm": {
-      "attackerEdge":  0.0350,
-      "cards": {
-        "butterfree":     { "attacker":  0.1718, "defender": -0.1519 },
-        "noivern":        { "attacker":  0.0737, "defender": -0.2134 },
-        "corsola":        { "attacker":  0.2178, "defender":  0.0633 },
-        "sudowoodo":      { "attacker":  0.2577, "defender":  0.0228 },
-        "golurk":         { "attacker": -0.0779, "defender": -0.1959 },
-        "galvantula":     { "attacker": -0.1406, "defender": -0.1309 },
-        "yveltal":        { "attacker": -0.0593, "defender": -0.1890 },
-        "tinkaton":       { "attacker": -0.2079, "defender":  0.0338 },
-        "heracross":      { "attacker": -0.0583, "defender": -0.1783 },
-        "krookodile":     { "attacker":  0.2035, "defender":  0.0314 },
-        "lumineon":       { "attacker": -0.1198, "defender":  0.1131 },
-        "dragonite":      { "attacker": -0.1575, "defender": -0.0706 },
-        "lurantis":       { "attacker":  0.2045, "defender": -0.0163 },
-        "porygonz":       { "attacker":  0.1662, "defender": -0.0539 },
-        "minior":         { "attacker": -0.1118, "defender":  0.1077 },
-        "slaking":        { "attacker":  0.1702, "defender": -0.0405 },
-        "gengar":         { "attacker":  0.1700, "defender":  0.0368 },
-        "zygarde":        { "attacker":  0.0722, "defender":  0.1335 },
-        "raichu":         { "attacker":  0.0000, "defender": -0.2047 },
-        "roserade":       { "attacker": -0.0495, "defender":  0.1502 },
-        "infernape":      { "attacker": -0.0765, "defender":  0.1190 },
-        "dragapult":      { "attacker": -0.0681, "defender": -0.1264 },
-        "lunala":         { "attacker":  0.1382, "defender":  0.0548 },
-        "lugia":          { "attacker": -0.1081, "defender":  0.0837 },
-        "ferrothorn":     { "attacker":  0.0328, "defender": -0.1583 },
-        "xerneas":        { "attacker":  0.0151, "defender":  0.1755 },
-        "gliscor":        { "attacker":  0.0139, "defender":  0.1751 },
-        "kyogre":         { "attacker":  0.0000, "defender": -0.1887 },
-        "solgaleo":       { "attacker":  0.0145, "defender":  0.1732 },
-        "cinccino":       { "attacker":  0.0826, "defender": -0.1002 },
-        "cetitan":        { "attacker": -0.1667, "defender":  0.0144 },
-        "dewgong":        { "attacker": -0.0099, "defender": -0.1688 },
-        "milotic":        { "attacker":  0.1037, "defender":  0.0743 },
-        "arcanine":       { "attacker": -0.1752, "defender":  0.0000 },
-        "golisopod":      { "attacker":  0.1554, "defender": -0.0178 },
-        "hydreigon":      { "attacker": -0.0514, "defender":  0.1102 },
-        "frosmoth":       { "attacker": -0.1289, "defender": -0.0318 },
-        "oricorio":       { "attacker": -0.0667, "defender":  0.0885 },
-        "vivillon":       { "attacker": -0.0792, "defender":  0.0739 },
-        "togekiss":       { "attacker":  0.1360, "defender": -0.0117 },
-        "clefable":       { "attacker": -0.0630, "defender":  0.0839 },
-        "staraptor":      { "attacker": -0.0122, "defender": -0.1281 },
-        "froslass":       { "attacker": -0.0808, "defender":  0.0578 },
-        "malamar":        { "attacker":  0.1136, "defender": -0.0233 },
-        "suicune":        { "attacker":  0.0327, "defender":  0.1016 },
-        "lapras":         { "attacker": -0.0064, "defender":  0.1267 },
-        "skarmory":       { "attacker": -0.0860, "defender": -0.0469 },
-        "wigglytuff":     { "attacker": -0.0052, "defender": -0.1264 },
-        "ditto":          { "attacker":  0.0000, "defender": -0.1310 },
-        "crawdaunt":      { "attacker": -0.0338, "defender": -0.0952 },
-        "blissey":        { "attacker": -0.0578, "defender": -0.0711 },
-        "scream-tail":    { "attacker": -0.1276, "defender":  0.0000 },
-        "zapdos":         { "attacker":  0.0437, "defender": -0.0830 },
-        "breloom":        { "attacker": -0.0295, "defender":  0.0970 },
-        "meganium":       { "attacker":  0.1164, "defender":  0.0089 },
-        "dodrio":         { "attacker": -0.1082, "defender": -0.0166 },
-        "ninetales":      { "attacker":  0.1146, "defender":  0.0083 },
-        "espeon":         { "attacker": -0.1110, "defender":  0.0114 },
-        "pelipper":       { "attacker":  0.0245, "defender": -0.0976 },
-        "comfey":         { "attacker":  0.1153, "defender":  0.0051 },
-        "flygon":         { "attacker":  0.0579, "defender":  0.0598 },
-        "archeops":       { "attacker": -0.0515, "defender":  0.0627 },
-        "weezing":        { "attacker": -0.0565, "defender":  0.0543 },
-        "cherrim":        { "attacker":  0.0193, "defender":  0.0900 },
-        "jirachi":        { "attacker": -0.0457, "defender":  0.0617 },
-        "wobbuffet":      { "attacker":  0.0672, "defender": -0.0361 },
-        "groudon":        { "attacker":  0.0300, "defender": -0.0731 },
-        "banette":        { "attacker": -0.0078, "defender":  0.0933 },
-        "amoonguss":      { "attacker": -0.0634, "defender": -0.0327 },
-        "mamoswine":      { "attacker": -0.0692, "defender":  0.0266 },
-        "rampardos":      { "attacker":  0.0123, "defender":  0.0822 },
-        "reuniclus":      { "attacker": -0.0691, "defender": -0.0225 },
-        "luxray":         { "attacker":  0.0472, "defender":  0.0427 },
-        "scizor":         { "attacker":  0.0000, "defender":  0.0881 },
-        "dialga":         { "attacker": -0.0397, "defender": -0.0436 },
-        "aurorus":        { "attacker":  0.0830, "defender":  0.0000 },
-        "tauros":         { "attacker": -0.0795, "defender":  0.0000 },
-        "volcarona":      { "attacker": -0.0503, "defender":  0.0279 },
-        "primarina":      { "attacker":  0.0000, "defender":  0.0766 },
-        "shedinja":       { "attacker":  0.0313, "defender": -0.0424 },
-        "blastoise":      { "attacker": -0.0601, "defender": -0.0096 },
-        "octillery":      { "attacker":  0.0198, "defender": -0.0495 },
-        "mewtwo":         { "attacker":  0.0000, "defender":  0.0649 },
-        "crobat":         { "attacker":  0.0573, "defender":  0.0069 },
-        "charizard":      { "attacker": -0.0071, "defender": -0.0569 },
-        "metagross":      { "attacker": -0.0639, "defender":  0.0000 },
-        "venusaur":       { "attacker":  0.0279, "defender": -0.0359 },
-        "mew":            { "attacker":  0.0000, "defender":  0.0626 },
-        "tyranitar":      { "attacker":  0.0495, "defender":  0.0129 },
-        "hawlucha":       { "attacker":  0.0432, "defender":  0.0182 },
-        "tauros-paldean": { "attacker": -0.0376, "defender":  0.0229 },
-        "snorlax":        { "attacker":  0.0325, "defender":  0.0273 },
-        "gyarados":       { "attacker": -0.0588, "defender":  0.0000 },
-        "chien-pao":      { "attacker":  0.0235, "defender":  0.0339 },
-        "zoroark-hisui":  { "attacker":  0.0446, "defender": -0.0115 },
-        "arceus":         { "attacker":  0.0000, "defender":  0.0557 },
-        "zekrom":         { "attacker":  0.0054, "defender": -0.0496 },
-        "ninjask":        { "attacker": -0.0125, "defender":  0.0416 },
-        "drapion":        { "attacker":  0.0000, "defender": -0.0501 },
-        "kyurem":         { "attacker": -0.0380, "defender":  0.0095 },
-        "furret":         { "attacker": -0.0281, "defender":  0.0100 },
-        "haxorus":        { "attacker":  0.0078, "defender": -0.0300 },
-        "iron-valiant":   { "attacker": -0.0224, "defender": -0.0151 },
-        "sylveon":        { "attacker":  0.0192, "defender": -0.0110 },
-        "reshiram":       { "attacker": -0.0137, "defender": -0.0148 },
-        "sinistcha":      { "attacker":  0.0276, "defender":  0.0000 },
-        "altaria":        { "attacker":  0.0169, "defender":  0.0099 },
-        "pikachu":        { "attacker":  0.0000, "defender":  0.0257 },
-        "umbreon":        { "attacker":  0.0164, "defender":  0.0090 },
-        "swalot":         { "attacker":  0.0000, "defender":  0.0215 },
-        "rayquaza":       { "attacker": -0.0204, "defender":  0.0000 },
-        "slowbro":        { "attacker": -0.0125, "defender": -0.0074 },
-        "scrafty":        { "attacker":  0.0000, "defender": -0.0179 },
-        "celebi":         { "attacker": -0.0169, "defender":  0.0000 },
-        "whimsicott":     { "attacker":  0.0000, "defender":  0.0094 }
-      }
-    },
-    "ice": {
-      "attackerEdge":  0.0016,
-      "cards": {
-        "dragapult":      { "attacker": -0.0843, "defender": -0.2176 },
-        "tyranitar":      { "attacker": -0.1890, "defender":  0.1052 },
-        "banette":        { "attacker":  0.0257, "defender": -0.2435 },
-        "staraptor":      { "attacker":  0.1626, "defender":  0.1048 },
-        "archeops":       { "attacker": -0.0325, "defender": -0.2136 },
-        "umbreon":        { "attacker": -0.0722, "defender":  0.1637 },
-        "reuniclus":      { "attacker":  0.1388, "defender": -0.0909 },
-        "groudon":        { "attacker": -0.1004, "defender":  0.1273 },
-        "butterfree":     { "attacker": -0.2063, "defender": -0.0205 },
-        "blissey":        { "attacker":  0.1424, "defender": -0.0839 },
-        "ninjask":        { "attacker":  0.1085, "defender":  0.1105 },
-        "espeon":         { "attacker": -0.1164, "defender":  0.1012 },
-        "zoroark-hisui":  { "attacker": -0.0809, "defender": -0.1253 },
-        "volcarona":      { "attacker": -0.0239, "defender":  0.1800 },
-        "primarina":      { "attacker": -0.0211, "defender": -0.1754 },
-        "drapion":        { "attacker":  0.0000, "defender":  0.1863 },
-        "zygarde":        { "attacker":  0.1045, "defender": -0.0775 },
-        "comfey":         { "attacker":  0.0252, "defender": -0.1566 },
-        "wobbuffet":      { "attacker": -0.0811, "defender":  0.1005 },
-        "dodrio":         { "attacker":  0.1452, "defender":  0.0358 },
-        "weezing":        { "attacker": -0.1192, "defender": -0.0616 },
-        "xerneas":        { "attacker":  0.0308, "defender": -0.1486 },
-        "breloom":        { "attacker": -0.0911, "defender": -0.0879 },
-        "tinkaton":       { "attacker": -0.1060, "defender": -0.0623 },
-        "metagross":      { "attacker":  0.1674, "defender":  0.0000 },
-        "dragonite":      { "attacker": -0.0574, "defender": -0.1092 },
-        "aurorus":        { "attacker":  0.1654, "defender":  0.0000 },
-        "ninetales":      { "attacker":  0.0713, "defender": -0.0934 },
-        "jirachi":        { "attacker": -0.0197, "defender":  0.1437 },
-        "scizor":         { "attacker":  0.0000, "defender": -0.1584 },
-        "oricorio":       { "attacker":  0.1164, "defender":  0.0372 },
-        "corsola":        { "attacker": -0.0631, "defender":  0.0893 },
-        "froslass":       { "attacker": -0.0416, "defender":  0.1046 },
-        "ferrothorn":     { "attacker":  0.0479, "defender": -0.0980 },
-        "krookodile":     { "attacker": -0.0667, "defender": -0.0788 },
-        "luxray":         { "attacker":  0.1044, "defender":  0.0363 },
-        "galvantula":     { "attacker": -0.0633, "defender":  0.0770 },
-        "minior":         { "attacker":  0.0638, "defender":  0.0757 },
-        "golisopod":      { "attacker": -0.1051, "defender":  0.0319 },
-        "suicune":        { "attacker":  0.0866, "defender": -0.0504 },
-        "gliscor":        { "attacker": -0.0518, "defender": -0.0851 },
-        "meganium":       { "attacker": -0.0666, "defender":  0.0696 },
-        "sudowoodo":      { "attacker": -0.1192, "defender": -0.0156 },
-        "haxorus":        { "attacker":  0.0960, "defender":  0.0345 },
-        "rampardos":      { "attacker": -0.0897, "defender":  0.0406 },
-        "snorlax":        { "attacker":  0.1005, "defender": -0.0290 },
-        "crawdaunt":      { "attacker":  0.0565, "defender": -0.0678 },
-        "solgaleo":       { "attacker":  0.0375, "defender":  0.0838 },
-        "heracross":      { "attacker": -0.0369, "defender":  0.0839 },
-        "cetitan":        { "attacker": -0.0803, "defender": -0.0402 },
-        "noivern":        { "attacker": -0.0350, "defender":  0.0853 },
-        "crobat":         { "attacker":  0.1192, "defender":  0.0000 },
-        "infernape":      { "attacker":  0.0619, "defender":  0.0561 },
-        "iron-valiant":   { "attacker": -0.0851, "defender": -0.0308 },
-        "venusaur":       { "attacker":  0.0770, "defender": -0.0382 },
-        "skarmory":       { "attacker": -0.0708, "defender": -0.0428 },
-        "cherrim":        { "attacker":  0.0406, "defender": -0.0724 },
-        "golurk":         { "attacker":  0.0226, "defender":  0.0888 },
-        "lumineon":       { "attacker": -0.0308, "defender":  0.0781 },
-        "cinccino":       { "attacker":  0.0403, "defender": -0.0684 },
-        "slaking":        { "attacker": -0.0732, "defender":  0.0315 },
-        "wigglytuff":     { "attacker":  0.0515, "defender":  0.0532 },
-        "scrafty":        { "attacker":  0.0739, "defender": -0.0273 },
-        "shedinja":       { "attacker":  0.0820, "defender":  0.0164 },
-        "amoonguss":      { "attacker": -0.0614, "defender":  0.0361 },
-        "dialga":         { "attacker": -0.0101, "defender": -0.0850 },
-        "charizard":      { "attacker":  0.0000, "defender":  0.0948 },
-        "vivillon":       { "attacker": -0.0489, "defender": -0.0451 },
-        "sylveon":        { "attacker":  0.0433, "defender":  0.0496 },
-        "tauros-paldean": { "attacker":  0.0203, "defender":  0.0714 },
-        "kyogre":         { "attacker":  0.0000, "defender":  0.0903 },
-        "arceus":         { "attacker": -0.0664, "defender":  0.0234 },
-        "frosmoth":       { "attacker":  0.0345, "defender":  0.0489 },
-        "altaria":        { "attacker":  0.0831, "defender":  0.0000 },
-        "hydreigon":      { "attacker": -0.0070, "defender": -0.0741 },
-        "slowbro":        { "attacker": -0.0080, "defender":  0.0714 },
-        "togekiss":       { "attacker":  0.0313, "defender": -0.0473 },
-        "lugia":          { "attacker":  0.0587, "defender":  0.0195 },
-        "lunala":         { "attacker":  0.0687, "defender":  0.0079 },
-        "gengar":         { "attacker": -0.0433, "defender":  0.0332 },
-        "yveltal":        { "attacker": -0.0357, "defender":  0.0390 },
-        "blastoise":      { "attacker": -0.0732, "defender":  0.0000 },
-        "sinistcha":      { "attacker": -0.0079, "defender": -0.0613 },
-        "porygonz":       { "attacker":  0.0226, "defender":  0.0454 },
-        "reshiram":       { "attacker": -0.0267, "defender": -0.0405 },
-        "ditto":          { "attacker":  0.0454, "defender": -0.0190 },
-        "kyurem":         { "attacker": -0.0639, "defender":  0.0000 },
-        "chien-pao":      { "attacker": -0.0487, "defender":  0.0142 },
-        "scream-tail":    { "attacker": -0.0622, "defender":  0.0000 },
-        "pikachu":        { "attacker":  0.0160, "defender":  0.0460 },
-        "tauros":         { "attacker":  0.0618, "defender":  0.0000 },
-        "malamar":        { "attacker":  0.0149, "defender":  0.0465 },
-        "milotic":        { "attacker":  0.0075, "defender": -0.0513 },
-        "pelipper":       { "attacker":  0.0487, "defender":  0.0084 },
-        "dewgong":        { "attacker":  0.0000, "defender": -0.0557 },
-        "octillery":      { "attacker":  0.0000, "defender":  0.0478 },
-        "lurantis":       { "attacker": -0.0363, "defender":  0.0112 },
-        "mamoswine":      { "attacker": -0.0163, "defender": -0.0311 },
-        "furret":         { "attacker":  0.0473, "defender":  0.0000 },
-        "raichu":         { "attacker":  0.0000, "defender": -0.0468 },
-        "hawlucha":       { "attacker": -0.0294, "defender":  0.0144 },
-        "zapdos":         { "attacker": -0.0180, "defender":  0.0250 },
-        "swalot":         { "attacker":  0.0000, "defender": -0.0392 },
-        "zekrom":         { "attacker":  0.0108, "defender":  0.0280 },
-        "clefable":       { "attacker": -0.0165, "defender":  0.0182 },
-        "gyarados":       { "attacker":  0.0293, "defender":  0.0000 },
-        "flygon":         { "attacker": -0.0159, "defender": -0.0127 },
-        "mewtwo":         { "attacker":  0.0000, "defender":  0.0277 },
-        "mew":            { "attacker":  0.0000, "defender":  0.0250 },
-        "lapras":         { "attacker":  0.0000, "defender":  0.0243 },
-        "celebi":         { "attacker":  0.0000, "defender": -0.0177 },
-        "roserade":       { "attacker":  0.0000, "defender": -0.0144 },
-        "rayquaza":       { "attacker": -0.0131, "defender":  0.0000 },
-        "arcanine":       { "attacker": -0.0086, "defender":  0.0000 },
-        "whimsicott":     { "attacker":  0.0000, "defender":  0.0050 }
-      }
-    },
     "meadow": {
-      "attackerEdge": -0.1120,
+      "attackerEdge": 0.0808,
       "cards": {
-        "dewgong":        { "attacker":  0.2186, "defender":  0.1168 },
-        "espeon":         { "attacker":  0.1469, "defender": -0.1751 },
-        "dragonite":      { "attacker": -0.1013, "defender": -0.2051 },
-        "gliscor":        { "attacker": -0.0734, "defender": -0.2280 },
-        "wobbuffet":      { "attacker":  0.1281, "defender": -0.1506 },
-        "cetitan":        { "attacker": -0.1304, "defender":  0.1265 },
-        "rampardos":      { "attacker":  0.0417, "defender": -0.2103 },
-        "staraptor":      { "attacker": -0.1126, "defender": -0.1201 },
-        "wigglytuff":     { "attacker": -0.1422, "defender":  0.0905 },
-        "krookodile":     { "attacker": -0.2126, "defender":  0.0166 },
-        "golisopod":      { "attacker":  0.0868, "defender": -0.1354 },
-        "umbreon":        { "attacker": -0.1876, "defender": -0.0240 },
-        "volcarona":      { "attacker":  0.0764, "defender": -0.1352 },
-        "galvantula":     { "attacker": -0.0056, "defender":  0.2039 },
-        "corsola":        { "attacker":  0.1659, "defender":  0.0392 },
-        "gyarados":       { "attacker":  0.2038, "defender":  0.0000 },
-        "arceus":         { "attacker": -0.1209, "defender": -0.0784 },
-        "lunala":         { "attacker": -0.1015, "defender": -0.0958 },
-        "flygon":         { "attacker": -0.1525, "defender":  0.0413 },
-        "lugia":          { "attacker":  0.0326, "defender": -0.1585 },
-        "heracross":      { "attacker": -0.0377, "defender":  0.1488 },
-        "golurk":         { "attacker": -0.1574, "defender": -0.0266 },
-        "reuniclus":      { "attacker":  0.0993, "defender":  0.0845 },
-        "lumineon":       { "attacker": -0.0989, "defender":  0.0835 },
-        "breloom":        { "attacker":  0.1157, "defender": -0.0648 },
-        "ditto":          { "attacker":  0.1434, "defender": -0.0305 },
-        "amoonguss":      { "attacker":  0.0914, "defender":  0.0790 },
-        "blastoise":      { "attacker":  0.0612, "defender":  0.1054 },
-        "archeops":       { "attacker": -0.0345, "defender":  0.1321 },
-        "furret":         { "attacker":  0.1599, "defender":  0.0067 },
-        "sinistcha":      { "attacker":  0.0605, "defender":  0.1052 },
-        "lurantis":       { "attacker": -0.0395, "defender": -0.1244 },
-        "minior":         { "attacker": -0.0902, "defender":  0.0715 },
-        "dodrio":         { "attacker": -0.0902, "defender": -0.0704 },
-        "meganium":       { "attacker": -0.1416, "defender":  0.0144 },
-        "celebi":         { "attacker": -0.0106, "defender": -0.1448 },
-        "snorlax":        { "attacker": -0.0723, "defender": -0.0804 },
-        "ninjask":        { "attacker":  0.0447, "defender":  0.1044 },
-        "tyranitar":      { "attacker": -0.0103, "defender": -0.1370 },
-        "butterfree":     { "attacker":  0.1089, "defender": -0.0347 },
-        "roserade":       { "attacker": -0.0376, "defender":  0.1049 },
-        "scream-tail":    { "attacker":  0.1403, "defender":  0.0000 },
-        "kyogre":         { "attacker":  0.0000, "defender":  0.1398 },
-        "shedinja":       { "attacker": -0.0850, "defender":  0.0543 },
-        "vivillon":       { "attacker": -0.0652, "defender": -0.0738 },
-        "togekiss":       { "attacker":  0.0314, "defender":  0.1064 },
-        "comfey":         { "attacker":  0.1232, "defender":  0.0110 },
-        "jirachi":        { "attacker":  0.0851, "defender":  0.0481 },
-        "froslass":       { "attacker": -0.0956, "defender":  0.0331 },
-        "yveltal":        { "attacker": -0.0488, "defender":  0.0792 },
-        "ninetales":      { "attacker": -0.0804, "defender": -0.0450 },
-        "blissey":        { "attacker":  0.0749, "defender":  0.0471 },
-        "venusaur":       { "attacker":  0.0651, "defender":  0.0558 },
-        "suicune":        { "attacker":  0.0418, "defender":  0.0779 },
-        "zoroark-hisui":  { "attacker": -0.0588, "defender": -0.0601 },
-        "crawdaunt":      { "attacker":  0.0073, "defender":  0.1109 },
-        "dragapult":      { "attacker":  0.0712, "defender": -0.0459 },
-        "reshiram":       { "attacker": -0.1042, "defender": -0.0111 },
-        "dialga":         { "attacker": -0.0380, "defender":  0.0773 },
-        "haxorus":        { "attacker": -0.0652, "defender": -0.0477 },
-        "cherrim":        { "attacker":  0.0299, "defender":  0.0785 },
-        "oricorio":       { "attacker": -0.0491, "defender": -0.0588 },
-        "skarmory":       { "attacker": -0.0571, "defender": -0.0507 },
-        "scrafty":        { "attacker": -0.0823, "defender": -0.0240 },
-        "infernape":      { "attacker": -0.0452, "defender":  0.0611 },
-        "chien-pao":      { "attacker": -0.0769, "defender":  0.0291 },
-        "swalot":         { "attacker":  0.0000, "defender":  0.1057 },
-        "slaking":        { "attacker": -0.0480, "defender": -0.0573 },
-        "banette":        { "attacker":  0.0172, "defender": -0.0878 },
-        "hawlucha":       { "attacker": -0.0926, "defender":  0.0111 },
-        "noivern":        { "attacker": -0.0719, "defender":  0.0317 },
-        "luxray":         { "attacker":  0.0778, "defender":  0.0242 },
-        "slowbro":        { "attacker": -0.0090, "defender":  0.0930 },
-        "zekrom":         { "attacker":  0.0092, "defender":  0.0870 },
-        "ferrothorn":     { "attacker":  0.0286, "defender":  0.0619 },
-        "octillery":      { "attacker":  0.0250, "defender":  0.0646 },
-        "gengar":         { "attacker":  0.0644, "defender":  0.0236 },
-        "clefable":       { "attacker": -0.0390, "defender": -0.0480 },
-        "porygonz":       { "attacker": -0.0140, "defender":  0.0717 },
-        "zapdos":         { "attacker": -0.0142, "defender": -0.0683 },
-        "tauros":         { "attacker":  0.0788, "defender":  0.0000 },
-        "milotic":        { "attacker": -0.0212, "defender":  0.0566 },
-        "crobat":         { "attacker":  0.0775, "defender":  0.0000 },
-        "altaria":        { "attacker":  0.0631, "defender":  0.0113 },
-        "mew":            { "attacker":  0.0000, "defender":  0.0744 },
-        "sudowoodo":      { "attacker":  0.0601, "defender": -0.0095 },
-        "hydreigon":      { "attacker": -0.0118, "defender": -0.0576 },
-        "mamoswine":      { "attacker": -0.0592, "defender": -0.0084 },
-        "groudon":        { "attacker": -0.0460, "defender":  0.0204 },
-        "frosmoth":       { "attacker":  0.0000, "defender":  0.0659 },
-        "metagross":      { "attacker":  0.0647, "defender":  0.0000 },
-        "scizor":         { "attacker":  0.0000, "defender":  0.0625 },
-        "mewtwo":         { "attacker":  0.0000, "defender":  0.0622 },
-        "weezing":        { "attacker": -0.0213, "defender":  0.0407 },
-        "zygarde":        { "attacker": -0.0477, "defender": -0.0133 },
-        "primarina":      { "attacker":  0.0258, "defender":  0.0324 },
-        "pelipper":       { "attacker":  0.0221, "defender":  0.0309 },
-        "tinkaton":       { "attacker": -0.0324, "defender": -0.0202 },
-        "xerneas":        { "attacker":  0.0193, "defender":  0.0318 },
-        "iron-valiant":   { "attacker": -0.0256, "defender": -0.0193 },
-        "cinccino":       { "attacker": -0.0188, "defender": -0.0226 },
-        "charizard":      { "attacker":  0.0000, "defender":  0.0410 },
-        "kyurem":         { "attacker": -0.0289, "defender":  0.0092 },
-        "pikachu":        { "attacker":  0.0162, "defender": -0.0189 },
-        "sylveon":        { "attacker":  0.0171, "defender": -0.0147 },
-        "tauros-paldean": { "attacker": -0.0159, "defender": -0.0149 },
-        "lapras":         { "attacker": -0.0057, "defender": -0.0233 },
-        "aurorus":        { "attacker": -0.0263, "defender":  0.0000 },
-        "malamar":        { "attacker":  0.0000, "defender": -0.0224 },
-        "arcanine":       { "attacker": -0.0094, "defender": -0.0117 },
-        "solgaleo":       { "attacker":  0.0135, "defender":  0.0052 },
-        "raichu":         { "attacker":  0.0000, "defender": -0.0143 },
-        "drapion":        { "attacker":  0.0000, "defender":  0.0128 },
-        "rayquaza":       { "attacker": -0.0125, "defender":  0.0000 },
-        "whimsicott":     { "attacker":  0.0000, "defender":  0.0066 }
+        "zekrom": {
+          "attacker": 0.1656,
+          "defender": 0.1029
+        },
+        "octillery": {
+          "attacker": 0.119,
+          "defender": -0.0404
+        },
+        "dragonite": {
+          "attacker": 0.1047,
+          "defender": -0.0364
+        },
+        "lunala": {
+          "attacker": 0.0662,
+          "defender": 0.0488
+        },
+        "primarina": {
+          "attacker": -0.0428,
+          "defender": 0.0722
+        },
+        "raichu": {
+          "attacker": 0.0859,
+          "defender": 0.0263
+        },
+        "cherrim": {
+          "attacker": 0.041,
+          "defender": -0.0708
+        },
+        "crawdaunt": {
+          "attacker": -0.0464,
+          "defender": 0.0597
+        },
+        "rampardos": {
+          "attacker": -0.0521,
+          "defender": 0.0529
+        },
+        "tinkaton": {
+          "attacker": 0.0,
+          "defender": 0.1041
+        },
+        "tyranitar": {
+          "attacker": 0.0721,
+          "defender": 0.0283
+        },
+        "groudon": {
+          "attacker": 0.0,
+          "defender": 0.1002
+        },
+        "dragapult": {
+          "attacker": 0.0568,
+          "defender": -0.0405
+        },
+        "blastoise": {
+          "attacker": 0.0316,
+          "defender": 0.0648
+        },
+        "amoonguss": {
+          "attacker": -0.0481,
+          "defender": 0.045
+        },
+        "togekiss": {
+          "attacker": 0.0396,
+          "defender": 0.0517
+        },
+        "mamoswine": {
+          "attacker": -0.0308,
+          "defender": -0.0586
+        },
+        "rayquaza": {
+          "attacker": -0.0449,
+          "defender": -0.0437
+        },
+        "gliscor": {
+          "attacker": -0.0556,
+          "defender": -0.0329
+        },
+        "comfey": {
+          "attacker": -0.015,
+          "defender": -0.0723
+        },
+        "breloom": {
+          "attacker": 0.0696,
+          "defender": 0.0168
+        },
+        "meganium": {
+          "attacker": 0.0157,
+          "defender": 0.0689
+        },
+        "ninjask": {
+          "attacker": 0.0531,
+          "defender": -0.0295
+        },
+        "porygonz": {
+          "attacker": 0.0293,
+          "defender": 0.0512
+        },
+        "staraptor": {
+          "attacker": -0.0308,
+          "defender": -0.0496
+        },
+        "gyarados": {
+          "attacker": -0.0396,
+          "defender": -0.039
+        },
+        "lurantis": {
+          "attacker": -0.0435,
+          "defender": -0.0335
+        },
+        "hydreigon": {
+          "attacker": 0.0057,
+          "defender": -0.0685
+        },
+        "cetitan": {
+          "attacker": 0.0453,
+          "defender": 0.0287
+        },
+        "frosmoth": {
+          "attacker": -0.0337,
+          "defender": -0.0381
+        },
+        "scizor": {
+          "attacker": -0.0544,
+          "defender": 0.0171
+        },
+        "aurorus": {
+          "attacker": 0.0473,
+          "defender": 0.0239
+        },
+        "swalot": {
+          "attacker": -0.0093,
+          "defender": -0.0611
+        },
+        "umbreon": {
+          "attacker": 0.0337,
+          "defender": -0.0366
+        },
+        "reuniclus": {
+          "attacker": 0.0376,
+          "defender": -0.0325
+        },
+        "krookodile": {
+          "attacker": 0.0355,
+          "defender": 0.0331
+        },
+        "golurk": {
+          "attacker": -0.0424,
+          "defender": -0.0244
+        },
+        "shedinja": {
+          "attacker": 0.0471,
+          "defender": -0.0167
+        },
+        "tauros": {
+          "attacker": 0.0,
+          "defender": -0.0633
+        },
+        "lumineon": {
+          "attacker": 0.0406,
+          "defender": 0.0226
+        },
+        "slaking": {
+          "attacker": -0.0398,
+          "defender": -0.0224
+        },
+        "arcanine": {
+          "attacker": 0.0199,
+          "defender": -0.0418
+        },
+        "dodrio": {
+          "attacker": -0.0207,
+          "defender": 0.0405
+        },
+        "corsola": {
+          "attacker": -0.0347,
+          "defender": -0.0264
+        },
+        "oricorio": {
+          "attacker": -0.0492,
+          "defender": -0.0118
+        },
+        "wigglytuff": {
+          "attacker": 0.0426,
+          "defender": -0.0155
+        },
+        "weezing": {
+          "attacker": -0.0315,
+          "defender": -0.0265
+        },
+        "yveltal": {
+          "attacker": 0.0162,
+          "defender": -0.0412
+        },
+        "wobbuffet": {
+          "attacker": 0.0327,
+          "defender": -0.0242
+        },
+        "espeon": {
+          "attacker": -0.0319,
+          "defender": -0.0236
+        },
+        "froslass": {
+          "attacker": 0.0388,
+          "defender": -0.0159
+        },
+        "zoroark-hisui": {
+          "attacker": 0.0,
+          "defender": -0.0532
+        },
+        "heracross": {
+          "attacker": -0.0198,
+          "defender": -0.0325
+        },
+        "volcarona": {
+          "attacker": -0.0507,
+          "defender": 0.0
+        },
+        "noivern": {
+          "attacker": 0.0257,
+          "defender": 0.0245
+        },
+        "ditto": {
+          "attacker": 0.0433,
+          "defender": -0.0067
+        },
+        "furret": {
+          "attacker": -0.0255,
+          "defender": -0.0241
+        },
+        "butterfree": {
+          "attacker": 0.0402,
+          "defender": -0.0092
+        },
+        "minior": {
+          "attacker": -0.0231,
+          "defender": -0.0263
+        },
+        "sinistcha": {
+          "attacker": -0.0267,
+          "defender": -0.0219
+        },
+        "roserade": {
+          "attacker": 0.0474,
+          "defender": 0.0
+        },
+        "ferrothorn": {
+          "attacker": -0.0304,
+          "defender": -0.0156
+        },
+        "blissey": {
+          "attacker": 0.0316,
+          "defender": -0.0142
+        },
+        "malamar": {
+          "attacker": -0.0137,
+          "defender": -0.0299
+        },
+        "mewtwo": {
+          "attacker": -0.0279,
+          "defender": 0.0148
+        },
+        "sudowoodo": {
+          "attacker": -0.0222,
+          "defender": -0.019
+        },
+        "hawlucha": {
+          "attacker": -0.0172,
+          "defender": -0.023
+        },
+        "altaria": {
+          "attacker": 0.0,
+          "defender": -0.0399
+        },
+        "flygon": {
+          "attacker": -0.0393,
+          "defender": 0.0
+        },
+        "clefable": {
+          "attacker": -0.0215,
+          "defender": -0.0175
+        },
+        "reshiram": {
+          "attacker": -0.0239,
+          "defender": 0.0149
+        },
+        "whimsicott": {
+          "attacker": 0.0185,
+          "defender": 0.0201
+        },
+        "galvantula": {
+          "attacker": -0.0246,
+          "defender": -0.0133
+        },
+        "haxorus": {
+          "attacker": 0.0145,
+          "defender": 0.0214
+        },
+        "kyogre": {
+          "attacker": -0.0266,
+          "defender": -0.0085
+        },
+        "milotic": {
+          "attacker": 0.0279,
+          "defender": -0.0063
+        },
+        "sylveon": {
+          "attacker": 0.0184,
+          "defender": -0.0154
+        },
+        "charizard": {
+          "attacker": -0.0259,
+          "defender": -0.0076
+        },
+        "slowbro": {
+          "attacker": -0.0266,
+          "defender": -0.0065
+        },
+        "lapras": {
+          "attacker": 0.0,
+          "defender": -0.0331
+        },
+        "dewgong": {
+          "attacker": 0.0,
+          "defender": 0.033
+        },
+        "vivillon": {
+          "attacker": -0.007,
+          "defender": 0.0255
+        },
+        "crobat": {
+          "attacker": -0.0252,
+          "defender": 0.0054
+        },
+        "drapion": {
+          "attacker": 0.017,
+          "defender": 0.0131
+        },
+        "golisopod": {
+          "attacker": -0.0296,
+          "defender": 0.0
+        },
+        "infernape": {
+          "attacker": 0.0269,
+          "defender": 0.0
+        },
+        "gengar": {
+          "attacker": -0.0051,
+          "defender": -0.0204
+        },
+        "scrafty": {
+          "attacker": -0.0165,
+          "defender": 0.0084
+        },
+        "pelipper": {
+          "attacker": 0.0,
+          "defender": -0.0234
+        },
+        "pikachu": {
+          "attacker": -0.0219,
+          "defender": 0.0
+        },
+        "cinccino": {
+          "attacker": 0.0,
+          "defender": -0.0212
+        },
+        "metagross": {
+          "attacker": 0.0,
+          "defender": -0.0205
+        },
+        "snorlax": {
+          "attacker": 0.0,
+          "defender": 0.0196
+        },
+        "skarmory": {
+          "attacker": 0.0,
+          "defender": 0.0177
+        },
+        "ninetales": {
+          "attacker": 0.0,
+          "defender": 0.0172
+        },
+        "luxray": {
+          "attacker": 0.0,
+          "defender": 0.0156
+        },
+        "archeops": {
+          "attacker": 0.0,
+          "defender": 0.0106
+        },
+        "venusaur": {
+          "attacker": 0.0,
+          "defender": -0.0088
+        }
       }
     },
     "river": {
-      "attackerEdge":  0.0711,
+      "attackerEdge": 0.3251,
       "cards": {
-        "banette":        { "attacker":  0.1331, "defender":  0.1964 },
-        "luxray":         { "attacker": -0.2200, "defender": -0.0869 },
-        "ninjask":        { "attacker": -0.1268, "defender": -0.1689 },
-        "dragonite":      { "attacker":  0.0743, "defender":  0.1974 },
-        "tinkaton":       { "attacker":  0.2543, "defender":  0.0171 },
-        "sinistcha":      { "attacker": -0.1332, "defender": -0.1330 },
-        "skarmory":       { "attacker":  0.1890, "defender": -0.0601 },
-        "cetitan":        { "attacker":  0.0793, "defender": -0.1669 },
-        "umbreon":        { "attacker":  0.1260, "defender": -0.1194 },
-        "metagross":      { "attacker": -0.2255, "defender":  0.0054 },
-        "weezing":        { "attacker":  0.1882, "defender":  0.0424 },
-        "corsola":        { "attacker": -0.1607, "defender": -0.0570 },
-        "clefable":       { "attacker": -0.0762, "defender": -0.1371 },
-        "pikachu":        { "attacker": -0.1212, "defender": -0.0874 },
-        "espeon":         { "attacker":  0.1033, "defender":  0.1048 },
-        "groudon":        { "attacker":  0.1444, "defender":  0.0633 },
-        "galvantula":     { "attacker":  0.0898, "defender": -0.1177 },
-        "cinccino":       { "attacker": -0.0537, "defender":  0.1490 },
-        "venusaur":       { "attacker": -0.1023, "defender":  0.0993 },
-        "comfey":         { "attacker": -0.1587, "defender":  0.0323 },
-        "mewtwo":         { "attacker":  0.0000, "defender": -0.1899 },
-        "lurantis":       { "attacker": -0.0729, "defender": -0.1144 },
-        "dragapult":      { "attacker":  0.0566, "defender":  0.1260 },
-        "tauros-paldean": { "attacker":  0.0796, "defender": -0.0962 },
-        "infernape":      { "attacker":  0.0391, "defender": -0.1338 },
-        "gliscor":        { "attacker": -0.1266, "defender": -0.0420 },
-        "ninetales":      { "attacker": -0.1284, "defender":  0.0361 },
-        "frosmoth":       { "attacker": -0.1446, "defender": -0.0153 },
-        "lumineon":       { "attacker":  0.0059, "defender": -0.1525 },
-        "zoroark-hisui":  { "attacker":  0.0463, "defender":  0.1114 },
-        "haxorus":        { "attacker": -0.1334, "defender": -0.0243 },
-        "arceus":         { "attacker":  0.1001, "defender":  0.0524 },
-        "meganium":       { "attacker":  0.1247, "defender":  0.0269 },
-        "sylveon":        { "attacker":  0.0183, "defender":  0.1321 },
-        "heracross":      { "attacker":  0.0594, "defender": -0.0908 },
-        "zygarde":        { "attacker": -0.0810, "defender": -0.0689 },
-        "scrafty":        { "attacker":  0.0216, "defender":  0.1269 },
-        "malamar":        { "attacker": -0.0210, "defender":  0.1268 },
-        "ditto":          { "attacker": -0.0146, "defender":  0.1329 },
-        "furret":         { "attacker": -0.1354, "defender":  0.0104 },
-        "scream-tail":    { "attacker": -0.1396, "defender":  0.0000 },
-        "lapras":         { "attacker": -0.0085, "defender": -0.1265 },
-        "archeops":       { "attacker":  0.0682, "defender":  0.0628 },
-        "ferrothorn":     { "attacker":  0.0310, "defender":  0.0992 },
-        "togekiss":       { "attacker": -0.1301, "defender":  0.0000 },
-        "dewgong":        { "attacker": -0.0774, "defender": -0.0516 },
-        "blastoise":      { "attacker":  0.1222, "defender": -0.0067 },
-        "krookodile":     { "attacker":  0.1019, "defender":  0.0242 },
-        "porygonz":       { "attacker": -0.0873, "defender": -0.0380 },
-        "dialga":         { "attacker":  0.0792, "defender": -0.0420 },
-        "butterfree":     { "attacker":  0.0079, "defender":  0.1124 },
-        "breloom":        { "attacker":  0.0721, "defender": -0.0461 },
-        "rayquaza":       { "attacker":  0.1180, "defender":  0.0000 },
-        "zapdos":         { "attacker": -0.0533, "defender":  0.0640 },
-        "froslass":       { "attacker":  0.0475, "defender": -0.0687 },
-        "hydreigon":      { "attacker":  0.0889, "defender": -0.0262 },
-        "wigglytuff":     { "attacker":  0.1046, "defender": -0.0105 },
-        "sudowoodo":      { "attacker": -0.1012, "defender":  0.0116 },
-        "gengar":         { "attacker": -0.0763, "defender":  0.0334 },
-        "arcanine":       { "attacker":  0.1020, "defender": -0.0072 },
-        "flygon":         { "attacker":  0.0497, "defender": -0.0535 },
-        "kyurem":         { "attacker":  0.0850, "defender":  0.0142 },
-        "volcarona":      { "attacker":  0.0533, "defender":  0.0456 },
-        "noivern":        { "attacker":  0.0370, "defender":  0.0608 },
-        "milotic":        { "attacker": -0.0294, "defender":  0.0677 },
-        "dodrio":         { "attacker": -0.0968, "defender":  0.0000 },
-        "jirachi":        { "attacker": -0.0420, "defender": -0.0544 },
-        "shedinja":       { "attacker":  0.0366, "defender": -0.0596 },
-        "mamoswine":      { "attacker":  0.0578, "defender":  0.0368 },
-        "crawdaunt":      { "attacker": -0.0427, "defender":  0.0514 },
-        "golisopod":      { "attacker": -0.0664, "defender":  0.0264 },
-        "charizard":      { "attacker": -0.0069, "defender":  0.0857 },
-        "solgaleo":       { "attacker":  0.0052, "defender": -0.0846 },
-        "blissey":        { "attacker":  0.0252, "defender":  0.0622 },
-        "altaria":        { "attacker": -0.0675, "defender":  0.0186 },
-        "lunala":         { "attacker":  0.0088, "defender": -0.0770 },
-        "crobat":         { "attacker": -0.0762, "defender":  0.0073 },
-        "rampardos":      { "attacker": -0.0133, "defender":  0.0671 },
-        "chien-pao":      { "attacker":  0.0392, "defender":  0.0400 },
-        "roserade":       { "attacker":  0.0689, "defender":  0.0079 },
-        "oricorio":       { "attacker":  0.0367, "defender": -0.0399 },
-        "yveltal":        { "attacker":  0.0658, "defender": -0.0106 },
-        "slaking":        { "attacker":  0.0365, "defender": -0.0398 },
-        "iron-valiant":   { "attacker":  0.0602, "defender": -0.0156 },
-        "snorlax":        { "attacker":  0.0000, "defender": -0.0755 },
-        "tyranitar":      { "attacker":  0.0314, "defender":  0.0438 },
-        "aurorus":        { "attacker":  0.0731, "defender":  0.0000 },
-        "reuniclus":      { "attacker": -0.0635, "defender": -0.0087 },
-        "gyarados":       { "attacker": -0.0704, "defender":  0.0000 },
-        "mew":            { "attacker":  0.0000, "defender":  0.0700 },
-        "reshiram":       { "attacker":  0.0620, "defender": -0.0055 },
-        "cherrim":        { "attacker":  0.0145, "defender": -0.0524 },
-        "amoonguss":      { "attacker": -0.0499, "defender": -0.0154 },
-        "vivillon":       { "attacker":  0.0454, "defender":  0.0190 },
-        "wobbuffet":      { "attacker": -0.0487, "defender":  0.0132 },
-        "xerneas":        { "attacker":  0.0156, "defender": -0.0461 },
-        "kyogre":         { "attacker":  0.0000, "defender": -0.0544 },
-        "raichu":         { "attacker":  0.0000, "defender":  0.0525 },
-        "pelipper":       { "attacker":  0.0165, "defender":  0.0341 },
-        "drapion":        { "attacker":  0.0000, "defender": -0.0502 },
-        "golurk":         { "attacker":  0.0060, "defender":  0.0440 },
-        "hawlucha":       { "attacker":  0.0354, "defender":  0.0141 },
-        "suicune":        { "attacker":  0.0340, "defender": -0.0130 },
-        "primarina":      { "attacker": -0.0141, "defender": -0.0313 },
-        "zekrom":         { "attacker":  0.0000, "defender": -0.0439 },
-        "octillery":      { "attacker": -0.0063, "defender": -0.0344 },
-        "lugia":          { "attacker":  0.0197, "defender": -0.0196 },
-        "minior":         { "attacker": -0.0109, "defender": -0.0262 },
-        "scizor":         { "attacker":  0.0000, "defender": -0.0356 },
-        "tauros":         { "attacker":  0.0354, "defender":  0.0000 },
-        "staraptor":      { "attacker":  0.0000, "defender":  0.0261 },
-        "swalot":         { "attacker":  0.0000, "defender":  0.0261 },
-        "celebi":         { "attacker": -0.0155, "defender":  0.0000 },
-        "slowbro":        { "attacker": -0.0151, "defender":  0.0000 },
-        "whimsicott":     { "attacker":  0.0000, "defender":  0.0097 }
+        "kyogre": {
+          "attacker": 0.0946,
+          "defender": 0.1029
+        },
+        "zekrom": {
+          "attacker": 0.0,
+          "defender": -0.1965
+        },
+        "staraptor": {
+          "attacker": 0.0904,
+          "defender": -0.0858
+        },
+        "pelipper": {
+          "attacker": 0.0983,
+          "defender": 0.0601
+        },
+        "golisopod": {
+          "attacker": -0.0827,
+          "defender": -0.0714
+        },
+        "infernape": {
+          "attacker": 0.1193,
+          "defender": -0.0289
+        },
+        "lunala": {
+          "attacker": 0.1156,
+          "defender": -0.0241
+        },
+        "skarmory": {
+          "attacker": 0.0732,
+          "defender": -0.0535
+        },
+        "flygon": {
+          "attacker": 0.0417,
+          "defender": -0.0806
+        },
+        "weezing": {
+          "attacker": -0.0743,
+          "defender": -0.0456
+        },
+        "gliscor": {
+          "attacker": 0.0338,
+          "defender": -0.0841
+        },
+        "sylveon": {
+          "attacker": 0.0589,
+          "defender": -0.0578
+        },
+        "reuniclus": {
+          "attacker": -0.0942,
+          "defender": -0.0224
+        },
+        "aurorus": {
+          "attacker": 0.0689,
+          "defender": 0.0426
+        },
+        "lapras": {
+          "attacker": -0.0769,
+          "defender": -0.0262
+        },
+        "togekiss": {
+          "attacker": -0.0598,
+          "defender": 0.039
+        },
+        "gengar": {
+          "attacker": -0.0225,
+          "defender": 0.0705
+        },
+        "crobat": {
+          "attacker": -0.05,
+          "defender": -0.0414
+        },
+        "archeops": {
+          "attacker": 0.0647,
+          "defender": 0.0263
+        },
+        "sinistcha": {
+          "attacker": 0.0572,
+          "defender": -0.0336
+        },
+        "tinkaton": {
+          "attacker": 0.0632,
+          "defender": 0.025
+        },
+        "venusaur": {
+          "attacker": 0.0472,
+          "defender": 0.0405
+        },
+        "amoonguss": {
+          "attacker": 0.0403,
+          "defender": -0.0469
+        },
+        "cherrim": {
+          "attacker": 0.0458,
+          "defender": 0.0399
+        },
+        "rampardos": {
+          "attacker": -0.0517,
+          "defender": -0.0338
+        },
+        "blissey": {
+          "attacker": -0.0258,
+          "defender": -0.0588
+        },
+        "octillery": {
+          "attacker": -0.0373,
+          "defender": -0.0472
+        },
+        "wigglytuff": {
+          "attacker": 0.0304,
+          "defender": 0.0517
+        },
+        "tyranitar": {
+          "attacker": 0.0149,
+          "defender": 0.0669
+        },
+        "umbreon": {
+          "attacker": 0.0329,
+          "defender": -0.0487
+        },
+        "shedinja": {
+          "attacker": -0.0646,
+          "defender": -0.017
+        },
+        "frosmoth": {
+          "attacker": 0.0,
+          "defender": 0.0785
+        },
+        "raichu": {
+          "attacker": -0.0407,
+          "defender": 0.0369
+        },
+        "butterfree": {
+          "attacker": -0.0399,
+          "defender": -0.0349
+        },
+        "cinccino": {
+          "attacker": 0.0591,
+          "defender": -0.0141
+        },
+        "blastoise": {
+          "attacker": -0.0129,
+          "defender": -0.0601
+        },
+        "ditto": {
+          "attacker": -0.0387,
+          "defender": -0.0324
+        },
+        "sudowoodo": {
+          "attacker": -0.0193,
+          "defender": -0.0517
+        },
+        "gyarados": {
+          "attacker": 0.0,
+          "defender": -0.07
+        },
+        "espeon": {
+          "attacker": 0.0536,
+          "defender": -0.0162
+        },
+        "porygonz": {
+          "attacker": 0.064,
+          "defender": 0.0051
+        },
+        "wobbuffet": {
+          "attacker": -0.0063,
+          "defender": -0.0626
+        },
+        "slaking": {
+          "attacker": 0.0498,
+          "defender": -0.019
+        },
+        "groudon": {
+          "attacker": 0.0684,
+          "defender": 0.0
+        },
+        "noivern": {
+          "attacker": -0.0255,
+          "defender": 0.0422
+        },
+        "ninetales": {
+          "attacker": 0.0609,
+          "defender": -0.0053
+        },
+        "meganium": {
+          "attacker": 0.0352,
+          "defender": -0.0295
+        },
+        "lumineon": {
+          "attacker": 0.0367,
+          "defender": 0.0253
+        },
+        "luxray": {
+          "attacker": 0.035,
+          "defender": -0.0253
+        },
+        "mewtwo": {
+          "attacker": 0.0,
+          "defender": -0.0601
+        },
+        "milotic": {
+          "attacker": 0.0225,
+          "defender": -0.0375
+        },
+        "altaria": {
+          "attacker": 0.0434,
+          "defender": -0.0164
+        },
+        "reshiram": {
+          "attacker": 0.0434,
+          "defender": 0.0164
+        },
+        "minior": {
+          "attacker": -0.0221,
+          "defender": -0.0345
+        },
+        "galvantula": {
+          "attacker": 0.0353,
+          "defender": -0.0201
+        },
+        "golurk": {
+          "attacker": 0.0497,
+          "defender": 0.0056
+        },
+        "vivillon": {
+          "attacker": 0.033,
+          "defender": 0.0219
+        },
+        "crawdaunt": {
+          "attacker": 0.0061,
+          "defender": -0.0472
+        },
+        "breloom": {
+          "attacker": -0.0387,
+          "defender": -0.0138
+        },
+        "volcarona": {
+          "attacker": 0.036,
+          "defender": 0.0145
+        },
+        "comfey": {
+          "attacker": 0.0379,
+          "defender": -0.0107
+        },
+        "slowbro": {
+          "attacker": -0.0266,
+          "defender": -0.0209
+        },
+        "hawlucha": {
+          "attacker": 0.0321,
+          "defender": -0.0139
+        },
+        "oricorio": {
+          "attacker": 0.0229,
+          "defender": -0.0228
+        },
+        "froslass": {
+          "attacker": 0.0446,
+          "defender": 0.0
+        },
+        "heracross": {
+          "attacker": 0.0147,
+          "defender": -0.0291
+        },
+        "dewgong": {
+          "attacker": 0.0211,
+          "defender": -0.0221
+        },
+        "scizor": {
+          "attacker": 0.0246,
+          "defender": -0.0177
+        },
+        "dragonite": {
+          "attacker": -0.0251,
+          "defender": 0.0171
+        },
+        "ninjask": {
+          "attacker": 0.0,
+          "defender": -0.0398
+        },
+        "swalot": {
+          "attacker": 0.0144,
+          "defender": -0.0253
+        },
+        "pikachu": {
+          "attacker": 0.0145,
+          "defender": -0.0219
+        },
+        "dragapult": {
+          "attacker": 0.0072,
+          "defender": -0.0283
+        },
+        "cetitan": {
+          "attacker": -0.0245,
+          "defender": 0.0089
+        },
+        "drapion": {
+          "attacker": -0.013,
+          "defender": -0.0195
+        },
+        "ferrothorn": {
+          "attacker": -0.0082,
+          "defender": -0.0239
+        },
+        "dodrio": {
+          "attacker": 0.0115,
+          "defender": 0.0205
+        },
+        "lurantis": {
+          "attacker": -0.0063,
+          "defender": -0.0247
+        },
+        "snorlax": {
+          "attacker": 0.0,
+          "defender": -0.031
+        },
+        "arcanine": {
+          "attacker": 0.0071,
+          "defender": 0.0228
+        },
+        "metagross": {
+          "attacker": -0.0107,
+          "defender": -0.0186
+        },
+        "yveltal": {
+          "attacker": 0.0087,
+          "defender": -0.0199
+        },
+        "rayquaza": {
+          "attacker": 0.0148,
+          "defender": 0.0135
+        },
+        "tauros": {
+          "attacker": 0.0,
+          "defender": -0.0269
+        },
+        "corsola": {
+          "attacker": -0.0133,
+          "defender": -0.0131
+        },
+        "furret": {
+          "attacker": 0.0232,
+          "defender": 0.0
+        },
+        "haxorus": {
+          "attacker": 0.0218,
+          "defender": 0.0
+        },
+        "hydreigon": {
+          "attacker": 0.0196,
+          "defender": 0.0
+        },
+        "whimsicott": {
+          "attacker": 0.0134,
+          "defender": -0.0052
+        },
+        "charizard": {
+          "attacker": 0.0105,
+          "defender": 0.0075
+        },
+        "primarina": {
+          "attacker": 0.0,
+          "defender": 0.0173
+        },
+        "krookodile": {
+          "attacker": 0.0153,
+          "defender": 0.0
+        },
+        "roserade": {
+          "attacker": 0.0153,
+          "defender": 0.0
+        },
+        "malamar": {
+          "attacker": 0.0,
+          "defender": -0.013
+        },
+        "scrafty": {
+          "attacker": -0.0124,
+          "defender": 0.0
+        },
+        "zoroark-hisui": {
+          "attacker": 0.0,
+          "defender": -0.012
+        },
+        "clefable": {
+          "attacker": 0.0051,
+          "defender": 0.0
+        }
+      }
+    },
+    "avia": {
+      "attackerEdge": -0.0177,
+      "cards": {
+        "ninetales": {
+          "attacker": 0.1326,
+          "defender": 0.2019
+        },
+        "cetitan": {
+          "attacker": 0.1842,
+          "defender": 0.0739
+        },
+        "groudon": {
+          "attacker": -0.0786,
+          "defender": -0.1625
+        },
+        "infernape": {
+          "attacker": 0.0,
+          "defender": -0.2405
+        },
+        "archeops": {
+          "attacker": 0.1041,
+          "defender": 0.1343
+        },
+        "zoroark-hisui": {
+          "attacker": 0.0783,
+          "defender": 0.1339
+        },
+        "galvantula": {
+          "attacker": 0.0871,
+          "defender": -0.1196
+        },
+        "golurk": {
+          "attacker": -0.0616,
+          "defender": 0.1439
+        },
+        "drapion": {
+          "attacker": 0.0,
+          "defender": -0.2013
+        },
+        "roserade": {
+          "attacker": 0.015,
+          "defender": -0.1838
+        },
+        "tyranitar": {
+          "attacker": -0.1099,
+          "defender": 0.08
+        },
+        "espeon": {
+          "attacker": -0.0867,
+          "defender": -0.0908
+        },
+        "gliscor": {
+          "attacker": 0.1386,
+          "defender": -0.0374
+        },
+        "weezing": {
+          "attacker": 0.0744,
+          "defender": -0.1003
+        },
+        "malamar": {
+          "attacker": -0.1032,
+          "defender": -0.0688
+        },
+        "hydreigon": {
+          "attacker": -0.1069,
+          "defender": -0.0644
+        },
+        "dewgong": {
+          "attacker": -0.083,
+          "defender": 0.0881
+        },
+        "tinkaton": {
+          "attacker": -0.0693,
+          "defender": 0.1018
+        },
+        "suicune": {
+          "attacker": -0.0801,
+          "defender": -0.0884
+        },
+        "primarina": {
+          "attacker": -0.1419,
+          "defender": 0.0258
+        },
+        "heracross": {
+          "attacker": 0.1026,
+          "defender": -0.0645
+        },
+        "dragapult": {
+          "attacker": 0.073,
+          "defender": 0.0884
+        },
+        "frosmoth": {
+          "attacker": 0.0689,
+          "defender": -0.0902
+        },
+        "shedinja": {
+          "attacker": -0.042,
+          "defender": -0.1166
+        },
+        "breloom": {
+          "attacker": -0.1442,
+          "defender": -0.0129
+        },
+        "crobat": {
+          "attacker": -0.1491,
+          "defender": -0.0079
+        },
+        "reshiram": {
+          "attacker": 0.0907,
+          "defender": 0.0609
+        },
+        "umbreon": {
+          "attacker": 0.1313,
+          "defender": -0.0182
+        },
+        "pikachu": {
+          "attacker": -0.0392,
+          "defender": 0.1098
+        },
+        "lumineon": {
+          "attacker": 0.1201,
+          "defender": 0.028
+        },
+        "blissey": {
+          "attacker": -0.1136,
+          "defender": 0.0337
+        },
+        "gengar": {
+          "attacker": 0.0164,
+          "defender": -0.1304
+        },
+        "froslass": {
+          "attacker": 0.0948,
+          "defender": -0.0515
+        },
+        "butterfree": {
+          "attacker": -0.0942,
+          "defender": 0.0515
+        },
+        "meganium": {
+          "attacker": -0.1017,
+          "defender": 0.0427
+        },
+        "wigglytuff": {
+          "attacker": -0.0536,
+          "defender": -0.0878
+        },
+        "amoonguss": {
+          "attacker": 0.1132,
+          "defender": 0.0251
+        },
+        "porygonz": {
+          "attacker": -0.1029,
+          "defender": 0.0322
+        },
+        "dragonite": {
+          "attacker": 0.1102,
+          "defender": 0.0238
+        },
+        "furret": {
+          "attacker": 0.1323,
+          "defender": 0.0
+        },
+        "skarmory": {
+          "attacker": -0.0233,
+          "defender": 0.1087
+        },
+        "raichu": {
+          "attacker": 0.0,
+          "defender": 0.125
+        },
+        "solgaleo": {
+          "attacker": -0.0607,
+          "defender": -0.064
+        },
+        "lurantis": {
+          "attacker": -0.0181,
+          "defender": 0.1065
+        },
+        "krookodile": {
+          "attacker": 0.1219,
+          "defender": 0.0
+        },
+        "ditto": {
+          "attacker": -0.0398,
+          "defender": 0.0799
+        },
+        "wobbuffet": {
+          "attacker": -0.0594,
+          "defender": 0.0569
+        },
+        "jirachi": {
+          "attacker": -0.006,
+          "defender": -0.1101
+        },
+        "aurorus": {
+          "attacker": -0.1161,
+          "defender": 0.0
+        },
+        "blastoise": {
+          "attacker": -0.0449,
+          "defender": 0.067
+        },
+        "sylveon": {
+          "attacker": -0.0435,
+          "defender": -0.0678
+        },
+        "milotic": {
+          "attacker": 0.0138,
+          "defender": -0.0956
+        },
+        "dodrio": {
+          "attacker": 0.0736,
+          "defender": -0.0352
+        },
+        "tauros-paldean": {
+          "attacker": 0.0383,
+          "defender": -0.0672
+        },
+        "flygon": {
+          "attacker": 0.0317,
+          "defender": 0.0735
+        },
+        "mew": {
+          "attacker": 0.0,
+          "defender": -0.1049
+        },
+        "slaking": {
+          "attacker": -0.07,
+          "defender": 0.0343
+        },
+        "snorlax": {
+          "attacker": -0.0379,
+          "defender": 0.0653
+        },
+        "minior": {
+          "attacker": 0.0791,
+          "defender": 0.0228
+        },
+        "staraptor": {
+          "attacker": -0.0677,
+          "defender": 0.0319
+        },
+        "cherrim": {
+          "attacker": -0.067,
+          "defender": 0.032
+        },
+        "ninjask": {
+          "attacker": 0.0772,
+          "defender": -0.0184
+        },
+        "chien-pao": {
+          "attacker": 0.0887,
+          "defender": 0.0066
+        },
+        "scrafty": {
+          "attacker": -0.0325,
+          "defender": -0.0606
+        },
+        "arceus": {
+          "attacker": 0.0831,
+          "defender": 0.0099
+        },
+        "banette": {
+          "attacker": -0.0455,
+          "defender": 0.0468
+        },
+        "rampardos": {
+          "attacker": 0.0737,
+          "defender": -0.0184
+        },
+        "altaria": {
+          "attacker": -0.092,
+          "defender": 0.0
+        },
+        "charizard": {
+          "attacker": 0.0082,
+          "defender": -0.0835
+        },
+        "volcarona": {
+          "attacker": -0.0189,
+          "defender": -0.0725
+        },
+        "scream-tail": {
+          "attacker": 0.0852,
+          "defender": 0.0
+        },
+        "comfey": {
+          "attacker": -0.0313,
+          "defender": 0.0527
+        },
+        "mamoswine": {
+          "attacker": -0.0142,
+          "defender": -0.0663
+        },
+        "vivillon": {
+          "attacker": 0.08,
+          "defender": 0.0
+        },
+        "togekiss": {
+          "attacker": -0.0481,
+          "defender": 0.0272
+        },
+        "zygarde": {
+          "attacker": -0.0219,
+          "defender": 0.0524
+        },
+        "cinccino": {
+          "attacker": -0.068,
+          "defender": 0.005
+        },
+        "sinistcha": {
+          "attacker": 0.0181,
+          "defender": 0.0549
+        },
+        "noivern": {
+          "attacker": -0.0163,
+          "defender": 0.0562
+        },
+        "lugia": {
+          "attacker": 0.0608,
+          "defender": 0.01
+        },
+        "slowbro": {
+          "attacker": 0.0,
+          "defender": -0.0703
+        },
+        "reuniclus": {
+          "attacker": 0.0411,
+          "defender": 0.0283
+        },
+        "sudowoodo": {
+          "attacker": 0.0317,
+          "defender": -0.0351
+        },
+        "iron-valiant": {
+          "attacker": 0.0386,
+          "defender": -0.0269
+        },
+        "kyogre": {
+          "attacker": 0.0,
+          "defender": 0.0652
+        },
+        "swalot": {
+          "attacker": 0.0,
+          "defender": -0.0646
+        },
+        "golisopod": {
+          "attacker": -0.049,
+          "defender": 0.0149
+        },
+        "xerneas": {
+          "attacker": 0.0269,
+          "defender": -0.0341
+        },
+        "zapdos": {
+          "attacker": 0.052,
+          "defender": 0.009
+        },
+        "corsola": {
+          "attacker": 0.0061,
+          "defender": 0.054
+        },
+        "kyurem": {
+          "attacker": -0.0601,
+          "defender": 0.0
+        },
+        "lunala": {
+          "attacker": -0.0526,
+          "defender": -0.0068
+        },
+        "crawdaunt": {
+          "attacker": -0.0519,
+          "defender": 0.0067
+        },
+        "luxray": {
+          "attacker": 0.042,
+          "defender": 0.0144
+        },
+        "zekrom": {
+          "attacker": 0.0259,
+          "defender": 0.0301
+        },
+        "celebi": {
+          "attacker": 0.0,
+          "defender": 0.0532
+        },
+        "dialga": {
+          "attacker": -0.0083,
+          "defender": 0.041
+        },
+        "oricorio": {
+          "attacker": -0.0283,
+          "defender": 0.0208
+        },
+        "clefable": {
+          "attacker": 0.0385,
+          "defender": 0.0089
+        },
+        "ferrothorn": {
+          "attacker": -0.0314,
+          "defender": 0.0149
+        },
+        "arcanine": {
+          "attacker": 0.035,
+          "defender": -0.0111
+        },
+        "octillery": {
+          "attacker": 0.0219,
+          "defender": 0.0234
+        },
+        "haxorus": {
+          "attacker": 0.0077,
+          "defender": 0.036
+        },
+        "pelipper": {
+          "attacker": -0.0421,
+          "defender": 0.0
+        },
+        "yveltal": {
+          "attacker": -0.0192,
+          "defender": 0.0222
+        },
+        "hawlucha": {
+          "attacker": -0.0319,
+          "defender": 0.0052
+        },
+        "scizor": {
+          "attacker": 0.0,
+          "defender": 0.0342
+        },
+        "tauros": {
+          "attacker": -0.032,
+          "defender": 0.0
+        },
+        "gyarados": {
+          "attacker": -0.0274,
+          "defender": 0.0
+        },
+        "mewtwo": {
+          "attacker": 0.0,
+          "defender": 0.019
+        },
+        "metagross": {
+          "attacker": 0.0172,
+          "defender": 0.0
+        },
+        "venusaur": {
+          "attacker": -0.0124,
+          "defender": 0.0
+        }
+      }
+    },
+    "farm": {
+      "attackerEdge": 0.035,
+      "cards": {
+        "butterfree": {
+          "attacker": 0.1718,
+          "defender": -0.1519
+        },
+        "noivern": {
+          "attacker": 0.0737,
+          "defender": -0.2134
+        },
+        "corsola": {
+          "attacker": 0.2178,
+          "defender": 0.0633
+        },
+        "sudowoodo": {
+          "attacker": 0.2577,
+          "defender": 0.0228
+        },
+        "golurk": {
+          "attacker": -0.0779,
+          "defender": -0.1959
+        },
+        "galvantula": {
+          "attacker": -0.1406,
+          "defender": -0.1309
+        },
+        "yveltal": {
+          "attacker": -0.0593,
+          "defender": -0.189
+        },
+        "tinkaton": {
+          "attacker": -0.2079,
+          "defender": 0.0338
+        },
+        "heracross": {
+          "attacker": -0.0583,
+          "defender": -0.1783
+        },
+        "krookodile": {
+          "attacker": 0.2035,
+          "defender": 0.0314
+        },
+        "lumineon": {
+          "attacker": -0.1198,
+          "defender": 0.1131
+        },
+        "dragonite": {
+          "attacker": -0.1575,
+          "defender": -0.0706
+        },
+        "lurantis": {
+          "attacker": 0.2045,
+          "defender": -0.0163
+        },
+        "porygonz": {
+          "attacker": 0.1662,
+          "defender": -0.0539
+        },
+        "minior": {
+          "attacker": -0.1118,
+          "defender": 0.1077
+        },
+        "slaking": {
+          "attacker": 0.1702,
+          "defender": -0.0405
+        },
+        "gengar": {
+          "attacker": 0.17,
+          "defender": 0.0368
+        },
+        "zygarde": {
+          "attacker": 0.0722,
+          "defender": 0.1335
+        },
+        "raichu": {
+          "attacker": 0.0,
+          "defender": -0.2047
+        },
+        "roserade": {
+          "attacker": -0.0495,
+          "defender": 0.1502
+        },
+        "infernape": {
+          "attacker": -0.0765,
+          "defender": 0.119
+        },
+        "dragapult": {
+          "attacker": -0.0681,
+          "defender": -0.1264
+        },
+        "lunala": {
+          "attacker": 0.1382,
+          "defender": 0.0548
+        },
+        "lugia": {
+          "attacker": -0.1081,
+          "defender": 0.0837
+        },
+        "ferrothorn": {
+          "attacker": 0.0328,
+          "defender": -0.1583
+        },
+        "xerneas": {
+          "attacker": 0.0151,
+          "defender": 0.1755
+        },
+        "gliscor": {
+          "attacker": 0.0139,
+          "defender": 0.1751
+        },
+        "kyogre": {
+          "attacker": 0.0,
+          "defender": -0.1887
+        },
+        "solgaleo": {
+          "attacker": 0.0145,
+          "defender": 0.1732
+        },
+        "cinccino": {
+          "attacker": 0.0826,
+          "defender": -0.1002
+        },
+        "cetitan": {
+          "attacker": -0.1667,
+          "defender": 0.0144
+        },
+        "dewgong": {
+          "attacker": -0.0099,
+          "defender": -0.1688
+        },
+        "milotic": {
+          "attacker": 0.1037,
+          "defender": 0.0743
+        },
+        "arcanine": {
+          "attacker": -0.1752,
+          "defender": 0.0
+        },
+        "golisopod": {
+          "attacker": 0.1554,
+          "defender": -0.0178
+        },
+        "hydreigon": {
+          "attacker": -0.0514,
+          "defender": 0.1102
+        },
+        "frosmoth": {
+          "attacker": -0.1289,
+          "defender": -0.0318
+        },
+        "oricorio": {
+          "attacker": -0.0667,
+          "defender": 0.0885
+        },
+        "vivillon": {
+          "attacker": -0.0792,
+          "defender": 0.0739
+        },
+        "togekiss": {
+          "attacker": 0.136,
+          "defender": -0.0117
+        },
+        "clefable": {
+          "attacker": -0.063,
+          "defender": 0.0839
+        },
+        "staraptor": {
+          "attacker": -0.0122,
+          "defender": -0.1281
+        },
+        "froslass": {
+          "attacker": -0.0808,
+          "defender": 0.0578
+        },
+        "malamar": {
+          "attacker": 0.1136,
+          "defender": -0.0233
+        },
+        "suicune": {
+          "attacker": 0.0327,
+          "defender": 0.1016
+        },
+        "lapras": {
+          "attacker": -0.0064,
+          "defender": 0.1267
+        },
+        "skarmory": {
+          "attacker": -0.086,
+          "defender": -0.0469
+        },
+        "wigglytuff": {
+          "attacker": -0.0052,
+          "defender": -0.1264
+        },
+        "ditto": {
+          "attacker": 0.0,
+          "defender": -0.131
+        },
+        "crawdaunt": {
+          "attacker": -0.0338,
+          "defender": -0.0952
+        },
+        "blissey": {
+          "attacker": -0.0578,
+          "defender": -0.0711
+        },
+        "scream-tail": {
+          "attacker": -0.1276,
+          "defender": 0.0
+        },
+        "zapdos": {
+          "attacker": 0.0437,
+          "defender": -0.083
+        },
+        "breloom": {
+          "attacker": -0.0295,
+          "defender": 0.097
+        },
+        "meganium": {
+          "attacker": 0.1164,
+          "defender": 0.0089
+        },
+        "dodrio": {
+          "attacker": -0.1082,
+          "defender": -0.0166
+        },
+        "ninetales": {
+          "attacker": 0.1146,
+          "defender": 0.0083
+        },
+        "espeon": {
+          "attacker": -0.111,
+          "defender": 0.0114
+        },
+        "pelipper": {
+          "attacker": 0.0245,
+          "defender": -0.0976
+        },
+        "comfey": {
+          "attacker": 0.1153,
+          "defender": 0.0051
+        },
+        "flygon": {
+          "attacker": 0.0579,
+          "defender": 0.0598
+        },
+        "archeops": {
+          "attacker": -0.0515,
+          "defender": 0.0627
+        },
+        "weezing": {
+          "attacker": -0.0565,
+          "defender": 0.0543
+        },
+        "cherrim": {
+          "attacker": 0.0193,
+          "defender": 0.09
+        },
+        "jirachi": {
+          "attacker": -0.0457,
+          "defender": 0.0617
+        },
+        "wobbuffet": {
+          "attacker": 0.0672,
+          "defender": -0.0361
+        },
+        "groudon": {
+          "attacker": 0.03,
+          "defender": -0.0731
+        },
+        "banette": {
+          "attacker": -0.0078,
+          "defender": 0.0933
+        },
+        "amoonguss": {
+          "attacker": -0.0634,
+          "defender": -0.0327
+        },
+        "mamoswine": {
+          "attacker": -0.0692,
+          "defender": 0.0266
+        },
+        "rampardos": {
+          "attacker": 0.0123,
+          "defender": 0.0822
+        },
+        "reuniclus": {
+          "attacker": -0.0691,
+          "defender": -0.0225
+        },
+        "luxray": {
+          "attacker": 0.0472,
+          "defender": 0.0427
+        },
+        "scizor": {
+          "attacker": 0.0,
+          "defender": 0.0881
+        },
+        "dialga": {
+          "attacker": -0.0397,
+          "defender": -0.0436
+        },
+        "aurorus": {
+          "attacker": 0.083,
+          "defender": 0.0
+        },
+        "tauros": {
+          "attacker": -0.0795,
+          "defender": 0.0
+        },
+        "volcarona": {
+          "attacker": -0.0503,
+          "defender": 0.0279
+        },
+        "primarina": {
+          "attacker": 0.0,
+          "defender": 0.0766
+        },
+        "shedinja": {
+          "attacker": 0.0313,
+          "defender": -0.0424
+        },
+        "blastoise": {
+          "attacker": -0.0601,
+          "defender": -0.0096
+        },
+        "octillery": {
+          "attacker": 0.0198,
+          "defender": -0.0495
+        },
+        "mewtwo": {
+          "attacker": 0.0,
+          "defender": 0.0649
+        },
+        "crobat": {
+          "attacker": 0.0573,
+          "defender": 0.0069
+        },
+        "charizard": {
+          "attacker": -0.0071,
+          "defender": -0.0569
+        },
+        "metagross": {
+          "attacker": -0.0639,
+          "defender": 0.0
+        },
+        "venusaur": {
+          "attacker": 0.0279,
+          "defender": -0.0359
+        },
+        "mew": {
+          "attacker": 0.0,
+          "defender": 0.0626
+        },
+        "tyranitar": {
+          "attacker": 0.0495,
+          "defender": 0.0129
+        },
+        "hawlucha": {
+          "attacker": 0.0432,
+          "defender": 0.0182
+        },
+        "tauros-paldean": {
+          "attacker": -0.0376,
+          "defender": 0.0229
+        },
+        "snorlax": {
+          "attacker": 0.0325,
+          "defender": 0.0273
+        },
+        "gyarados": {
+          "attacker": -0.0588,
+          "defender": 0.0
+        },
+        "chien-pao": {
+          "attacker": 0.0235,
+          "defender": 0.0339
+        },
+        "zoroark-hisui": {
+          "attacker": 0.0446,
+          "defender": -0.0115
+        },
+        "arceus": {
+          "attacker": 0.0,
+          "defender": 0.0557
+        },
+        "zekrom": {
+          "attacker": 0.0054,
+          "defender": -0.0496
+        },
+        "ninjask": {
+          "attacker": -0.0125,
+          "defender": 0.0416
+        },
+        "drapion": {
+          "attacker": 0.0,
+          "defender": -0.0501
+        },
+        "kyurem": {
+          "attacker": -0.038,
+          "defender": 0.0095
+        },
+        "furret": {
+          "attacker": -0.0281,
+          "defender": 0.01
+        },
+        "haxorus": {
+          "attacker": 0.0078,
+          "defender": -0.03
+        },
+        "iron-valiant": {
+          "attacker": -0.0224,
+          "defender": -0.0151
+        },
+        "sylveon": {
+          "attacker": 0.0192,
+          "defender": -0.011
+        },
+        "reshiram": {
+          "attacker": -0.0137,
+          "defender": -0.0148
+        },
+        "sinistcha": {
+          "attacker": 0.0276,
+          "defender": 0.0
+        },
+        "altaria": {
+          "attacker": 0.0169,
+          "defender": 0.0099
+        },
+        "pikachu": {
+          "attacker": 0.0,
+          "defender": 0.0257
+        },
+        "umbreon": {
+          "attacker": 0.0164,
+          "defender": 0.009
+        },
+        "swalot": {
+          "attacker": 0.0,
+          "defender": 0.0215
+        },
+        "rayquaza": {
+          "attacker": -0.0204,
+          "defender": 0.0
+        },
+        "slowbro": {
+          "attacker": -0.0125,
+          "defender": -0.0074
+        },
+        "scrafty": {
+          "attacker": 0.0,
+          "defender": -0.0179
+        },
+        "celebi": {
+          "attacker": -0.0169,
+          "defender": 0.0
+        },
+        "whimsicott": {
+          "attacker": 0.0,
+          "defender": 0.0094
+        }
+      }
+    },
+    "ice": {
+      "attackerEdge": 0.0016,
+      "cards": {
+        "dragapult": {
+          "attacker": -0.0843,
+          "defender": -0.2176
+        },
+        "tyranitar": {
+          "attacker": -0.189,
+          "defender": 0.1052
+        },
+        "banette": {
+          "attacker": 0.0257,
+          "defender": -0.2435
+        },
+        "staraptor": {
+          "attacker": 0.1626,
+          "defender": 0.1048
+        },
+        "archeops": {
+          "attacker": -0.0325,
+          "defender": -0.2136
+        },
+        "umbreon": {
+          "attacker": -0.0722,
+          "defender": 0.1637
+        },
+        "reuniclus": {
+          "attacker": 0.1388,
+          "defender": -0.0909
+        },
+        "groudon": {
+          "attacker": -0.1004,
+          "defender": 0.1273
+        },
+        "butterfree": {
+          "attacker": -0.2063,
+          "defender": -0.0205
+        },
+        "blissey": {
+          "attacker": 0.1424,
+          "defender": -0.0839
+        },
+        "ninjask": {
+          "attacker": 0.1085,
+          "defender": 0.1105
+        },
+        "espeon": {
+          "attacker": -0.1164,
+          "defender": 0.1012
+        },
+        "zoroark-hisui": {
+          "attacker": -0.0809,
+          "defender": -0.1253
+        },
+        "volcarona": {
+          "attacker": -0.0239,
+          "defender": 0.18
+        },
+        "primarina": {
+          "attacker": -0.0211,
+          "defender": -0.1754
+        },
+        "drapion": {
+          "attacker": 0.0,
+          "defender": 0.1863
+        },
+        "zygarde": {
+          "attacker": 0.1045,
+          "defender": -0.0775
+        },
+        "comfey": {
+          "attacker": 0.0252,
+          "defender": -0.1566
+        },
+        "wobbuffet": {
+          "attacker": -0.0811,
+          "defender": 0.1005
+        },
+        "dodrio": {
+          "attacker": 0.1452,
+          "defender": 0.0358
+        },
+        "weezing": {
+          "attacker": -0.1192,
+          "defender": -0.0616
+        },
+        "xerneas": {
+          "attacker": 0.0308,
+          "defender": -0.1486
+        },
+        "breloom": {
+          "attacker": -0.0911,
+          "defender": -0.0879
+        },
+        "tinkaton": {
+          "attacker": -0.106,
+          "defender": -0.0623
+        },
+        "metagross": {
+          "attacker": 0.1674,
+          "defender": 0.0
+        },
+        "dragonite": {
+          "attacker": -0.0574,
+          "defender": -0.1092
+        },
+        "aurorus": {
+          "attacker": 0.1654,
+          "defender": 0.0
+        },
+        "ninetales": {
+          "attacker": 0.0713,
+          "defender": -0.0934
+        },
+        "jirachi": {
+          "attacker": -0.0197,
+          "defender": 0.1437
+        },
+        "scizor": {
+          "attacker": 0.0,
+          "defender": -0.1584
+        },
+        "oricorio": {
+          "attacker": 0.1164,
+          "defender": 0.0372
+        },
+        "corsola": {
+          "attacker": -0.0631,
+          "defender": 0.0893
+        },
+        "froslass": {
+          "attacker": -0.0416,
+          "defender": 0.1046
+        },
+        "ferrothorn": {
+          "attacker": 0.0479,
+          "defender": -0.098
+        },
+        "krookodile": {
+          "attacker": -0.0667,
+          "defender": -0.0788
+        },
+        "luxray": {
+          "attacker": 0.1044,
+          "defender": 0.0363
+        },
+        "galvantula": {
+          "attacker": -0.0633,
+          "defender": 0.077
+        },
+        "minior": {
+          "attacker": 0.0638,
+          "defender": 0.0757
+        },
+        "golisopod": {
+          "attacker": -0.1051,
+          "defender": 0.0319
+        },
+        "suicune": {
+          "attacker": 0.0866,
+          "defender": -0.0504
+        },
+        "gliscor": {
+          "attacker": -0.0518,
+          "defender": -0.0851
+        },
+        "meganium": {
+          "attacker": -0.0666,
+          "defender": 0.0696
+        },
+        "sudowoodo": {
+          "attacker": -0.1192,
+          "defender": -0.0156
+        },
+        "haxorus": {
+          "attacker": 0.096,
+          "defender": 0.0345
+        },
+        "rampardos": {
+          "attacker": -0.0897,
+          "defender": 0.0406
+        },
+        "snorlax": {
+          "attacker": 0.1005,
+          "defender": -0.029
+        },
+        "crawdaunt": {
+          "attacker": 0.0565,
+          "defender": -0.0678
+        },
+        "solgaleo": {
+          "attacker": 0.0375,
+          "defender": 0.0838
+        },
+        "heracross": {
+          "attacker": -0.0369,
+          "defender": 0.0839
+        },
+        "cetitan": {
+          "attacker": -0.0803,
+          "defender": -0.0402
+        },
+        "noivern": {
+          "attacker": -0.035,
+          "defender": 0.0853
+        },
+        "crobat": {
+          "attacker": 0.1192,
+          "defender": 0.0
+        },
+        "infernape": {
+          "attacker": 0.0619,
+          "defender": 0.0561
+        },
+        "iron-valiant": {
+          "attacker": -0.0851,
+          "defender": -0.0308
+        },
+        "venusaur": {
+          "attacker": 0.077,
+          "defender": -0.0382
+        },
+        "skarmory": {
+          "attacker": -0.0708,
+          "defender": -0.0428
+        },
+        "cherrim": {
+          "attacker": 0.0406,
+          "defender": -0.0724
+        },
+        "golurk": {
+          "attacker": 0.0226,
+          "defender": 0.0888
+        },
+        "lumineon": {
+          "attacker": -0.0308,
+          "defender": 0.0781
+        },
+        "cinccino": {
+          "attacker": 0.0403,
+          "defender": -0.0684
+        },
+        "slaking": {
+          "attacker": -0.0732,
+          "defender": 0.0315
+        },
+        "wigglytuff": {
+          "attacker": 0.0515,
+          "defender": 0.0532
+        },
+        "scrafty": {
+          "attacker": 0.0739,
+          "defender": -0.0273
+        },
+        "shedinja": {
+          "attacker": 0.082,
+          "defender": 0.0164
+        },
+        "amoonguss": {
+          "attacker": -0.0614,
+          "defender": 0.0361
+        },
+        "dialga": {
+          "attacker": -0.0101,
+          "defender": -0.085
+        },
+        "charizard": {
+          "attacker": 0.0,
+          "defender": 0.0948
+        },
+        "vivillon": {
+          "attacker": -0.0489,
+          "defender": -0.0451
+        },
+        "sylveon": {
+          "attacker": 0.0433,
+          "defender": 0.0496
+        },
+        "tauros-paldean": {
+          "attacker": 0.0203,
+          "defender": 0.0714
+        },
+        "kyogre": {
+          "attacker": 0.0,
+          "defender": 0.0903
+        },
+        "arceus": {
+          "attacker": -0.0664,
+          "defender": 0.0234
+        },
+        "frosmoth": {
+          "attacker": 0.0345,
+          "defender": 0.0489
+        },
+        "altaria": {
+          "attacker": 0.0831,
+          "defender": 0.0
+        },
+        "hydreigon": {
+          "attacker": -0.007,
+          "defender": -0.0741
+        },
+        "slowbro": {
+          "attacker": -0.008,
+          "defender": 0.0714
+        },
+        "togekiss": {
+          "attacker": 0.0313,
+          "defender": -0.0473
+        },
+        "lugia": {
+          "attacker": 0.0587,
+          "defender": 0.0195
+        },
+        "lunala": {
+          "attacker": 0.0687,
+          "defender": 0.0079
+        },
+        "gengar": {
+          "attacker": -0.0433,
+          "defender": 0.0332
+        },
+        "yveltal": {
+          "attacker": -0.0357,
+          "defender": 0.039
+        },
+        "blastoise": {
+          "attacker": -0.0732,
+          "defender": 0.0
+        },
+        "sinistcha": {
+          "attacker": -0.0079,
+          "defender": -0.0613
+        },
+        "porygonz": {
+          "attacker": 0.0226,
+          "defender": 0.0454
+        },
+        "reshiram": {
+          "attacker": -0.0267,
+          "defender": -0.0405
+        },
+        "ditto": {
+          "attacker": 0.0454,
+          "defender": -0.019
+        },
+        "kyurem": {
+          "attacker": -0.0639,
+          "defender": 0.0
+        },
+        "chien-pao": {
+          "attacker": -0.0487,
+          "defender": 0.0142
+        },
+        "scream-tail": {
+          "attacker": -0.0622,
+          "defender": 0.0
+        },
+        "pikachu": {
+          "attacker": 0.016,
+          "defender": 0.046
+        },
+        "tauros": {
+          "attacker": 0.0618,
+          "defender": 0.0
+        },
+        "malamar": {
+          "attacker": 0.0149,
+          "defender": 0.0465
+        },
+        "milotic": {
+          "attacker": 0.0075,
+          "defender": -0.0513
+        },
+        "pelipper": {
+          "attacker": 0.0487,
+          "defender": 0.0084
+        },
+        "dewgong": {
+          "attacker": 0.0,
+          "defender": -0.0557
+        },
+        "octillery": {
+          "attacker": 0.0,
+          "defender": 0.0478
+        },
+        "lurantis": {
+          "attacker": -0.0363,
+          "defender": 0.0112
+        },
+        "mamoswine": {
+          "attacker": -0.0163,
+          "defender": -0.0311
+        },
+        "furret": {
+          "attacker": 0.0473,
+          "defender": 0.0
+        },
+        "raichu": {
+          "attacker": 0.0,
+          "defender": -0.0468
+        },
+        "hawlucha": {
+          "attacker": -0.0294,
+          "defender": 0.0144
+        },
+        "zapdos": {
+          "attacker": -0.018,
+          "defender": 0.025
+        },
+        "swalot": {
+          "attacker": 0.0,
+          "defender": -0.0392
+        },
+        "zekrom": {
+          "attacker": 0.0108,
+          "defender": 0.028
+        },
+        "clefable": {
+          "attacker": -0.0165,
+          "defender": 0.0182
+        },
+        "gyarados": {
+          "attacker": 0.0293,
+          "defender": 0.0
+        },
+        "flygon": {
+          "attacker": -0.0159,
+          "defender": -0.0127
+        },
+        "mewtwo": {
+          "attacker": 0.0,
+          "defender": 0.0277
+        },
+        "mew": {
+          "attacker": 0.0,
+          "defender": 0.025
+        },
+        "lapras": {
+          "attacker": 0.0,
+          "defender": 0.0243
+        },
+        "celebi": {
+          "attacker": 0.0,
+          "defender": -0.0177
+        },
+        "roserade": {
+          "attacker": 0.0,
+          "defender": -0.0144
+        },
+        "rayquaza": {
+          "attacker": -0.0131,
+          "defender": 0.0
+        },
+        "arcanine": {
+          "attacker": -0.0086,
+          "defender": 0.0
+        },
+        "whimsicott": {
+          "attacker": 0.0,
+          "defender": 0.005
+        }
       }
     },
     "volcano": {
-      "attackerEdge":  0.0115,
+      "attackerEdge": 0.0115,
       "cards": {
-        "corsola":        { "attacker": -0.2073, "defender": -0.1936 },
-        "lumineon":       { "attacker":  0.1804, "defender": -0.1587 },
-        "archeops":       { "attacker": -0.0354, "defender": -0.2312 },
-        "tyranitar":      { "attacker":  0.2219, "defender": -0.0354 },
-        "dragonite":      { "attacker":  0.1536, "defender":  0.1004 },
-        "meganium":       { "attacker":  0.1267, "defender": -0.1248 },
-        "ninetales":      { "attacker": -0.1431, "defender": -0.0909 },
-        "xerneas":        { "attacker": -0.0954, "defender":  0.1309 },
-        "gliscor":        { "attacker":  0.0734, "defender":  0.1488 },
-        "golurk":         { "attacker":  0.1942, "defender": -0.0278 },
-        "minior":         { "attacker":  0.0413, "defender": -0.1729 },
-        "frosmoth":       { "attacker":  0.1483, "defender":  0.0565 },
-        "tinkaton":       { "attacker":  0.1261, "defender": -0.0784 },
-        "tauros-paldean": { "attacker": -0.1112, "defender":  0.0925 },
-        "hydreigon":      { "attacker":  0.0945, "defender":  0.1054 },
-        "shedinja":       { "attacker": -0.0578, "defender":  0.1369 },
-        "primarina":      { "attacker":  0.1665, "defender":  0.0253 },
-        "suicune":        { "attacker": -0.1485, "defender": -0.0416 },
-        "dragapult":      { "attacker": -0.0302, "defender":  0.1509 },
-        "comfey":         { "attacker": -0.0819, "defender":  0.0992 },
-        "dodrio":         { "attacker":  0.0551, "defender":  0.1231 },
-        "ninjask":        { "attacker": -0.0855, "defender": -0.0895 },
-        "krookodile":     { "attacker": -0.1626, "defender":  0.0090 },
-        "furret":         { "attacker": -0.1713, "defender":  0.0000 },
-        "reuniclus":      { "attacker": -0.1165, "defender":  0.0508 },
-        "solgaleo":       { "attacker":  0.0162, "defender": -0.1508 },
-        "blastoise":      { "attacker":  0.0188, "defender": -0.1358 },
-        "pikachu":        { "attacker":  0.0553, "defender": -0.0990 },
-        "sudowoodo":      { "attacker": -0.1503, "defender":  0.0000 },
-        "cetitan":        { "attacker":  0.1289, "defender": -0.0214 },
-        "infernape":      { "attacker":  0.0000, "defender":  0.1491 },
-        "froslass":       { "attacker":  0.0574, "defender": -0.0912 },
-        "chien-pao":      { "attacker": -0.0428, "defender": -0.1055 },
-        "sinistcha":      { "attacker":  0.0542, "defender":  0.0901 },
-        "heracross":      { "attacker": -0.0401, "defender":  0.1005 },
-        "golisopod":      { "attacker": -0.0181, "defender":  0.1218 },
-        "lugia":          { "attacker": -0.0683, "defender":  0.0705 },
-        "gengar":         { "attacker": -0.1341, "defender":  0.0000 },
-        "espeon":         { "attacker":  0.0769, "defender":  0.0564 },
-        "kyurem":         { "attacker":  0.1315, "defender":  0.0000 },
-        "lurantis":       { "attacker": -0.0335, "defender":  0.0972 },
-        "venusaur":       { "attacker": -0.0441, "defender": -0.0864 },
-        "oricorio":       { "attacker": -0.0507, "defender": -0.0783 },
-        "yveltal":        { "attacker":  0.0751, "defender":  0.0537 },
-        "cherrim":        { "attacker":  0.0460, "defender": -0.0784 },
-        "zoroark-hisui":  { "attacker": -0.0436, "defender": -0.0806 },
-        "breloom":        { "attacker":  0.0624, "defender":  0.0600 },
-        "iron-valiant":   { "attacker":  0.0247, "defender":  0.0954 },
-        "flygon":         { "attacker":  0.0115, "defender": -0.1083 },
-        "haxorus":        { "attacker":  0.0635, "defender":  0.0554 },
-        "metagross":      { "attacker":  0.1169, "defender":  0.0000 },
-        "roserade":       { "attacker":  0.0000, "defender": -0.1160 },
-        "clefable":       { "attacker":  0.0977, "defender":  0.0168 },
-        "ditto":          { "attacker": -0.0661, "defender": -0.0459 },
-        "zapdos":         { "attacker": -0.0784, "defender":  0.0317 },
-        "jirachi":        { "attacker": -0.0143, "defender": -0.0957 },
-        "ferrothorn":     { "attacker": -0.0615, "defender":  0.0483 },
-        "sylveon":        { "attacker": -0.0688, "defender": -0.0406 },
-        "charizard":      { "attacker":  0.0000, "defender": -0.1054 },
-        "butterfree":     { "attacker":  0.0417, "defender":  0.0635 },
-        "octillery":      { "attacker": -0.0549, "defender": -0.0487 },
-        "umbreon":        { "attacker": -0.0455, "defender": -0.0577 },
-        "arcanine":       { "attacker":  0.0916, "defender": -0.0109 },
-        "aurorus":        { "attacker": -0.1024, "defender":  0.0000 },
-        "skarmory":       { "attacker":  0.0581, "defender":  0.0442 },
-        "banette":        { "attacker": -0.0935, "defender": -0.0087 },
-        "mamoswine":      { "attacker":  0.0646, "defender": -0.0367 },
-        "snorlax":        { "attacker": -0.0673, "defender":  0.0310 },
-        "zygarde":        { "attacker": -0.0227, "defender":  0.0743 },
-        "lunala":         { "attacker": -0.0775, "defender":  0.0187 },
-        "cinccino":       { "attacker":  0.0235, "defender":  0.0709 },
-        "celebi":         { "attacker": -0.0059, "defender":  0.0819 },
-        "crobat":         { "attacker": -0.0871, "defender":  0.0000 },
-        "kyogre":         { "attacker":  0.0000, "defender": -0.0848 },
-        "vivillon":       { "attacker":  0.0662, "defender":  0.0181 },
-        "rampardos":      { "attacker": -0.0736, "defender":  0.0107 },
-        "drapion":        { "attacker":  0.0000, "defender":  0.0840 },
-        "mew":            { "attacker":  0.0000, "defender": -0.0833 },
-        "scrafty":        { "attacker": -0.0542, "defender": -0.0279 },
-        "wigglytuff":     { "attacker":  0.0332, "defender":  0.0488 },
-        "groudon":        { "attacker":  0.0632, "defender": -0.0154 },
-        "amoonguss":      { "attacker": -0.0274, "defender": -0.0482 },
-        "weezing":        { "attacker": -0.0446, "defender":  0.0253 },
-        "dialga":         { "attacker": -0.0131, "defender":  0.0555 },
-        "togekiss":       { "attacker":  0.0411, "defender": -0.0251 },
-        "pelipper":       { "attacker":  0.0299, "defender":  0.0358 },
-        "zekrom":         { "attacker":  0.0145, "defender": -0.0508 },
-        "reshiram":       { "attacker":  0.0511, "defender": -0.0135 },
-        "staraptor":      { "attacker":  0.0243, "defender":  0.0356 },
-        "raichu":         { "attacker":  0.0000, "defender":  0.0592 },
-        "milotic":        { "attacker": -0.0181, "defender":  0.0410 },
-        "malamar":        { "attacker":  0.0154, "defender": -0.0428 },
-        "slaking":        { "attacker": -0.0062, "defender":  0.0520 },
-        "dewgong":        { "attacker": -0.0349, "defender":  0.0206 },
-        "noivern":        { "attacker": -0.0417, "defender":  0.0129 },
-        "hawlucha":       { "attacker":  0.0434, "defender":  0.0096 },
-        "arceus":         { "attacker":  0.0335, "defender":  0.0185 },
-        "porygonz":       { "attacker": -0.0075, "defender": -0.0445 },
-        "tauros":         { "attacker": -0.0502, "defender":  0.0000 },
-        "slowbro":        { "attacker": -0.0087, "defender": -0.0411 },
-        "crawdaunt":      { "attacker":  0.0299, "defender": -0.0164 },
-        "volcarona":      { "attacker": -0.0214, "defender": -0.0229 },
-        "scream-tail":    { "attacker":  0.0421, "defender":  0.0000 },
-        "scizor":         { "attacker":  0.0000, "defender":  0.0398 },
-        "luxray":         { "attacker": -0.0192, "defender":  0.0198 },
-        "mewtwo":         { "attacker":  0.0000, "defender":  0.0378 },
-        "galvantula":     { "attacker":  0.0136, "defender":  0.0172 },
-        "blissey":        { "attacker": -0.0070, "defender":  0.0221 },
-        "lapras":         { "attacker": -0.0074, "defender": -0.0192 },
-        "wobbuffet":      { "attacker":  0.0250, "defender":  0.0000 },
-        "rayquaza":       { "attacker": -0.0138, "defender":  0.0000 },
-        "swalot":         { "attacker":  0.0000, "defender": -0.0094 },
-        "altaria":        { "attacker":  0.0000, "defender":  0.0086 },
-        "gyarados":       { "attacker": -0.0062, "defender":  0.0000 }
+        "corsola": {
+          "attacker": -0.2073,
+          "defender": -0.1936
+        },
+        "lumineon": {
+          "attacker": 0.1804,
+          "defender": -0.1587
+        },
+        "archeops": {
+          "attacker": -0.0354,
+          "defender": -0.2312
+        },
+        "tyranitar": {
+          "attacker": 0.2219,
+          "defender": -0.0354
+        },
+        "dragonite": {
+          "attacker": 0.1536,
+          "defender": 0.1004
+        },
+        "meganium": {
+          "attacker": 0.1267,
+          "defender": -0.1248
+        },
+        "ninetales": {
+          "attacker": -0.1431,
+          "defender": -0.0909
+        },
+        "xerneas": {
+          "attacker": -0.0954,
+          "defender": 0.1309
+        },
+        "gliscor": {
+          "attacker": 0.0734,
+          "defender": 0.1488
+        },
+        "golurk": {
+          "attacker": 0.1942,
+          "defender": -0.0278
+        },
+        "minior": {
+          "attacker": 0.0413,
+          "defender": -0.1729
+        },
+        "frosmoth": {
+          "attacker": 0.1483,
+          "defender": 0.0565
+        },
+        "tinkaton": {
+          "attacker": 0.1261,
+          "defender": -0.0784
+        },
+        "tauros-paldean": {
+          "attacker": -0.1112,
+          "defender": 0.0925
+        },
+        "hydreigon": {
+          "attacker": 0.0945,
+          "defender": 0.1054
+        },
+        "shedinja": {
+          "attacker": -0.0578,
+          "defender": 0.1369
+        },
+        "primarina": {
+          "attacker": 0.1665,
+          "defender": 0.0253
+        },
+        "suicune": {
+          "attacker": -0.1485,
+          "defender": -0.0416
+        },
+        "dragapult": {
+          "attacker": -0.0302,
+          "defender": 0.1509
+        },
+        "comfey": {
+          "attacker": -0.0819,
+          "defender": 0.0992
+        },
+        "dodrio": {
+          "attacker": 0.0551,
+          "defender": 0.1231
+        },
+        "ninjask": {
+          "attacker": -0.0855,
+          "defender": -0.0895
+        },
+        "krookodile": {
+          "attacker": -0.1626,
+          "defender": 0.009
+        },
+        "furret": {
+          "attacker": -0.1713,
+          "defender": 0.0
+        },
+        "reuniclus": {
+          "attacker": -0.1165,
+          "defender": 0.0508
+        },
+        "solgaleo": {
+          "attacker": 0.0162,
+          "defender": -0.1508
+        },
+        "blastoise": {
+          "attacker": 0.0188,
+          "defender": -0.1358
+        },
+        "pikachu": {
+          "attacker": 0.0553,
+          "defender": -0.099
+        },
+        "sudowoodo": {
+          "attacker": -0.1503,
+          "defender": 0.0
+        },
+        "cetitan": {
+          "attacker": 0.1289,
+          "defender": -0.0214
+        },
+        "infernape": {
+          "attacker": 0.0,
+          "defender": 0.1491
+        },
+        "froslass": {
+          "attacker": 0.0574,
+          "defender": -0.0912
+        },
+        "chien-pao": {
+          "attacker": -0.0428,
+          "defender": -0.1055
+        },
+        "sinistcha": {
+          "attacker": 0.0542,
+          "defender": 0.0901
+        },
+        "heracross": {
+          "attacker": -0.0401,
+          "defender": 0.1005
+        },
+        "golisopod": {
+          "attacker": -0.0181,
+          "defender": 0.1218
+        },
+        "lugia": {
+          "attacker": -0.0683,
+          "defender": 0.0705
+        },
+        "gengar": {
+          "attacker": -0.1341,
+          "defender": 0.0
+        },
+        "espeon": {
+          "attacker": 0.0769,
+          "defender": 0.0564
+        },
+        "kyurem": {
+          "attacker": 0.1315,
+          "defender": 0.0
+        },
+        "lurantis": {
+          "attacker": -0.0335,
+          "defender": 0.0972
+        },
+        "venusaur": {
+          "attacker": -0.0441,
+          "defender": -0.0864
+        },
+        "oricorio": {
+          "attacker": -0.0507,
+          "defender": -0.0783
+        },
+        "yveltal": {
+          "attacker": 0.0751,
+          "defender": 0.0537
+        },
+        "cherrim": {
+          "attacker": 0.046,
+          "defender": -0.0784
+        },
+        "zoroark-hisui": {
+          "attacker": -0.0436,
+          "defender": -0.0806
+        },
+        "breloom": {
+          "attacker": 0.0624,
+          "defender": 0.06
+        },
+        "iron-valiant": {
+          "attacker": 0.0247,
+          "defender": 0.0954
+        },
+        "flygon": {
+          "attacker": 0.0115,
+          "defender": -0.1083
+        },
+        "haxorus": {
+          "attacker": 0.0635,
+          "defender": 0.0554
+        },
+        "metagross": {
+          "attacker": 0.1169,
+          "defender": 0.0
+        },
+        "roserade": {
+          "attacker": 0.0,
+          "defender": -0.116
+        },
+        "clefable": {
+          "attacker": 0.0977,
+          "defender": 0.0168
+        },
+        "ditto": {
+          "attacker": -0.0661,
+          "defender": -0.0459
+        },
+        "zapdos": {
+          "attacker": -0.0784,
+          "defender": 0.0317
+        },
+        "jirachi": {
+          "attacker": -0.0143,
+          "defender": -0.0957
+        },
+        "ferrothorn": {
+          "attacker": -0.0615,
+          "defender": 0.0483
+        },
+        "sylveon": {
+          "attacker": -0.0688,
+          "defender": -0.0406
+        },
+        "charizard": {
+          "attacker": 0.0,
+          "defender": -0.1054
+        },
+        "butterfree": {
+          "attacker": 0.0417,
+          "defender": 0.0635
+        },
+        "octillery": {
+          "attacker": -0.0549,
+          "defender": -0.0487
+        },
+        "umbreon": {
+          "attacker": -0.0455,
+          "defender": -0.0577
+        },
+        "arcanine": {
+          "attacker": 0.0916,
+          "defender": -0.0109
+        },
+        "aurorus": {
+          "attacker": -0.1024,
+          "defender": 0.0
+        },
+        "skarmory": {
+          "attacker": 0.0581,
+          "defender": 0.0442
+        },
+        "banette": {
+          "attacker": -0.0935,
+          "defender": -0.0087
+        },
+        "mamoswine": {
+          "attacker": 0.0646,
+          "defender": -0.0367
+        },
+        "snorlax": {
+          "attacker": -0.0673,
+          "defender": 0.031
+        },
+        "zygarde": {
+          "attacker": -0.0227,
+          "defender": 0.0743
+        },
+        "lunala": {
+          "attacker": -0.0775,
+          "defender": 0.0187
+        },
+        "cinccino": {
+          "attacker": 0.0235,
+          "defender": 0.0709
+        },
+        "celebi": {
+          "attacker": -0.0059,
+          "defender": 0.0819
+        },
+        "crobat": {
+          "attacker": -0.0871,
+          "defender": 0.0
+        },
+        "kyogre": {
+          "attacker": 0.0,
+          "defender": -0.0848
+        },
+        "vivillon": {
+          "attacker": 0.0662,
+          "defender": 0.0181
+        },
+        "rampardos": {
+          "attacker": -0.0736,
+          "defender": 0.0107
+        },
+        "drapion": {
+          "attacker": 0.0,
+          "defender": 0.084
+        },
+        "mew": {
+          "attacker": 0.0,
+          "defender": -0.0833
+        },
+        "scrafty": {
+          "attacker": -0.0542,
+          "defender": -0.0279
+        },
+        "wigglytuff": {
+          "attacker": 0.0332,
+          "defender": 0.0488
+        },
+        "groudon": {
+          "attacker": 0.0632,
+          "defender": -0.0154
+        },
+        "amoonguss": {
+          "attacker": -0.0274,
+          "defender": -0.0482
+        },
+        "weezing": {
+          "attacker": -0.0446,
+          "defender": 0.0253
+        },
+        "dialga": {
+          "attacker": -0.0131,
+          "defender": 0.0555
+        },
+        "togekiss": {
+          "attacker": 0.0411,
+          "defender": -0.0251
+        },
+        "pelipper": {
+          "attacker": 0.0299,
+          "defender": 0.0358
+        },
+        "zekrom": {
+          "attacker": 0.0145,
+          "defender": -0.0508
+        },
+        "reshiram": {
+          "attacker": 0.0511,
+          "defender": -0.0135
+        },
+        "staraptor": {
+          "attacker": 0.0243,
+          "defender": 0.0356
+        },
+        "raichu": {
+          "attacker": 0.0,
+          "defender": 0.0592
+        },
+        "milotic": {
+          "attacker": -0.0181,
+          "defender": 0.041
+        },
+        "malamar": {
+          "attacker": 0.0154,
+          "defender": -0.0428
+        },
+        "slaking": {
+          "attacker": -0.0062,
+          "defender": 0.052
+        },
+        "dewgong": {
+          "attacker": -0.0349,
+          "defender": 0.0206
+        },
+        "noivern": {
+          "attacker": -0.0417,
+          "defender": 0.0129
+        },
+        "hawlucha": {
+          "attacker": 0.0434,
+          "defender": 0.0096
+        },
+        "arceus": {
+          "attacker": 0.0335,
+          "defender": 0.0185
+        },
+        "porygonz": {
+          "attacker": -0.0075,
+          "defender": -0.0445
+        },
+        "tauros": {
+          "attacker": -0.0502,
+          "defender": 0.0
+        },
+        "slowbro": {
+          "attacker": -0.0087,
+          "defender": -0.0411
+        },
+        "crawdaunt": {
+          "attacker": 0.0299,
+          "defender": -0.0164
+        },
+        "volcarona": {
+          "attacker": -0.0214,
+          "defender": -0.0229
+        },
+        "scream-tail": {
+          "attacker": 0.0421,
+          "defender": 0.0
+        },
+        "scizor": {
+          "attacker": 0.0,
+          "defender": 0.0398
+        },
+        "luxray": {
+          "attacker": -0.0192,
+          "defender": 0.0198
+        },
+        "mewtwo": {
+          "attacker": 0.0,
+          "defender": 0.0378
+        },
+        "galvantula": {
+          "attacker": 0.0136,
+          "defender": 0.0172
+        },
+        "blissey": {
+          "attacker": -0.007,
+          "defender": 0.0221
+        },
+        "lapras": {
+          "attacker": -0.0074,
+          "defender": -0.0192
+        },
+        "wobbuffet": {
+          "attacker": 0.025,
+          "defender": 0.0
+        },
+        "rayquaza": {
+          "attacker": -0.0138,
+          "defender": 0.0
+        },
+        "swalot": {
+          "attacker": 0.0,
+          "defender": -0.0094
+        },
+        "altaria": {
+          "attacker": 0.0,
+          "defender": 0.0086
+        },
+        "gyarados": {
+          "attacker": -0.0062,
+          "defender": 0.0
+        }
       }
     }
   },
   "trainerMode": {
-    "attackerEdge":  0.2431,
+    "attackerEdge": -0.0318,
     "cards": {
-      "crobat":         { "attacker": -0.0625, "defender": -0.0267 },
-      "suicune":        { "attacker":  0.0193, "defender": -0.0635 },
-      "arceus":         { "attacker":  0.0000, "defender":  0.0815 },
-      "dragapult":      { "attacker":  0.0507, "defender": -0.0290 },
-      "golisopod":      { "attacker":  0.0410, "defender":  0.0371 },
-      "milotic":        { "attacker": -0.0161, "defender":  0.0581 },
-      "wobbuffet":      { "attacker":  0.0313, "defender":  0.0426 },
-      "tyranitar":      { "attacker": -0.0299, "defender":  0.0411 },
-      "ferrothorn":     { "attacker":  0.0251, "defender":  0.0403 },
-      "crawdaunt":      { "attacker":  0.0170, "defender":  0.0461 },
-      "wigglytuff":     { "attacker": -0.0347, "defender": -0.0255 },
-      "lumineon":       { "attacker":  0.0472, "defender": -0.0085 },
-      "banette":        { "attacker":  0.0291, "defender": -0.0255 },
-      "ditto":          { "attacker":  0.0438, "defender": -0.0108 },
-      "snorlax":        { "attacker": -0.0513, "defender":  0.0000 },
-      "umbreon":        { "attacker":  0.0282, "defender": -0.0230 },
-      "krookodile":     { "attacker":  0.0243, "defender": -0.0267 },
-      "archeops":       { "attacker":  0.0184, "defender": -0.0322 },
-      "rampardos":      { "attacker": -0.0143, "defender": -0.0362 },
-      "golurk":         { "attacker": -0.0504, "defender":  0.0000 },
-      "infernape":      { "attacker": -0.0152, "defender":  0.0348 },
-      "haxorus":        { "attacker": -0.0296, "defender": -0.0198 },
-      "gliscor":        { "attacker": -0.0245, "defender":  0.0228 },
-      "octillery":      { "attacker":  0.0230, "defender":  0.0238 },
-      "vivillon":       { "attacker":  0.0000, "defender": -0.0457 },
-      "scrafty":        { "attacker":  0.0430, "defender":  0.0000 },
-      "gyarados":       { "attacker": -0.0426, "defender":  0.0000 },
-      "jirachi":        { "attacker": -0.0426, "defender":  0.0000 },
-      "cetitan":        { "attacker": -0.0301, "defender":  0.0124 },
-      "dodrio":         { "attacker": -0.0213, "defender":  0.0210 },
-      "lurantis":       { "attacker": -0.0073, "defender": -0.0347 },
-      "lunala":         { "attacker": -0.0159, "defender": -0.0259 },
-      "slowbro":        { "attacker": -0.0393, "defender":  0.0000 },
-      "furret":         { "attacker":  0.0000, "defender":  0.0390 },
-      "reuniclus":      { "attacker":  0.0216, "defender": -0.0170 },
-      "frosmoth":       { "attacker":  0.0271, "defender":  0.0100 },
-      "hydreigon":      { "attacker":  0.0128, "defender": -0.0228 },
-      "breloom":        { "attacker":  0.0157, "defender": -0.0193 },
-      "minior":         { "attacker": -0.0292, "defender":  0.0057 },
-      "pikachu":        { "attacker": -0.0057, "defender":  0.0284 },
-      "dewgong":        { "attacker":  0.0000, "defender": -0.0339 },
-      "celebi":         { "attacker": -0.0118, "defender": -0.0210 },
-      "staraptor":      { "attacker": -0.0086, "defender":  0.0240 },
-      "xerneas":        { "attacker":  0.0123, "defender":  0.0201 },
-      "dragonite":      { "attacker":  0.0218, "defender": -0.0103 },
-      "butterfree":     { "attacker":  0.0115, "defender":  0.0205 },
-      "sinistcha":      { "attacker":  0.0252, "defender":  0.0068 },
-      "zoroark-hisui":  { "attacker": -0.0142, "defender": -0.0170 },
-      "sudowoodo":      { "attacker":  0.0184, "defender":  0.0127 },
-      "corsola":        { "attacker":  0.0000, "defender":  0.0302 },
-      "slaking":        { "attacker":  0.0094, "defender": -0.0198 },
-      "yveltal":        { "attacker": -0.0219, "defender":  0.0073 },
-      "raichu":         { "attacker":  0.0000, "defender": -0.0286 },
-      "blastoise":      { "attacker": -0.0224, "defender": -0.0061 },
-      "flygon":         { "attacker": -0.0174, "defender": -0.0111 },
-      "amoonguss":      { "attacker": -0.0209, "defender":  0.0073 },
-      "tauros-paldean": { "attacker":  0.0000, "defender": -0.0272 },
-      "heracross":      { "attacker":  0.0184, "defender": -0.0087 },
-      "zekrom":         { "attacker":  0.0267, "defender":  0.0000 },
-      "zapdos":         { "attacker":  0.0260, "defender":  0.0000 },
-      "kyogre":         { "attacker":  0.0000, "defender":  0.0255 },
-      "cinccino":       { "attacker": -0.0161, "defender": -0.0082 },
-      "charizard":      { "attacker": -0.0109, "defender": -0.0127 },
-      "lugia":          { "attacker":  0.0000, "defender": -0.0234 },
-      "comfey":         { "attacker":  0.0059, "defender":  0.0166 },
-      "clefable":       { "attacker": -0.0219, "defender":  0.0000 },
-      "venusaur":       { "attacker":  0.0216, "defender":  0.0000 },
-      "reshiram":       { "attacker": -0.0214, "defender":  0.0000 },
-      "sylveon":        { "attacker": -0.0214, "defender":  0.0000 },
-      "weezing":        { "attacker":  0.0209, "defender":  0.0000 },
-      "galvantula":     { "attacker":  0.0000, "defender": -0.0208 },
-      "swalot":         { "attacker":  0.0000, "defender":  0.0195 },
-      "lapras":         { "attacker":  0.0000, "defender": -0.0192 },
-      "drapion":        { "attacker":  0.0000, "defender": -0.0186 },
-      "chien-pao":      { "attacker":  0.0000, "defender":  0.0184 },
-      "ninetales":      { "attacker":  0.0179, "defender":  0.0000 },
-      "pelipper":       { "attacker":  0.0000, "defender":  0.0161 },
-      "aurorus":        { "attacker":  0.0160, "defender":  0.0000 },
-      "scream-tail":    { "attacker": -0.0160, "defender":  0.0000 },
-      "froslass":       { "attacker":  0.0000, "defender": -0.0159 },
-      "volcarona":      { "attacker":  0.0000, "defender": -0.0149 },
-      "tauros":         { "attacker":  0.0143, "defender":  0.0000 },
-      "blissey":        { "attacker":  0.0085, "defender":  0.0057 },
-      "meganium":       { "attacker":  0.0054, "defender":  0.0088 },
-      "ninjask":        { "attacker":  0.0137, "defender":  0.0000 },
-      "porygonz":       { "attacker":  0.0000, "defender":  0.0129 },
-      "malamar":        { "attacker":  0.0128, "defender":  0.0000 },
-      "togekiss":       { "attacker": -0.0127, "defender":  0.0000 },
-      "oricorio":       { "attacker": -0.0124, "defender":  0.0000 },
-      "zygarde":        { "attacker":  0.0000, "defender":  0.0124 },
-      "altaria":        { "attacker":  0.0000, "defender":  0.0123 },
-      "iron-valiant":   { "attacker":  0.0000, "defender": -0.0123 },
-      "espeon":         { "attacker":  0.0000, "defender": -0.0115 },
-      "cherrim":        { "attacker":  0.0111, "defender":  0.0000 },
-      "shedinja":       { "attacker":  0.0000, "defender": -0.0110 },
-      "primarina":      { "attacker":  0.0105, "defender":  0.0000 },
-      "skarmory":       { "attacker":  0.0098, "defender":  0.0000 },
-      "luxray":         { "attacker":  0.0000, "defender": -0.0098 },
-      "rayquaza":       { "attacker":  0.0085, "defender":  0.0000 },
-      "mewtwo":         { "attacker":  0.0000, "defender": -0.0085 },
-      "groudon":        { "attacker":  0.0069, "defender":  0.0000 },
-      "noivern":        { "attacker": -0.0057, "defender":  0.0000 },
-      "roserade":       { "attacker":  0.0053, "defender":  0.0000 }
+      "volcarona": {
+        "attacker": -0.1939,
+        "defender": -0.1288
+      },
+      "aurorus": {
+        "attacker": -0.113,
+        "defender": -0.0437
+      },
+      "frosmoth": {
+        "attacker": -0.0712,
+        "defender": -0.0805
+      },
+      "butterfree": {
+        "attacker": -0.0638,
+        "defender": -0.0846
+      },
+      "tyranitar": {
+        "attacker": 0.0777,
+        "defender": 0.0699
+      },
+      "lunala": {
+        "attacker": 0.0923,
+        "defender": 0.0336
+      },
+      "scizor": {
+        "attacker": 0.0966,
+        "defender": 0.0238
+      },
+      "cinccino": {
+        "attacker": 0.0404,
+        "defender": 0.0786
+      },
+      "ninetales": {
+        "attacker": 0.0586,
+        "defender": 0.0572
+      },
+      "wigglytuff": {
+        "attacker": 0.0399,
+        "defender": -0.0747
+      },
+      "heracross": {
+        "attacker": -0.0751,
+        "defender": 0.0367
+      },
+      "mamoswine": {
+        "attacker": 0.0527,
+        "defender": 0.0566
+      },
+      "mewtwo": {
+        "attacker": 0.0182,
+        "defender": -0.0884
+      },
+      "slaking": {
+        "attacker": -0.0385,
+        "defender": 0.064
+      },
+      "sudowoodo": {
+        "attacker": 0.0627,
+        "defender": 0.0395
+      },
+      "venusaur": {
+        "attacker": 0.0241,
+        "defender": 0.0774
+      },
+      "hawlucha": {
+        "attacker": -0.0925,
+        "defender": -0.0067
+      },
+      "primarina": {
+        "attacker": 0.0451,
+        "defender": 0.0525
+      },
+      "kyogre": {
+        "attacker": 0.0862,
+        "defender": 0.0082
+      },
+      "octillery": {
+        "attacker": -0.0238,
+        "defender": -0.0691
+      },
+      "milotic": {
+        "attacker": -0.0237,
+        "defender": -0.0665
+      },
+      "hydreigon": {
+        "attacker": 0.0445,
+        "defender": 0.0449
+      },
+      "rampardos": {
+        "attacker": -0.0116,
+        "defender": 0.0763
+      },
+      "dodrio": {
+        "attacker": -0.0728,
+        "defender": 0.0147
+      },
+      "drapion": {
+        "attacker": 0.0398,
+        "defender": -0.0459
+      },
+      "togekiss": {
+        "attacker": -0.0654,
+        "defender": -0.0198
+      },
+      "lumineon": {
+        "attacker": -0.0691,
+        "defender": -0.0153
+      },
+      "swalot": {
+        "attacker": 0.0106,
+        "defender": -0.0737
+      },
+      "meganium": {
+        "attacker": -0.0587,
+        "defender": 0.0252
+      },
+      "raichu": {
+        "attacker": -0.0767,
+        "defender": -0.007
+      },
+      "golurk": {
+        "attacker": 0.0206,
+        "defender": 0.06
+      },
+      "haxorus": {
+        "attacker": -0.0166,
+        "defender": -0.0637
+      },
+      "gyarados": {
+        "attacker": -0.0326,
+        "defender": 0.0475
+      },
+      "metagross": {
+        "attacker": 0.0,
+        "defender": 0.0801
+      },
+      "roserade": {
+        "attacker": 0.0154,
+        "defender": 0.0634
+      },
+      "blastoise": {
+        "attacker": -0.0164,
+        "defender": -0.0619
+      },
+      "golisopod": {
+        "attacker": 0.0667,
+        "defender": 0.0106
+      },
+      "staraptor": {
+        "attacker": 0.0612,
+        "defender": 0.0154
+      },
+      "minior": {
+        "attacker": 0.0469,
+        "defender": 0.0293
+      },
+      "umbreon": {
+        "attacker": 0.0344,
+        "defender": 0.0409
+      },
+      "noivern": {
+        "attacker": 0.014,
+        "defender": -0.0595
+      },
+      "vivillon": {
+        "attacker": 0.0589,
+        "defender": -0.0146
+      },
+      "ditto": {
+        "attacker": -0.0359,
+        "defender": 0.0367
+      },
+      "krookodile": {
+        "attacker": 0.0548,
+        "defender": 0.0163
+      },
+      "dewgong": {
+        "attacker": 0.0415,
+        "defender": 0.0241
+      },
+      "furret": {
+        "attacker": 0.0485,
+        "defender": 0.0166
+      },
+      "snorlax": {
+        "attacker": 0.0446,
+        "defender": -0.0204
+      },
+      "reshiram": {
+        "attacker": 0.0215,
+        "defender": -0.0424
+      },
+      "ninjask": {
+        "attacker": -0.0482,
+        "defender": -0.0156
+      },
+      "lapras": {
+        "attacker": 0.0578,
+        "defender": 0.0051
+      },
+      "comfey": {
+        "attacker": -0.0489,
+        "defender": -0.0124
+      },
+      "corsola": {
+        "attacker": -0.026,
+        "defender": -0.0344
+      },
+      "luxray": {
+        "attacker": 0.0057,
+        "defender": 0.054
+      },
+      "dragapult": {
+        "attacker": -0.0454,
+        "defender": 0.0118
+      },
+      "infernape": {
+        "attacker": 0.0202,
+        "defender": 0.0299
+      },
+      "yveltal": {
+        "attacker": -0.0157,
+        "defender": -0.0319
+      },
+      "lurantis": {
+        "attacker": -0.0186,
+        "defender": -0.0281
+      },
+      "galvantula": {
+        "attacker": 0.0193,
+        "defender": -0.0273
+      },
+      "archeops": {
+        "attacker": -0.0072,
+        "defender": 0.0394
+      },
+      "whimsicott": {
+        "attacker": -0.0384,
+        "defender": -0.0066
+      },
+      "gengar": {
+        "attacker": -0.0141,
+        "defender": -0.0287
+      },
+      "gliscor": {
+        "attacker": 0.0,
+        "defender": 0.0422
+      },
+      "porygonz": {
+        "attacker": -0.0094,
+        "defender": 0.0323
+      },
+      "skarmory": {
+        "attacker": -0.03,
+        "defender": -0.0088
+      },
+      "rayquaza": {
+        "attacker": 0.0196,
+        "defender": -0.0188
+      },
+      "dragonite": {
+        "attacker": 0.0372,
+        "defender": 0.0
+      },
+      "altaria": {
+        "attacker": -0.0288,
+        "defender": 0.0081
+      },
+      "pelipper": {
+        "attacker": 0.018,
+        "defender": -0.0188
+      },
+      "froslass": {
+        "attacker": 0.036,
+        "defender": 0.0
+      },
+      "reuniclus": {
+        "attacker": -0.0287,
+        "defender": 0.0066
+      },
+      "malamar": {
+        "attacker": -0.0254,
+        "defender": -0.0098
+      },
+      "wobbuffet": {
+        "attacker": -0.0286,
+        "defender": -0.0062
+      },
+      "sylveon": {
+        "attacker": -0.0101,
+        "defender": -0.0242
+      },
+      "espeon": {
+        "attacker": -0.022,
+        "defender": 0.0115
+      },
+      "ferrothorn": {
+        "attacker": 0.0,
+        "defender": -0.0329
+      },
+      "cetitan": {
+        "attacker": -0.0234,
+        "defender": 0.0078
+      },
+      "charizard": {
+        "attacker": 0.0118,
+        "defender": -0.0189
+      },
+      "amoonguss": {
+        "attacker": -0.005,
+        "defender": -0.0256
+      },
+      "breloom": {
+        "attacker": 0.0291,
+        "defender": 0.0
+      },
+      "slowbro": {
+        "attacker": -0.0082,
+        "defender": -0.0187
+      },
+      "clefable": {
+        "attacker": 0.0141,
+        "defender": -0.0111
+      },
+      "crawdaunt": {
+        "attacker": 0.0133,
+        "defender": -0.0117
+      },
+      "cherrim": {
+        "attacker": 0.0069,
+        "defender": -0.0179
+      },
+      "scrafty": {
+        "attacker": 0.0247,
+        "defender": 0.0
+      },
+      "zoroark-hisui": {
+        "attacker": 0.0072,
+        "defender": 0.0171
+      },
+      "crobat": {
+        "attacker": -0.0087,
+        "defender": -0.0147
+      },
+      "zekrom": {
+        "attacker": 0.0,
+        "defender": 0.023
+      },
+      "arcanine": {
+        "attacker": 0.0075,
+        "defender": -0.0152
+      },
+      "sinistcha": {
+        "attacker": 0.0053,
+        "defender": -0.0161
+      },
+      "tinkaton": {
+        "attacker": -0.0205,
+        "defender": 0.0
+      },
+      "pikachu": {
+        "attacker": 0.0201,
+        "defender": 0.0
+      },
+      "tauros": {
+        "attacker": -0.0093,
+        "defender": 0.0078
+      },
+      "groudon": {
+        "attacker": 0.0,
+        "defender": 0.0156
+      },
+      "weezing": {
+        "attacker": -0.007,
+        "defender": -0.0079
+      },
+      "flygon": {
+        "attacker": 0.0,
+        "defender": 0.0124
+      },
+      "shedinja": {
+        "attacker": 0.0,
+        "defender": 0.0112
+      },
+      "blissey": {
+        "attacker": 0.0,
+        "defender": -0.0082
+      },
+      "oricorio": {
+        "attacker": 0.0,
+        "defender": 0.0072
+      }
     }
   }
 }

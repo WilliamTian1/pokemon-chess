@@ -1,17 +1,21 @@
 import {
-  type Action, CARD_LIST, type CardDef, type CopyOption, type Dir, type GameState, type MoveIndex, type MoveOption, type Pos, type Rng, type Side, type Unit,
+  type Action, type CardDef, type CopyOption, type Dir, type GameState, type MoveIndex, type MoveOption, type Pos, type Rng, type Side, type Unit,
   basePower, canUseSpecial, cardOf, cheb, computeDamage, decider, effectiveMov, expectedRng, getCard, getMap, getUnit, grazeApplies,
   auctionOpen, deciders, draftStyle, isTrainerPick, secretNext, specialTargets, trainerOf,
   canPass, draftOptions, fusionOptions, isImmune, isSupportOnly, isTrebuchet, liveUnits, makeAttackCtx, mapOf, moveOf, moveOptions, moveTargets, onBoard,
   otherSide, parseGrid, posKey, reachable, seededRng, simulate, steps, terrainAt, terrainBonus, trebuchetCtx, trebuchetOption, waitBlock, zoneTiles,
+  TRAINER_LIST, TYPES,
 } from '../engine';
+import { MAP_FEATURES, mapFeatures } from './mapFeatures';
 import { bestDraftPick, bestTrainerPick, hasDraftModel } from './draft';
 import { auctionAction, bestSecretPick, secretTrainerPick, simpleSecretPick } from './styles';
 import { matchup, rateCard } from './rating';
-import { type ValueModel, predictValue } from './value';
+import { type CompiledValue, type ValueModel, compileValue, valueLogit } from './value';
+import builtinValue from './models/value.json';
 
-export type Difficulty = 'easy' | 'medium' | 'hard';
-export const DIFFICULTIES: Difficulty[] = ['easy', 'medium', 'hard'];
+import type { Difficulty } from './levels';
+
+export { DIFFICULTIES, type Difficulty } from './levels';
 
 const DIRS4: Dir[] = ['N', 'E', 'S', 'W'];
 
@@ -214,6 +218,11 @@ class Evaluator {
 
   gapToPublic(s: GameState, u: Unit, e: Unit): number {
     return this.gapTo(s, u, e);
+  }
+
+  /** Walking distance from `u` to `e` over the terrain `u` can cross (20 if there is no way). */
+  walkTo(s: GameState, u: Unit, e: Unit): number {
+    return Math.min(20, this.walkField(s, u, e)[u.pos!.y * this.width + u.pos!.x]);
   }
 
   /** How many opponents could aim an attack at `u`'s tile next turn. */
@@ -559,31 +568,36 @@ class Evaluator {
 
 // ---------------------------------------------------------------- value-network features
 
-const CARD_INDEX = new Map(CARD_LIST.map((c, i) => [c.id, i]));
-export const CARD_COUNT = CARD_LIST.length;
 const STATUSES = ['psn', 'tox', 'brn', 'par', 'slp', 'frz'] as const;
 
-/** Per-Pokémon numeric features, in order (the card itself is passed as an index). */
-export const UNIT_FEATURES = [
+/** Per-Pokémon numeric features, in order (the card itself is passed by id). */
+export const UNIT_FEATURES: string[] = [
   'hpFrac', 'hp', 'maxHp', 'x', 'y', 'atk', 'def', 'mov', 'effMov',
   'psn', 'tox', 'brn', 'par', 'slp', 'frz', 'toxicN', 'flinched', 'noAct', 'noMove', 'confused', 'sturdyBroken', 'decoy',
   'bush', 'flower', 'water', 'trebuchet', 'threat', 'threatKo', 'threatCount', 'opportunity', 'oppKo', 'gap', 'nearEnemy', 'nearAlly',
-] as const;
+  'walk', 'threatFrac', 'lastAlive', 'locked', 'legend', 'flier', 'swimmer', 'cardMov', 'offense',
+  'dealBest', 'dealSum', 'takeBest', 'takeSum', 'mover',
+  ...TYPES.map((t) => `type${t}`),
+];
 /** Whole-position features, in order. */
-export const GLOBAL_FEATURES = [
-  'round', 'aToMove', 'meadow', 'river', 'aliveA', 'aliveD', 'hpA', 'hpD', 'clock', 'clockT', 'evalA', 'evalD',
-  'subA', 'subD', 'fsA', 'fsD', 'spikes', 'webs',
-] as const;
+export const GLOBAL_FEATURES: string[] = [
+  'round', 'roundsLeft', 'aToMove', 'aliveA', 'aliveD', 'hpA', 'hpD', 'clock', 'clockT', 'evalA', 'evalD',
+  'subA', 'subD', 'fsA', 'fsD', 'spikes', 'webs', 'tauntA', 'tauntD',
+  ...MAP_FEATURES.map((f) => `map_${f}`),
+  'trainers', 'specialLeftA', 'specialLeftD',
+  ...TRAINER_LIST.map((t) => `trA_${t.id}`), ...TRAINER_LIST.map((t) => `trD_${t.id}`),
+];
 
 export interface PositionFeatures {
-  /** Live Pokémon per side: card index and numeric features. */
-  units: Record<Side, { card: number; x: number[] }[]>;
+  /** Live Pokémon per side: card id and numeric features. */
+  units: Record<Side, { card: string; x: number[] }[]>;
   global: number[];
 }
 
 /**
  * Features of a position for the value network: each live Pokémon's card, state and tactical
- * situation (who can hit it next turn, what it can hit), plus global facts such as the clock.
+ * situation (who can hit it next turn, what it can hit), plus global facts: the clock, the hand
+ * evaluation from both sides, the map's traits (so it carries over to maps it hasn't seen) and trainers.
  */
 export function positionFeatures(s: GameState): PositionFeatures {
   const evA = new Evaluator(s, 'A', 'hard');
@@ -595,9 +609,27 @@ export function positionFeatures(s: GameState): PositionFeatures {
     const allies = liveUnits(s, u.side).filter((x) => x.id !== u.id);
     const threat = evA.threatOn(s, u);
     let gap = 9;
-    for (const e of enemies) gap = Math.min(gap, evA.gapToPublic(s, u, e));
+    let walk = 20;
+    for (const e of enemies) {
+      gap = Math.min(gap, evA.gapToPublic(s, u, e));
+      walk = Math.min(walk, evA.walkTo(s, u, e));
+    }
+    // Matchups wherever the Pokémon stand: the share of each opponent's HP this one's best attack removes, and the reverse.
+    let dealBest = 0;
+    let dealSum = 0;
+    let takeBest = 0;
+    let takeSum = 0;
+    for (const e of enemies) {
+      const deal = Math.max(evA.expDamage(s, u, 0, e), evA.expDamage(s, u, 1, e)) / Math.max(1, e.hp);
+      const take = Math.max(evA.expDamage(s, e, 0, u), evA.expDamage(s, e, 1, u)) / Math.max(1, u.hp);
+      dealBest = Math.max(dealBest, Math.min(1.5, deal));
+      dealSum += Math.min(1, deal) / 4;
+      takeBest = Math.max(takeBest, Math.min(1.5, take));
+      takeSum += Math.min(1.5, take) / 4;
+    }
     const opp = evA.opportunity(s, u);
     const t = terrainBonus(s, u);
+    const c = cardOf(u);
     const nearest = (list: Unit[]) => list.reduce((d, x) => Math.min(d, steps(x.pos!, u.pos!)), 20);
     const x = [
       u.hp / u.maxHp, u.hp / 200, u.maxHp / 200, u.pos!.x / (m.width - 1), u.pos!.y / (m.height - 1),
@@ -607,19 +639,29 @@ export function positionFeatures(s: GameState): PositionFeatures {
       t === 'bush' ? 1 : 0, t === 'flower' ? 1 : 0, terrainAt(s, u.pos!) === 'water' ? 1 : 0, isTrebuchet(s, u.pos!) ? 1 : 0,
       Math.min(threat, 400) / 200, threat >= u.hp ? 1 : 0, evA.threatCount(s, u) / 4, Math.min(opp, 400) / 200, evA.canKo(s, u) ? 1 : 0,
       gap / 5, nearest(enemies) / 10, nearest(allies) / 10,
+      walk / 10, Math.min(2, threat / Math.max(1, u.hp)), allies.length === 0 ? 1 : 0, u.locked.length ? 1 : 0,
+      c.legendary ? 1 : 0, c.types.includes('Flying') || c.ability === 'levitate' ? 1 : 0, c.types.includes('Water') ? 1 : 0, c.mov / 5,
+      evA.offense(u) / 100,
+      dealBest, dealSum, takeBest, takeSum, u.side === s.side ? 1 : 0,
+      ...TYPES.map((ty) => (c.types.includes(ty) ? 1 : 0)),
     ];
-    units[u.side].push({ card: CARD_INDEX.get(u.cardId) ?? 0, x });
+    units[u.side].push({ card: u.cardId, x });
   }
   const side = (sd: Side) => s.units.filter((u) => u.side === sd);
   const hpFrac = (sd: Side) => side(sd).reduce((a, u) => a + u.hp, 0) / Math.max(1, side(sd).reduce((a, u) => a + u.maxHp, 0));
   const clock = s.phase === 'battle' ? evA.clockMargin(s) : 0;
+  const tr = s.trainers;
   const global = [
-    s.round / 10, s.side === 'A' ? 1 : 0, s.mapId === 'meadow' ? 1 : 0, s.mapId === 'river' ? 1 : 0,
+    s.round / s.maxRounds, (s.maxRounds - s.round) / 10, s.side === 'A' ? 1 : 0,
     units.A.length / 4, units.D.length / 4, hpFrac('A'), hpFrac('D'), Math.max(-8, Math.min(8, clock)) / 5, Math.tanh(clock / 2),
     Math.max(-3, Math.min(3, evA.evaluate(s) / 1000)), Math.max(-3, Math.min(3, evD.evaluate(s) / 1000)),
     s.substitute && getUnit(s, s.substitute.ownerId).side === 'A' ? 1 : 0, s.substitute && getUnit(s, s.substitute.ownerId).side === 'D' ? 1 : 0,
     s.futureSight.filter((f) => f.side === 'A').length, s.futureSight.filter((f) => f.side === 'D').length,
     s.hazards.filter((h) => h.kind === 'spikes').length / 5, s.hazards.filter((h) => h.kind === 'web').length / 5,
+    s.taunted === 'A' ? 1 : 0, s.taunted === 'D' ? 1 : 0,
+    ...mapFeatures(m),
+    tr ? 1 : 0, tr && tr.picks.A && !tr.used.A ? 1 : 0, tr && tr.picks.D && !tr.used.D ? 1 : 0,
+    ...TRAINER_LIST.map((x) => (tr?.picks.A === x.id ? 1 : 0)), ...TRAINER_LIST.map((x) => (tr?.picks.D === x.id ? 1 : 0)),
   ];
   return { units, global };
 }
@@ -923,17 +965,29 @@ export const SEARCH = {
    */
   leafRollouts: 0,
   /**
-   * Weight of the value network in the leaf score (0 = hand evaluation only, 1 = network only), in
-   * logit units; `handScale` converts the hand evaluation to logits for the blend.
+   * The value network (src/ai/models/value.json; without one everything below is ignored and the
+   * hand evaluation does it all). `net` is its weight in the score of a line's final position
+   * (1 = network only), in log-odds; `handScale` converts the hand evaluation to log-odds for the rest.
    */
   net: 1,
   handScale: 0.002,
   /**
-   * With a value network: the opponent's reply is the one of its best `netReplies` turns (by its own
-   * evaluation) that leaves the bot worst off by the network, instead of simply its best (≤ 1 = off).
+   * Its weight in ranking the finished turns: the best `replies` by that ranking get checked against the
+   * opponent's reply (0 = the hand evaluation ranks them, and `beam` stays as it is).
+   */
+  netPre: 1,
+  /**
+   * Partial turns kept instead of `beam` when the network ranks the finished turns: it gains from a
+   * wide field to pick from, which the hand evaluation alone never did.
+   */
+  beamNet: 32,
+  /**
+   * The opponent's reply is the one of its best `netReplies` turns (by its own hand evaluation) that
+   * leaves the bot worst off by the network, instead of simply its best (≤ 1 = off). 4 with `beamNet`
+   * 64 measured a point or two stronger, at nearly twice the thinking time: off by default.
    */
   netReplies: 0,
-  /** With a value network: score placements by it instead of the hand evaluation. */
+  /** Score placements by the network instead of the hand evaluation (tested: no better). */
   netPlacement: false,
 
   /** Soft time limit per search. */
@@ -1028,26 +1082,45 @@ function beamTurn(s0: GameState, side: Side, ev: Evaluator, width: number, perUn
  * The bot's turn: beam search over whole turns, then each of the best finished turns is scored by
  * letting the opponent answer (greedily, or with its own whole-turn search) and, optionally, the
  * bot play its next turn too. Plans that leave a Pokémon open to a coordinated counter lose out.
+ *
+ * With a value network the beam is wider and the network picks which finished turns get that look
+ * (by the position each leaves behind), then scores the lines' final positions: it judges positions
+ * better than the hand evaluation, and gains most when it has many candidate turns to choose from.
  */
 function searchTurn(s0: GameState, side: Side): Step[] {
   const deadline = performance.now() + SEARCH.budgetMs;
-  const finished = beamTurn(s0, side, new Evaluator(s0, side, 'hard'), SEARCH.beam, SEARCH.perUnit, deadline);
+  const netPicks = valueNet !== null && SEARCH.net > 0 && SEARCH.netPre > 0;
+  let finished = beamTurn(s0, side, new Evaluator(s0, side, 'hard'), netPicks ? SEARCH.beamNet : SEARCH.beam, SEARCH.perUnit, deadline);
   if (!finished.length) return [];
+  if (netPicks && finished.length > SEARCH.replies) {
+    // Which finished turns get the full look is decided by the network's view of the position each
+    // leaves behind (blended with the hand score), not by the hand evaluation alone. Out of time,
+    // the rest keep their hand order behind the ones already valued.
+    const w = SEARCH.netPre;
+    const cutoff = deadline + SEARCH.budgetMs / 2;
+    finished = finished
+      .map((c) => ({ c, v: performance.now() > cutoff ? -Infinity : w * netLogit(settle(c.s), side) + (1 - w) * c.score * SEARCH.handScale }))
+      .sort((a, b) => b.v - a.v)
+      .map((x) => x.c);
+  }
   const replyDeadline = deadline + SEARCH.budgetMs;
   const scored = finished.slice(0, SEARCH.replies)
     .map((c) => ({ c, ...replyLine(c.s, side, replyDeadline) }))
     .sort((a, b) => b.v - a.v);
   searchHooks.onLeaves?.(side, scored.map((x) => x.leaf));
   const pick = searchHooks.pick ? Math.min(scored.length - 1, searchHooks.pick(scored.length)) : 0;
+  searchHooks.onSearch?.(side, scored[0].v, scored[pick].v);
   return scored[pick].c.steps;
 }
 
-/** For data generation (scripts/gen-values.ts): see the positions the search compared, and vary its choice. */
+/** For data generation (scripts/arena.ts --explore): see the positions the search compared, and vary its choice. */
 export const searchHooks: {
   onLeaves: ((side: Side, leaves: GameState[]) => void) | null;
   /** Index of the candidate to play (0 = best), given how many there are. */
   pick: ((n: number) => number) | null;
-} = { onLeaves: null, pick: null };
+  /** The search's value of the position for `side` (its best line's leaf score), and of the line it plays. */
+  onSearch: ((side: Side, best: number, played: number) => void) | null;
+} = { onLeaves: null, pick: null, onSearch: null };
 
 /** Plays `side`'s turn with its own evaluation and ends it. */
 function playTurn(s0: GameState, side: Side, beamWidth: number, perUnit: number, deadline: number): GameState {
@@ -1084,6 +1157,7 @@ function replyLine(s0: GameState, side: Side, deadline: number): { leaf: GameSta
       const leaf = followUp(settle(r.s), side, deadline);
       const v = leafValue(leaf, side);
       if (!worst || v < worst.v) worst = { leaf, v };
+      if (performance.now() > deadline) break; // out of time: the opponent's own favourite will do
     }
     if (worst) return worst;
   }
@@ -1091,27 +1165,39 @@ function replyLine(s0: GameState, side: Side, deadline: number): { leaf: GameSta
   return { leaf, v: leafValue(leaf, side) };
 }
 
-/** The value network (scripts/train-value.ts); null = hand evaluation only. */
-let valueNet: ValueModel | null = null;
+/**
+ * The value network (scripts/train_value.py → src/ai/models/value.json); null = hand evaluation only,
+ * which is also what a file without networks means.
+ */
+let valueNet: CompiledValue | null = null;
 export function setValueModel(m: ValueModel | null): void {
-  valueNet = m;
+  valueNet = m && m.networks.length ? compileValue(m, UNIT_FEATURES, GLOBAL_FEATURES) : null;
+}
+setValueModel(builtinValue as unknown as ValueModel);
+
+/** The network's logit that `side` wins (clamped; a decided game is far outside the clamp). */
+export function netLogit(s: GameState, side: Side): number {
+  if (s.phase === 'over') return s.winner === side ? 30 : -30;
+  const z = Math.max(-12, Math.min(12, valueLogit(valueNet!, positionFeatures(s))));
+  return side === 'A' ? z : -z;
 }
 
 /** P(`side` wins) according to the value network. */
 export function netValue(s: GameState, side: Side): number {
-  if (s.phase === 'over') return s.winner === side ? 1 : 0;
-  const p = predictValue(valueNet!, positionFeatures(s));
-  return side === 'A' ? p : 1 - p;
+  return 1 / (1 + Math.exp(-netLogit(s, side)));
 }
 
-const logit = (p: number): number => Math.log(Math.max(1e-6, p) / Math.max(1e-6, 1 - p));
+/** A leaf by the hand evaluation alone, on the scale of `SEARCH.handScale`. */
+function handLeaf(s: GameState, side: Side): number {
+  if (s.phase === 'over') return s.winner === side ? 1e6 - s.round : -1e6 + s.round;
+  return new Evaluator(s, side, 'hard').evaluate(s) * SEARCH.handScale;
+}
 
 function leafValue(s: GameState, side: Side): number {
   if (SEARCH.leafRollouts > 0) return rolloutValue(s, side, SEARCH.leafRollouts);
   const w = valueNet ? SEARCH.net : 0;
-  if (s.phase === 'over') return s.winner === side ? 1e6 - s.round : -1e6 + s.round;
-  const hand = w < 1 ? new Evaluator(s, side, 'hard').evaluate(s) * SEARCH.handScale : 0;
-  return w > 0 ? w * logit(netValue(s, side)) + (1 - w) * hand : hand;
+  if (s.phase === 'over' || w <= 0) return handLeaf(s, side);
+  return w * netLogit(s, side) + (w < 1 ? (1 - w) * handLeaf(s, side) : 0);
 }
 
 let rolloutSeed = 1;

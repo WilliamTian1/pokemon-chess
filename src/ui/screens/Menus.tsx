@@ -1,5 +1,5 @@
 import { type ReactNode, useState } from 'react';
-import { DIFFICULTIES, type Difficulty } from '../../ai/bot';
+import { DIFFICULTIES, type Difficulty } from '../../ai/levels';
 import { CARD_LIST, type CardDef, type Side, MAP_LIST, TRAINER_LIST } from '../../engine';
 import { Art, Modal } from '../components/bits';
 import { CardDetail, MiniGrid } from '../components/CardView';
@@ -261,6 +261,8 @@ export function HowToPlay({ onBack }: { onBack: () => void }) {
         </div>
         <div className="grid gap-1.5 sm:grid-cols-2">
           <Legend color="tile-water">Water: only Water, Flying and Levitate Pokémon can enter.</Legend>
+          <Legend color="tile-ice">Ice: Pokémon slide in the direction they entered until they reach a non-ice tile or an obstacle.</Legend>
+          <Legend color="tile-magma">Magma: non-Fire Pokémon take 30 damage when they enter; Fire Pokémon are unharmed.</Legend>
           <Legend color="tile-dirt">Dirt paths are cosmetic — they play like grass.</Legend>
           <Legend color="bg-yellow-300">Flowers: +30 HP when a Pokémon ends its activation there (Flying and Levitate Pokémon hover over them: no bonus).</Legend>
           <Legend color="bg-red-500">Berry bushes: Pokémon standing there take 30 less damage (not Flying or Levitate Pokémon).</Legend>

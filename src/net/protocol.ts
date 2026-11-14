@@ -19,13 +19,19 @@ export const timeControl = (id: string | null | undefined): TimeControl | null =
 
 /** Ranked queue preference: freeplay is reserved for private matches. */
 export type StylePref = Exclude<DraftStyle, 'freeplay'> | 'any';
+export type RankedDraftStyle = Exclude<DraftStyle, 'freeplay'>;
+/** Ranked queue preference for an optional rule (legendaries, trainers): with it, without it, or either. */
+export type RulePref = 'on' | 'off' | 'any';
+export const RULE_PREFS: readonly RulePref[] = ['on', 'off', 'any'];
 
 /** A signed-in account as other players see it. */
 export interface AccountView {
   id: string;
   username: string;
-  rating: number;
-  games: number;
+  /** Elo rating per draft style: each mode is rated separately. */
+  ratings: Record<RankedDraftStyle, number>;
+  /** Ranked games played per draft style. */
+  games: Record<RankedDraftStyle, number>;
   /** Bot accounts (they fill the ranked queue): their difficulty. */
   bot?: 'easy' | 'medium' | 'hard';
 }
@@ -44,7 +50,7 @@ export type ClientMsg =
   | { t: 'rematch'; swapRoles: boolean }
   | { t: 'leave' }
   /** Ranked matchmaking (signed-in players only). */
-  | { t: 'queue'; timeControl: string; style: StylePref }
+  | { t: 'queue'; timeControl: string; style: StylePref; legendaries?: RulePref; trainers?: RulePref }
   | { t: 'unqueue' };
 
 export interface PlayerView {
@@ -100,6 +106,8 @@ export interface RoomView {
 export interface QueueView {
   timeControl: string;
   style: StylePref;
+  legendaries: RulePref;
+  trainers: RulePref;
   since: number;
   /** Players currently searching (including you). */
   searching: number;
@@ -130,17 +138,25 @@ export interface ProfileGame {
   team: string[];
 }
 
-export interface Profile {
-  username: string;
+/** One draft style's standing on a profile. */
+export interface ModeProfile {
   rating: number;
   peak: number;
   games: number;
   wins: number;
   losses: number;
-  createdAt: number;
-  bot?: 'easy' | 'medium' | 'hard';
   history: { t: number; r: number }[];
-  recent: ProfileGame[];
-  /** Rank on the leaderboard (1-based), or null for provisional players. */
+  /** Rank on that style's leaderboard (1-based), or null for provisional players. */
   rank: number | null;
 }
+
+export interface Profile {
+  username: string;
+  createdAt: number;
+  bot?: 'easy' | 'medium' | 'hard';
+  modes: Record<RankedDraftStyle, ModeProfile>;
+  /** Recent ranked games in every style (each carries its own style). */
+  recent: ProfileGame[];
+}
+
+export const DRAFT_STYLES: readonly RankedDraftStyle[] = ['classic', 'secret', 'auction'];

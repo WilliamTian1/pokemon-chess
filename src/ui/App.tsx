@@ -138,7 +138,10 @@ function LocalGame({ cfg, onExit }: { cfg: LocalConfig; onExit: () => void }) {
   const ctl = demo ? {
     ...local, rated: true,
     clock: { A: 512_000, D: 26_000, running: [local.state.side], since: Date.now(), incMs: 5000, skew: 0 },
-    accounts: { A: { id: 'a', username: 'PalletPro', rating: 1214, games: 3 }, D: { id: 'd', username: 'RoninKage', rating: 1492, games: 40, bot: 'hard' as const } },
+    accounts: {
+      A: { id: 'a', username: 'PalletPro', ratings: { classic: 1214, secret: 1200, auction: 1200 }, games: { classic: 3, secret: 0, auction: 0 } },
+      D: { id: 'd', username: 'RoninKage', ratings: { classic: 1492, secret: 1480, auction: 1510 }, games: { classic: 40, secret: 30, auction: 25 }, bot: 'hard' as const },
+    },
   } : local;
   const title = cfg.mode === 'local' ? 'Hot-seat match' : `vs Bot · ${cfg.level[0].toUpperCase()}${cfg.level.slice(1)}`;
   return <GameScreen ctl={ctl} onExit={onExit} title={title} />;

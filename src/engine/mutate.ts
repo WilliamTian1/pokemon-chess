@@ -284,8 +284,8 @@ export function triggerLeech(ctx: Ctx, attacker: Unit, targetPos: Pos, targetId:
 export function checkWin(ctx: Ctx): boolean {
   const s = ctx.s;
   if (s.phase !== 'battle') return s.phase === 'over';
-  const aliveD = s.units.some((u) => u.side === 'D' && !u.fainted);
-  const aliveA = s.units.some((u) => u.side === 'A' && !u.fainted);
+  const aliveD = s.units.some((u) => u.side === 'D' && !u.fainted && u.hp > 0);
+  const aliveA = s.units.some((u) => u.side === 'A' && !u.fainted && u.hp > 0);
   if (!aliveD) endGame(ctx, 'A', 'All of the Defender’s Pokémon fainted.');
   else if (!aliveA) endGame(ctx, 'D', 'All of the Attacker’s Pokémon fainted.');
   return s.winner !== null;

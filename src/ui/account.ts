@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react';
+import type { DraftStyle } from '../engine/types';
 import type { AccountView, Profile } from '../net/protocol';
 
 /**
@@ -48,7 +49,9 @@ async function post(p: string, body: unknown): Promise<{ ok: boolean; data: { ac
 let started = false;
 export async function refreshAccount(): Promise<void> {
   const [me, cfg] = await Promise.all([getJson<{ account: AccountView | null }>('me'), getJson<{ googleClientId: string | null }>('config')]);
-  set({ account: me?.account ?? null, available: !!me, loaded: true, googleClientId: cfg?.googleClientId ?? null });
+  // A later refresh that can't reach the server keeps what is already known (no surprise sign-out).
+  if (!me && state.loaded) return;
+  set({ account: me?.account ?? null, available: !!me, loaded: true, googleClientId: cfg?.googleClientId ?? state.googleClientId });
 }
 
 export function useAccount(): AccountState {
@@ -92,4 +95,4 @@ export async function rename(username: string): Promise<string | null> {
 export const fetchProfile = (name: string): Promise<Profile | null> => getJson<Profile>(`users/${encodeURIComponent(name)}`);
 
 export type LeaderRow = AccountView & { rank: number };
-export const fetchLeaderboard = async (): Promise<LeaderRow[] | null> => (await getJson<{ players: LeaderRow[] }>('leaderboard'))?.players ?? null;
+export const fetchLeaderboard = async (style: DraftStyle): Promise<LeaderRow[] | null> => (await getJson<{ players: LeaderRow[] }>(`leaderboard?style=${style}`))?.players ?? null;

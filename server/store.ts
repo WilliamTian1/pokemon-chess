@@ -18,14 +18,31 @@ export interface User {
   googleSub?: string;
   email?: string;
   createdAt: number;
+  /**
+   * Overall record from before each draft style had its own rating. Only used to seed `modes` the first
+   * time a style is touched (so existing players and bots keep their standing in every mode).
+   */
   rating: number;
   peak: number;
   games: number;
   wins: number;
   losses: number;
+  /** One Elo rating and record per draft style (a missing entry is seeded from the fields above). */
+  modes?: Partial<Record<DraftStyle, ModeStats>>;
   /** Bot accounts: the difficulty the server plays them at. */
   bot?: 'easy' | 'medium' | 'hard';
   /** Rating after each game (the last 300). */
+  history: { t: number; r: number }[];
+}
+
+/** A player's rating and record in one draft style. */
+export interface ModeStats {
+  rating: number;
+  peak: number;
+  games: number;
+  wins: number;
+  losses: number;
+  /** Rating after each game in this style (the last 300). */
   history: { t: number; r: number }[];
 }
 

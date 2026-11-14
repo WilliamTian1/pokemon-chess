@@ -1,26 +1,44 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { getCard, getMap } from '../../engine';
-import type { Profile as ProfileData } from '../../net/protocol';
+import type { DraftStyle } from '../../engine/types';
+import { DRAFT_STYLES, type Profile as ProfileData, type RankedDraftStyle } from '../../net/protocol';
 import { type LeaderRow, fetchLeaderboard, fetchProfile, useAccount } from '../account';
 import { Art } from '../components/bits';
 import { PokeBallIcon } from '../components/icons';
 
-const STYLE_NAME = { classic: 'Classic', secret: 'Secret', auction: 'Auction', freeplay: 'Freeplay' } as const;
+export const STYLE_NAME: Record<DraftStyle, string> = { classic: 'Classic', secret: 'Secret', auction: 'Auction', freeplay: 'Freeplay' };
+
+/** Tabs to pick a draft style (every style has its own rating and ladder). */
+function StyleTabs({ value, onChange }: { value: RankedDraftStyle; onChange: (s: RankedDraftStyle) => void }) {
+  return (
+    <div className="flex gap-1.5" role="tablist">
+      {DRAFT_STYLES.map((s) => (
+        <button key={s} type="button" role="tab" aria-selected={value === s} onClick={() => onChange(s)}
+          className={`rounded-lg border-2 px-3 py-1 text-sm font-extrabold ${value === s ? 'border-[#d9ab45] bg-[#4a2b16] text-[#f2d27a]' : 'border-transparent text-slate-400 hover:text-slate-200'}`}>
+          {STYLE_NAME[s]}
+        </button>
+      ))}
+    </div>
+  );
+}
 const fmtDate = (t: number) => new Date(t).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 
 /** A player's page: rating, record, rating history and recent ranked games. */
 export function ProfileScreen({ username, onBack, onProfile }: { username: string; onBack: () => void; onProfile: (name: string) => void }) {
   const [data, setData] = useState<ProfileData | null | undefined>(undefined);
   const { account } = useAccount();
+  const [style, setStyle] = useState<RankedDraftStyle>('classic');
   useEffect(() => {
     setData(undefined);
     void fetchProfile(username).then(setData);
   }, [username]);
   if (data === undefined) return <Shell onBack={onBack}><div className="panel p-6 text-center font-bold">Loading…</div></Shell>;
   if (data === null) return <Shell onBack={onBack}><div className="panel p-6 text-center font-bold">No player called “{username}”.</div></Shell>;
-  const decided = data.wins + data.losses;
+  const m = data.modes[style];
+  const decided = m.wins + m.losses;
   return (
     <Shell onBack={onBack}>
+      <StyleTabs value={style} onChange={setStyle} />
       <div className="lacquer flex flex-wrap items-center gap-4 p-4">
         <div className="flex h-16 w-16 items-center justify-center rounded-full border-[3px] border-gold bg-[#fbf3dc] shadow">
           <PokeBallIcon className="h-11 w-11" />
@@ -34,28 +52,28 @@ export function ProfileScreen({ username, onBack, onProfile }: { username: strin
           <div className="text-sm font-bold text-slate-300">Member since {fmtDate(data.createdAt)}</div>
         </div>
         <div className="text-right">
-          <div className="text-xs font-extrabold uppercase tracking-widest text-[#f2d27a]">Rating</div>
-          <div className="font-display text-5xl leading-none text-[#fff3d6]">{data.rating}</div>
-          <div className="text-xs font-bold text-slate-300">{data.rank ? `#${data.rank} on the ladder` : data.games < 10 ? `Provisional (${data.games}/10 games)` : 'Unranked'}</div>
+          <div className="text-xs font-extrabold uppercase tracking-widest text-[#f2d27a]">{STYLE_NAME[style]} rating</div>
+          <div className="font-display text-5xl leading-none text-[#fff3d6]">{m.rating}</div>
+          <div className="text-xs font-bold text-slate-300">{m.rank ? `#${m.rank} on the ${STYLE_NAME[style]} ladder` : m.games < 10 ? `Provisional (${m.games}/10 games)` : 'Unranked'}</div>
         </div>
       </div>
       <div className="grid gap-3 sm:grid-cols-4">
-        <Stat label="Peak" value={data.peak} />
-        <Stat label="Games" value={data.games} />
-        <Stat label="Wins · losses" value={`${data.wins} · ${data.losses}`} />
-        <Stat label="Win rate" value={decided ? `${Math.round((100 * data.wins) / decided)}%` : '—'} />
+        <Stat label="Peak" value={m.peak} />
+        <Stat label="Games" value={m.games} />
+        <Stat label="Wins · losses" value={`${m.wins} · ${m.losses}`} />
+        <Stat label="Win rate" value={decided ? `${Math.round((100 * m.wins) / decided)}%` : '—'} />
       </div>
       <div className="panel p-4">
         <h3 className="mb-2 font-display text-xl text-lacquer">Rating history</h3>
-        {data.history.length >= 2 ? <RatingChart points={data.history} /> : <p className="text-sm font-bold text-slate-400">Play a couple of ranked games to see the chart.</p>}
+        {m.history.length >= 2 ? <RatingChart points={m.history} /> : <p className="text-sm font-bold text-slate-400">Play a couple of ranked games to see the chart.</p>}
       </div>
       <div className="panel p-4">
-        <h3 className="mb-2 font-display text-xl text-lacquer">Recent games</h3>
-        {data.recent.length === 0 ? (
+        <h3 className="mb-2 font-display text-xl text-lacquer">Recent {STYLE_NAME[style]} games</h3>
+        {data.recent.filter((g) => g.style === style).length === 0 ? (
           <p className="text-sm font-bold text-slate-400">No ranked games yet.</p>
         ) : (
           <div className="space-y-1.5">
-            {data.recent.map((g) => {
+            {data.recent.filter((g) => g.style === style).map((g) => {
               const d = g.ratingAfter - g.ratingBefore;
               return (
                 <div key={g.id} className="paper-inset flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-sm">
@@ -170,23 +188,28 @@ function RatingChart({ points }: { points: { t: number; r: number }[] }) {
 }
 
 /** The ranked ladder. */
-export function Leaderboard({ onProfile, limit = 100, compact = false }: { onProfile: (name: string) => void; limit?: number; compact?: boolean }) {
+export function Leaderboard({ onProfile, limit = 100, compact = false, style: fixed }: { onProfile: (name: string) => void; limit?: number; compact?: boolean; style?: RankedDraftStyle }) {
   const [rows, setRows] = useState<LeaderRow[] | null | undefined>(undefined);
+  const [picked, setPicked] = useState<RankedDraftStyle>('classic');
+  const style = fixed ?? picked;
   const { account } = useAccount();
   useEffect(() => {
-    void fetchLeaderboard().then(setRows);
-  }, []);
-  if (rows === undefined) return <p className="text-sm font-bold text-slate-400">Loading the ladder…</p>;
-  if (!rows?.length) return <p className="text-sm font-bold text-slate-400">Nobody is ranked yet: players need 10 ranked games.</p>;
+    setRows(undefined);
+    void fetchLeaderboard(style).then(setRows);
+  }, [style]);
+  const tabs = fixed ? <div className="text-xs font-extrabold uppercase tracking-widest text-slate-400">{STYLE_NAME[fixed]} ladder</div> : <StyleTabs value={picked} onChange={setPicked} />;
+  if (rows === undefined) return <div className="space-y-2">{tabs}<p className="text-sm font-bold text-slate-400">Loading the ladder…</p></div>;
+  if (!rows?.length) return <div className="space-y-2">{tabs}<p className="text-sm font-bold text-slate-400">Nobody is ranked in {STYLE_NAME[style]} yet: players need 10 ranked games.</p></div>;
   return (
     <div className="space-y-1">
+      {tabs}
       {rows.slice(0, limit).map((r) => (
         <button key={r.id} type="button" onClick={() => onProfile(r.username)}
           className={`paper-inset flex w-full items-center gap-3 px-3 ${compact ? 'py-1' : 'py-1.5'} text-left text-sm hover:!border-[#a8261d] ${account?.id === r.id ? '!border-[#d9ab45]' : ''}`}>
           <span className={`w-8 font-display ${r.rank <= 3 ? 'text-lacquer' : 'text-slate-400'}`}>#{r.rank}</span>
           <span className="min-w-0 flex-1 truncate font-extrabold">{r.username}{r.bot ? <span className="ml-1.5 text-xs font-bold text-slate-400">bot</span> : null}</span>
-          <span className="text-xs font-bold text-slate-400">{r.games} games</span>
-          <span className="w-12 text-right font-display">{r.rating}</span>
+          <span className="text-xs font-bold text-slate-400">{r.games[style]} games</span>
+          <span className="w-12 text-right font-display">{r.ratings[style]}</span>
         </button>
       ))}
     </div>
