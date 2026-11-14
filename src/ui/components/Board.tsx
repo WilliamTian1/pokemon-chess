@@ -17,6 +17,8 @@ export interface Overlay {
   arrows?: { dir: Dir; pos: Pos; active: boolean }[];
   /** One opposing Pokémon's reach: tile key → which of its moves reach it (bit 1: first move, bit 2: second). */
   danger?: Map<string, number>;
+  /** Valid open tiles for the pending Teleport choice. */
+  teleport?: Set<string>;
   /** Everything a hovered move could hit from here, over all directions. */
   hoverZone?: Set<string>;
   /** Unit id → type multiplier of the focused Pokémon's best attack on it. */
@@ -233,8 +235,8 @@ function BoardImpl({ state, view, overlay, previews, selectedId, hoverId, events
         <button
           key={k}
           type="button"
-          title={treb.has(k) ? 'Trebuchet — stand here to fire at any Pokémon (40 power)' : TERRAIN_LABEL[t]}
-          aria-label={`Tile ${x},${y}: ${TERRAIN_LABEL[t]}`}
+          title={overlay.teleport?.has(k) ? 'Teleport here — open tile adjacent to an ally' : treb.has(k) ? 'Trebuchet — stand here to fire at any Pokémon (40 power)' : TERRAIN_LABEL[t]}
+          aria-label={overlay.teleport?.has(k) ? `Teleport destination at ${x + 1},${y + 1}: open tile adjacent to an ally` : `Tile ${x},${y}: ${TERRAIN_LABEL[t]}`}
           onClick={() => onTile(p)}
           onMouseEnter={() => onHover(p)}
           className={`${t === 'wonder' ? 'tile-wonder' : `tile-${base}`} ${alt} ${across} relative flex items-center justify-center outline-none ring-inset ring-black/10 focus-visible:ring-2 focus-visible:ring-amber-300`}
@@ -261,6 +263,7 @@ function BoardImpl({ state, view, overlay, previews, selectedId, hoverId, events
           {overlay.hoverZone?.has(k) && <span className="pointer-events-none absolute inset-[4%] rounded-sm border-2 border-dashed border-orange-200/90 bg-orange-400/30" />}
           {overlay.reach?.has(k) && <span className="pointer-events-none absolute inset-0 bg-sky-400/35 shadow-[inset_0_0_0_1.5px_rgba(186,230,253,.8)]" />}
           {overlay.post?.has(k) && <span className="pointer-events-none absolute inset-0 bg-emerald-400/35 shadow-[inset_0_0_0_1.5px_rgba(167,243,208,.85)]" />}
+          {overlay.teleport?.has(k) && <span className="pointer-events-none absolute inset-[5%] animate-pulse rounded border-2 border-emerald-200 bg-emerald-400/40 shadow-[inset_0_0_0_1px_rgba(236,253,245,.8)]" />}
           {zoneKeys.has(k) && <span className="pointer-events-none absolute inset-0 bg-orange-500/50 shadow-[inset_0_0_0_2px_rgba(253,186,116,.95)]" />}
           {overlay.dash && posKey(overlay.dash) === k && <span className="pointer-events-none absolute inset-[8%] rounded border-2 border-sky-200 bg-sky-500/40" />}
           {knockKeys.has(k) && <span className="pointer-events-none absolute inset-[10%] rounded border-2 border-dashed border-red-400" />}

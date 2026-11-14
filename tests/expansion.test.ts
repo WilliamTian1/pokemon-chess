@@ -419,9 +419,15 @@ describe('trainers', () => {
   });
 
   it('Youngster Joey gives the whole team one shared Hidden Power type', () => {
-    const s = withTrainer(setup(['tauros', 'snorlax'], ['blissey'], { A0: P(9, 8), A1: P(11, 8) }), 'A', 'youngster-joey');
+    const s = withTrainer(setup(['tauros', 'snorlax'], ['blissey'], { A0: P(9, 8), A1: P(11, 8), D0: P(9, 6) }), 'A', 'youngster-joey');
     for (const ally of s.units.filter((u) => u.side === 'A')) ally.trainerMove = trainerMoveFor('youngster-joey', 'Fire')!;
-    expect(moveOptions(s, unit(s, 'A0'))[2].move).toMatchObject({ name: 'Hidden Power', type: 'Fire', power: 40 });
+    park(s, ['A0', 'D0']);
+    const hiddenPower = moveOptions(s, unit(s, 'A0'))[2].move;
+    expect(hiddenPower).toMatchObject({ name: 'Hidden Power', type: 'Fire', power: 40 });
+    expect(hiddenPower.target).toEqual(getCard('gengar').moves[1].target);
+    expect(targeting(s, unit(s, 'A0'), hiddenPower, { dir: 'N' }).targets.map((target) => target.id)).toContain('D0');
+    unit(s, 'D0').pos = P(9, 5);
+    expect(targeting(s, unit(s, 'A0'), hiddenPower, { dir: 'N' }).targets).toHaveLength(0);
     expect(moveOptions(s, unit(s, 'A1'))[2].move.type).toBe('Fire');
   });
 
@@ -489,6 +495,53 @@ describe('trainers', () => {
 });
 
 describe('card updates (2026-11-09 card file)', () => {
+  it('Iron Valiant uses the reference hitboxes for Drain Punch and Spirit Break', () => {
+    const [drainPunch, spiritBreak] = getCard('iron-valiant').moves;
+    expect(drainPunch.target).toEqual(getCard('infernape').moves[0].target);
+    expect(spiritBreak.target).toMatchObject({ kind: 'grid', grid: '.O./OOO/OGO' });
+  });
+
+  it('Mew’s Psychic matches Espeon’s Psychic hitbox', () => {
+    expect(getCard('mew').moves[0].target).toEqual(getCard('espeon').moves[0].target);
+  });
+
+  it('uses the requested hitboxes for Chien-Pao, Zapdos, and Banette', () => {
+    expect(getCard('chien-pao').moves[0].target).toMatchObject({ kind: 'grid', grid: '.O./OOO/.../.G.' });
+    expect(getCard('zapdos').moves[1].target).toEqual(getCard('altaria').moves[0].target);
+    expect(getCard('zapdos').moves[1].target).toEqual(getCard('meganium').moves[0].target);
+    expect(getCard('banette').moves[1].target).toMatchObject({ kind: 'grid', grid: '.R./.O./.G.' });
+  });
+
+  it('uses the specified Zygarde hitboxes', () => {
+    const [thousandWaves] = getCard('zygarde').moves;
+    const [thousandArrows, coreEnforcer] = getCard('zygarde-100').moves;
+    expect(thousandWaves.target).toMatchObject({ kind: 'grid', grid: '.O./OOO/OGO' });
+    expect(thousandArrows.target).toMatchObject({ kind: 'grid', grid: 'O.O/.O./O.O/.G.' });
+    expect(coreEnforcer.target).toMatchObject({ kind: 'grid', grid: '.O./OOO/OOO/OGO' });
+  });
+
+  it('Scream Tail’s Boomburst and Celebi’s Leaf Storm match their reference hitboxes', () => {
+    expect(getCard('scream-tail').moves[0].target).toEqual(getCard('noivern').moves[0].target);
+    expect(getCard('celebi').moves[0].target).toEqual(getCard('meganium').moves[0].target);
+  });
+
+  it('Paldean Tauros has the reference hitboxes for Scary Face and Raging Bull', () => {
+    const scaryFace = getCard('tauros-paldean').moves[1];
+    const ragingBull = getCard('tauros-paldean').moves[0];
+    expect(scaryFace.target).toEqual(getCard('gengar').moves[1].target);
+    expect(ragingBull.target).toEqual(getCard('sudowoodo').moves[0].target);
+    expect(ragingBull.fx).toMatchObject({ ignoreDefBoosts: true });
+  });
+
+  it('Suicune’s Roar uses the same range as Hydreigon’s Roar', () => {
+    const s = setup(['suicune'], ['snorlax'], { A0: P(9, 8), D0: P(9, 6) });
+    const roar = getCard('suicune').moves[1];
+    expect(roar.target).toEqual(getCard('hydreigon').moves[1].target);
+    expect(targeting(s, unit(s, 'A0'), roar, { dir: 'N' }).targets.map((t) => t.id)).toContain('D0');
+    unit(s, 'D0').pos = P(9, 5);
+    expect(targeting(s, unit(s, 'A0'), roar, { dir: 'N' }).targets).toHaveLength(0);
+  });
+
   it('Volt Switch targets two tiles ahead, like Psyche Up', () => {
     const s = setup(['zapdos'], ['snorlax'], { A0: P(9, 8), D0: P(9, 6) });
     const move = getCard('zapdos').moves[0];

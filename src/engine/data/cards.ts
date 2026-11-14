@@ -246,8 +246,8 @@ export const CARD_LIST: CardDef[] = [
   card({
     id: 'tauros-paldean', name: 'Tauros (Paldean)', types: ['Fighting'], hp: 140, mov: 4, page: 14,
     moves: [
-      atk('Raging Bull', 'Fighting', 55, grid('.R./.O./.G.'), 'Ignores the opponent’s defense boosts.', { ignoreDefBoosts: true }),
-      sts('Scary Face', grid('.../.O./.G.'), 'Lowers the target’s movement by two stages.', { targetStages: { stages: { mov: -2 }, chance: 1 } }),
+      atk('Raging Bull', 'Fighting', 55, grid('.R./ROR/OBO/.G.'), 'Ignores the opponent’s defense boosts.', { ignoreDefBoosts: true }),
+      sts('Scary Face', grid('.O./.../.G.'), 'Lowers the target’s movement by two stages.', { targetStages: { stages: { mov: -2 }, chance: 1 } }),
     ],
     ability: A.angerPoint,
   }),
@@ -553,7 +553,7 @@ export const CARD_LIST: CardDef[] = [
     id: 'banette', name: 'Banette', types: ['Ghost'], hp: 95, mov: 3, page: 14,
     moves: [
       atk('Poltergeist', 'Ghost', 85, { kind: 'range', range: 5, min: 3 }, 'Pulls the target to an adjacent tile. Only deals damage if the target has a positive stat boost.', { special: 'poltergeist' }),
-      atk('Shadow Claw', 'Ghost', 55, grid('.O./.G.'), '10% chance to deal 55 extra damage.', { bonus: [{ when: 'chance', chance: 0.1, amount: 55 }] }),
+      atk('Shadow Claw', 'Ghost', 55, grid('.R./.O./.G.'), '10% chance to deal 55 extra damage.', { bonus: [{ when: 'chance', chance: 0.1, amount: 55 }] }),
     ],
     ability: A.insomnia,
   }),
@@ -1029,7 +1029,7 @@ export const CARD_LIST: CardDef[] = [
   card({
     id: 'zygarde', name: 'Zygarde (50%)', types: ['Dragon', 'Ground'], hp: 230, mov: 3, page: 14,
     moves: [
-      atk('Thousand Waves', 'Ground', 55, grid('O.O/.O./O.O/.G.'), '20% chance to paralyze the target.', { status: { id: 'par', chance: 0.2 } }),
+      atk('Thousand Waves', 'Ground', 55, grid('.O./OOO/OGO'), '20% chance to paralyze the target.', { status: { id: 'par', chance: 0.2 } }),
       sts('Glare', grid('.O./.../.G.'), 'Paralyzes the target.', { status: { id: 'par', chance: 1 } }),
     ],
     ability: ['powerConstruct', 'Power Construct', 'After taking 100 damage, transforms into its 100% form.'],
@@ -1038,8 +1038,8 @@ export const CARD_LIST: CardDef[] = [
   card({
     id: 'zygarde-100', name: 'Zygarde (100%)', types: ['Dragon', 'Ground'], hp: 395, mov: 3, page: 14,
     moves: [
-      atk('Thousand Arrows', 'Ground', 55, grid('.O./OOO/OOO/OOO/.G.'), 'Hits Flying and Levitate Pokémon, dealing 30 extra damage to them.', { hitsFlying: true }),
-      atk('Core Enforcer', 'Dragon', 65, grid('.O./OOO/OOO/OOO/.G.'), 'Ignores the opponents’ abilities.', { ignoreAbilities: true }),
+      atk('Thousand Arrows', 'Ground', 55, grid('O.O/.O./O.O/.G.'), 'Hits Flying and Levitate Pokémon, dealing 30 extra damage to them.', { hitsFlying: true }),
+      atk('Core Enforcer', 'Dragon', 65, grid('.O./OOO/OOO/OGO'), 'Ignores the opponents’ abilities.', { ignoreAbilities: true }),
     ],
     ability: ['powerConstruct', 'Power Construct', 'This Pokémon has unlocked its true form.'],
     draftable: false, formOf: 'zygarde', formLabel: '100%',
@@ -1076,7 +1076,7 @@ export const CARD_LIST: CardDef[] = [
   card({
     id: 'mew', name: 'Mew', types: ['Psychic'], hp: 200, mov: 3, page: 15,
     moves: [
-      atk('Psychic', 'Psychic', 55, grid('.O./.O./.G.'), '10% chance to lower the opponent’s defense.', { targetStages: { stages: { def: -1 }, chance: 0.1 } }),
+      atk('Psychic', 'Psychic', 55, grid('.O./O.O/.O./.G.'), '10% chance to lower the opponent’s defense.', { targetStages: { stages: { def: -1 }, chance: 0.1 } }),
       sts('Mimic', SELF, 'Uses a move of any opponent on the field.', { special: 'mimic' }),
     ],
     ability: ['synchronize', 'Synchronize', 'If another Pokémon gives this one a status condition through an attack, they get it as well.'],
@@ -1084,7 +1084,7 @@ export const CARD_LIST: CardDef[] = [
   card({
     id: 'celebi', name: 'Celebi', types: ['Grass', 'Psychic'], hp: 200, mov: 3, page: 15,
     moves: [
-      atk('Leaf Storm', 'Grass', 80, grid('.O./.O./.G.'), 'Lowers the user’s attack by two stages.', { selfStages: { stages: { atk: -2 } } }),
+      atk('Leaf Storm', 'Grass', 80, grid('OOO/O.O/OOO/.G.'), 'Lowers the user’s attack by two stages.', { selfStages: { stages: { atk: -2 } } }),
       sts('Healing Wish', SELF, 'The user faints, but all allies have their HP and status conditions healed.', { special: 'healingWish' }),
     ],
     ability: ['naturalCure', 'Natural Cure', 'Heals status conditions when this Pokémon ends its turn more than 3 spaces from enemies.'],
@@ -1093,7 +1093,7 @@ export const CARD_LIST: CardDef[] = [
     id: 'suicune', name: 'Suicune', types: ['Water'], hp: 225, mov: 3, page: 15,
     moves: [
       atk('Hydro Pump', 'Water', 60, grid('.O./.O./.O./.G.'), '20% chance to miss.', { missChance: 0.2 }),
-      sts('Roar', grid('OOO/OGO/OOO'), 'Removes any stat changes from the targets.', { resetTargetStages: true }),
+      sts('Roar', grid('RRR/RRR/OOO/OOO/.G.'), 'Removes any stat changes from the targets.', { resetTargetStages: true }),
     ],
     ability: ['innerFocus', 'Inner Focus', 'This Pokémon cannot flinch.'],
   }),
@@ -1101,7 +1101,7 @@ export const CARD_LIST: CardDef[] = [
     id: 'zapdos', name: 'Zapdos', types: ['Electric', 'Flying'], hp: 170, mov: 3, page: 15,
     moves: [
       atk('Volt Switch', 'Electric', 55, grid('.O./.../.G.'), 'Switches with an allied Pokémon after attacking if possible.', { special: 'voltSwitch' }),
-      atk('Hurricane', 'Flying', 90, grid('OOO/OOO/.../.G.'), '30% chance to graze for 20 damage unless the user is on water or next to a Water type; otherwise, 30% chance to confuse.', {
+      atk('Hurricane', 'Flying', 90, grid('OOO/O.O/OOO/.G.'), '30% chance to graze for 20 damage unless the user is on water or next to a Water type; otherwise, 30% chance to confuse.', {
         graze: { chance: 0.3, power: 20, negateNear: 'water' }, confuse: { chance: 0.3, noGraze: true },
       }),
     ],
@@ -1110,7 +1110,7 @@ export const CARD_LIST: CardDef[] = [
   card({
     id: 'chien-pao', name: 'Chien-Pao', types: ['Dark', 'Ice'], hp: 135, mov: 4, page: 15,
     moves: [
-      atk('Icicle Crash', 'Ice', 65, grid('OOO/OOO/.../.G.'), '10% chance to miss. Otherwise, 30% chance to flinch the targets.', {
+      atk('Icicle Crash', 'Ice', 65, grid('.O./OOO/.../.G.'), '10% chance to miss. Otherwise, 30% chance to flinch the targets.', {
         missChance: 0.1, flinch: { chance: 0.3 },
       }),
       atk('Sucker Punch', 'Dark', 55, { kind: 'range', range: 4 }, 'Any Pokémon that attacks within 4 spaces of this Pokémon on the opponent’s next turn gets hit by this move.', { special: 'suckerPunch' }),
@@ -1128,7 +1128,7 @@ export const CARD_LIST: CardDef[] = [
   card({
     id: 'scream-tail', name: 'Scream Tail', types: ['Fairy', 'Psychic'], hp: 235, mov: 4, page: 15,
     moves: [
-      atk('Boomburst', 'Normal', 50, grid('OOO/OOO/.../.G.'), ''),
+      atk('Boomburst', 'Normal', 50, grid('OOO/OOO/.O./.G.'), ''),
       sts('Perish Song', SELF, 'At the start of its next turn, all Pokémon 4 or fewer tiles away faint, as well as this Pokémon.', { special: 'perishSong' }),
     ],
     ability: ['protosynthesis', 'Protosynthesis', 'Gains Defense when a Pokémon uses Sunny Day or when Drought activates.'],
@@ -1136,8 +1136,8 @@ export const CARD_LIST: CardDef[] = [
   card({
     id: 'iron-valiant', name: 'Iron Valiant', types: ['Fighting', 'Fairy'], hp: 130, mov: 4, page: 15,
     moves: [
-      atk('Drain Punch', 'Fighting', 60, grid('.O./.O./.G.'), 'Heals the user by 30 HP.', { drain: 30 }),
-      atk('Spirit Break', 'Fairy', 60, grid('OOO/.O./.G.'), 'Lowers the target’s attack by one stage.', { targetStages: { stages: { atk: -1 }, chance: 1 } }),
+      atk('Drain Punch', 'Fighting', 60, grid('.../.O./.G.'), 'Heals the user by 30 HP.', { drain: 30 }),
+      atk('Spirit Break', 'Fairy', 60, grid('.O./OOO/OGO'), 'Lowers the target’s attack by one stage.', { targetStages: { stages: { atk: -1 }, chance: 1 } }),
     ],
     ability: ['quarkDrive', 'Quark Drive', 'This Pokémon can move +2 spaces when standing on an electric tile.'],
   }),

@@ -46,6 +46,7 @@ export function BattleView({ ctl }: { ctl: Controller }) {
   const turnSide = decider(s);
   const myDecision = turnSide !== null && ctl.mySides.includes(turnSide);
   const myBattleTurn = s.phase === 'battle' && myDecision && s.pending.length === 0;
+  const teleportPending = s.pending[0]?.kind === 'teleport' && ctl.mySides.includes(s.pending[0].side) ? s.pending[0] : null;
 
   const [sel, setSel] = useState<string | null>(null);
   const [aim, setAim] = useState<Aim | null>(null);
@@ -248,6 +249,11 @@ export function BattleView({ ctl }: { ctl: Controller }) {
   };
 
   const onTile = (p: Pos) => {
+    if (teleportPending) {
+      const option = posKey(p);
+      if (teleportPending.options.includes(option)) send({ type: 'choose', option });
+      return;
+    }
     const u = unitAt(s, p);
     if (aim?.kind === 'special') {
       if (u && specialTargets(s, s.side).includes(u.id)) send({ type: 'trainerSpecial', unitId: u.id });
@@ -323,6 +329,7 @@ export function BattleView({ ctl }: { ctl: Controller }) {
     note: wide && readout ? { text: readout, avoid: hoverTile } : undefined,
     hoverZone: preview.hoverZone,
     highlight: matrixHover ? new Set(matrixHover) : undefined,
+    teleport: teleportPending ? new Set(teleportPending.options) : undefined,
   };
 
   const inspectId = hoverUnit ?? inspect ?? sel ?? (placing ? placeUnit?.id ?? null : null);
@@ -483,10 +490,15 @@ export function BattleView({ ctl }: { ctl: Controller }) {
 
       {/* On one-screen layouts this column is a fixed-height stack: the board takes whatever room the
           banner, action bar and log leave, so End turn and the log never need scrolling to. */}
-      <main ref={mainRef} className="order-1 min-w-0 space-y-3 md:col-span-2 wide:order-2 wide:col-span-1 wide:flex wide:min-h-0 wide:flex-col wide:gap-2 wide:space-y-0 wide:overflow-y-auto">
+      <main ref={mainRef} className="order-1 flex min-w-0 flex-col space-y-3 md:col-span-2 wide:order-2 wide:col-span-1 wide:min-h-0 wide:gap-2 wide:space-y-0 wide:overflow-y-auto">
         {/* One-screen layouts: the banner and tools go up into the game header, leaving the height to the board. */}
         {wide && hudSlot ? createPortal(hud, hudSlot) : <div className="lacquer px-3 py-2 phone:px-2 phone:py-1.5">{hud}</div>}
-        <div ref={setBoardBox} className="wide:flex wide:min-h-[110px] wide:flex-1 wide:items-center wide:justify-center">
+        {teleportPending && (
+          <div className="panel mb-2 p-3 text-sm text-emerald-200">
+            Choose a highlighted open tile on the map to teleport {cardOf(s.units.find((u) => u.id === teleportPending.unitId)!).name} beside an ally.
+          </div>
+        )}
+        <div ref={setBoardBox} className="phone:order-2 wide:flex wide:min-h-[110px] wide:flex-1 wide:items-center wide:justify-center">
         <div className="mx-auto w-full" style={wide && boardSize.w > 0 ? { width: Math.min(boardSize.w, boardSize.h * boardAspect) } : undefined}>
           <Board
             state={s}
@@ -526,8 +538,8 @@ export function BattleView({ ctl }: { ctl: Controller }) {
         ) : (
           <>
             {/* On phones the controls stay pinned to the bottom of the screen while the board scrolls. */}
-            <div className="sticky bottom-0 z-20 -mx-1 rounded-xl bg-[#1b120b] p-1">{commands}</div>
-            <LogPanel log={s.log} className="h-56" />
+            <div className="phone:order-1 sticky bottom-0 z-20 -mx-1 rounded-xl bg-[#1b120b] p-1">{commands}</div>
+            <LogPanel log={s.log} className="phone:order-3 h-56" />
           </>
         )}
       </main>
@@ -894,7 +906,7 @@ function ActionBar(props: {
           <button type="button" className="btn-ghost" onClick={() => send({ type: 'skipPostMove', unitId: unit.id })}>Stay here</button>
         </div>
       ) : (
-        <div className="grid gap-2 sm:grid-cols-2">
+        <div className="grid grid-cols-2 gap-1.5 sm:gap-2">
           {opts.filter((o) => !o.move.fx.none).map((o) => (
             <button
               key={o.moveIndex}
@@ -908,7 +920,7 @@ function ActionBar(props: {
                 if (o.aim === 'none') onSelfMove(o.moveIndex);
                 else onAim({ kind: 'move', index: o.moveIndex });
               }}
-              className="flex items-start gap-2 rounded-lg border border-slate-700 bg-slate-800/80 p-2 text-left transition hover:border-amber-300 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
+              className="flex items-start gap-2 rounded-lg border border-slate-700 bg-slate-800/80 p-2 text-left transition hover:border-amber-300 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40 phone:gap-1 phone:p-1.5"
             >
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-1.5">
@@ -916,7 +928,7 @@ function ActionBar(props: {
                   {o.move.type && <TypeBadge type={o.move.type} small />}
                   <span className="text-xs font-bold text-amber-300">{o.move.powerLabel ?? o.move.power ?? ''}</span>
                 </div>
-                <div className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-slate-400 wide:line-clamp-1">
+                <div className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-slate-400 phone:line-clamp-1 wide:line-clamp-1">
                   {o.usable ? (o.aim === 'none' ? `Use now · ${o.move.text}` : o.move.text || 'Aim, then fire.') : o.reason}
                 </div>
                 {o.usable && selfEffectNotes(s, unit, o.move).length > 0 && (
@@ -985,11 +997,11 @@ function PendingModal({ ctl, view }: { ctl: Controller; view: BoardView }) {
   if (p.kind === 'trainerType') {
     return (
       <Modal>
-        <h3 className="font-display text-xl text-lacquer">Choose Hidden Power’s type</h3>
-        <p className="mb-3 text-sm text-slate-300">This type is shared by all your Pokémon for the battle.</p>
-        <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
+        <h3 className="font-display text-lg text-lacquer">Choose Hidden Power’s type</h3>
+        <p className="mb-2 text-xs text-slate-300">This type is shared by all your Pokémon for the battle.</p>
+        <div className="grid grid-cols-6 gap-1">
           {p.options.map((type) => (
-            <button key={type} type="button" className="btn-ghost justify-center" onClick={() => choose(type)}>
+            <button key={type} type="button" className="btn-ghost min-h-9 justify-center !px-0 !py-1" onClick={() => choose(type)}>
               <TypeBadge type={type} small />
             </button>
           ))}
@@ -999,18 +1011,7 @@ function PendingModal({ ctl, view }: { ctl: Controller; view: BoardView }) {
   }
 
   if (p.kind === 'teleport') {
-    return (
-      <Modal>
-        <h3 className="font-display text-xl text-lacquer">Choose Teleport destination</h3>
-        <p className="mb-3 text-sm text-slate-300">{cardOf(u).name} must land on an open tile beside an ally.</p>
-        <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
-          {p.options.map((option) => {
-            const [x, y] = option.split(',').map(Number);
-            return <button key={option} type="button" className="btn-ghost justify-center" onClick={() => choose(option)}>{`${x + 1}, ${y + 1}`}</button>;
-          })}
-        </div>
-      </Modal>
-    );
+    return null;
   }
 
   if (p.kind === 'wish' || p.kind === 'voltSwitch') {

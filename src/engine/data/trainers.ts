@@ -110,7 +110,7 @@ function hiddenPower(type: PType | null): MoveDef {
     type,
     power: 40,
     kind: 'attack',
-    target: { kind: 'grid', grid: '.O./.O./.O./.G.' },
+    target: { kind: 'grid', grid: '.O./.../.G.' },
     text: 'Its type is chosen for the whole team at the start of battle.',
     fx: {},
   };
