@@ -3,7 +3,7 @@ import {
 } from './damage';
 import { DRAFTABLE, getCard } from './data/cards';
 import {
-  abilityOf, adjacentToType, alliesOf, canPlaceOn, canStand, gridTile, hasType, inBounds, liveUnits, moveOf,
+  abilityOf, adjacentToType, alliesOf, canCrossCliff, canPlaceOn, canStand, cliffBlocksRay, cliffBetween, gridTile, hasType, inBounds, liveUnits, moveOf,
   onBoard, parseGrid, substituteAt, teleportDestinations, terrainAt, terrainBonus, trainerOf, turnEffect, unitAt, verticalOnly, withAbility, zoneTiles,
 } from './query';
 import {
@@ -12,7 +12,7 @@ import {
 } from './mutate';
 import type { Dir, GameState, MoveDef, MoveIndex, PType, Pos, StatId, StatusId, Unit } from './types';
 import { DIRS, otherSide } from './types';
-import { DIR_VEC, addPos, cheb, posKey, steps } from './util';
+import { DIR_VEC, addPos, cheb, dirToward, posKey, steps } from './util';
 
 export interface Targeting {
   ok: boolean;
@@ -75,6 +75,7 @@ export function targeting(s: GameState, u: Unit, move: MoveDef, opts: TargetOpts
       const d = steps(origin, tgt.pos);
       if (d > t.range || d < (t.min ?? 0)) return fail(t.min ? `Target must be ${t.min}–${t.range} tiles away` : `Target must be within ${t.range} tiles`);
       if (verticalOnly(s, u.side) && tgt.pos.x !== origin.x) return fail('Your Pokémon can only attack vertically this turn');
+      if (cliffBlocksRay(s, origin, tgt.pos)) return fail('A cliff blocks the attack');
       return { ok: true, zone: [tgt.pos], dashTo: null, targets: [tgt], substitute: false };
     }
     case 'ally': {
@@ -111,6 +112,12 @@ export function targeting(s: GameState, u: Unit, move: MoveDef, opts: TargetOpts
         const occ = inBounds(s, p) ? unitAt(s, p) : undefined;
         if (!inBounds(s, p) || !canStand(u, terrainAt(s, p)) || (occ && occ.id !== u.id) || substituteAt(s, p)) {
           return fail('The charge path is blocked');
+        }
+        let crossed = { ...origin };
+        while (crossed.x !== p.x || crossed.y !== p.y) {
+          const next = addPos(crossed, DIR_VEC[opts.dir]);
+          if (!canCrossCliff(s, u, crossed, next)) return fail('The charge path is blocked by a cliff');
+          crossed = next;
         }
         dashTo = p;
       }
@@ -415,6 +422,7 @@ function zoneMove(ctx: Ctx, u: Unit, move: MoveDef, moveType: PType | null, tg: 
   }
   const attackerPos = u.pos!;
   const hits: Unit[] = [];
+  const cliffFallen = new Set<Unit>();
   const finish = (): void => afterEffects(ctx, u, move, hits, res);
 
   // A substitute in the zone soaks up the whole attack; support moves pass it by.
@@ -509,6 +517,10 @@ function zoneMove(ctx: Ctx, u: Unit, move: MoveDef, moveType: PType | null, tg: 
           returned = dealt;
         }
       }
+      if (move.kind === 'attack' && hits.includes(t) && !t.fainted && t.pos) {
+        const facing = opts.dir ?? dirToward(attackerPos, t.pos);
+        if (facing && fallFromCliff(ctx, t, facing)) cliffFallen.add(t);
+      }
       if (t.fainted) {
         res.kos += 1;
       } else if (abilityOf(t) === 'emergencyExit' && hpBefore >= 100 && t.hp < 100) {
@@ -545,7 +557,7 @@ function zoneMove(ctx: Ctx, u: Unit, move: MoveDef, moveType: PType | null, tg: 
   const k = pushDistance(s, u, move, printed);
   if (k > 0) {
     const far = [...hits].sort((a, b) => cheb(b.pos ?? attackerPos, attackerPos) - cheb(a.pos ?? attackerPos, attackerPos));
-    for (const t of far) if (!t.fainted && t.pos) knockback(ctx, t, opts.dir ?? awayFrom(attackerPos, t.pos), k, turnEffect(s, u.side) === 'push2');
+    for (const t of far) if (!t.fainted && t.pos && !cliffFallen.has(t)) knockback(ctx, t, opts.dir ?? awayFrom(attackerPos, t.pos), k, turnEffect(s, u.side) === 'push2');
   }
   if (fx.special === 'poltergeist' && u.pos) {
     for (const t of hits) {
@@ -577,6 +589,18 @@ function awayFrom(from: Pos, to: Pos): Dir {
   const dy = to.y - from.y;
   if (Math.abs(dx) > Math.abs(dy)) return dx > 0 ? 'E' : 'W';
   return dy > 0 ? 'S' : 'N';
+}
+
+function fallFromCliff(ctx: Ctx, t: Unit, dir: Dir): boolean {
+  const s = ctx.s;
+  if (!t.pos || cliffBetween(s, t.pos, addPos(t.pos, DIR_VEC[dir])) !== dir) return false;
+  const landing = addPos(t.pos, DIR_VEC[dir]);
+  if (!inBounds(s, landing) || !canStand(t, terrainAt(s, landing)) || unitAt(s, landing) || substituteAt(s, landing)) return false;
+  enterTile(ctx, t, landing);
+  if (terrainAt(s, landing) === 'wonder') resetStages(ctx, t);
+  emit(ctx, { t: 'move', unitId: t.id, path: [landing] });
+  log(ctx, `${nameOf(t)} fell off the cliff.`, 'bad', t.side);
+  return true;
 }
 
 /** Nobunaga's passive: its side's Pokémon heal 30 when an attack they're immune to targets them. */
@@ -695,7 +719,7 @@ function knockback(ctx: Ctx, t: Unit, dir: Dir, k: number, collide = false): voi
   for (let i = 0; i < k; i++) {
     const np = addPos(t.pos!, DIR_VEC[dir]);
     // Lance's special: hitting the edge of the board or ground the target can't enter hurts.
-    if (!inBounds(s, np) || !canStand(t, terrainAt(s, np))) {
+    if (!inBounds(s, np) || !canStand(t, terrainAt(s, np)) || !canCrossCliff(s, t, t.pos!, np)) {
       crashed = collide;
       break;
     }

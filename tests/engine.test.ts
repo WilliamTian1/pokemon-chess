@@ -46,6 +46,8 @@ describe('map', () => {
   it('marks Nixtorm as a snow map with ice terrain', () => {
     expect(MAPS.ice.theme).toBe('snow');
     expect(MAPS.ice.tiles.flat().some((t) => t === 'ice')).toBe(true);
+    expect(MAPS.ice.cliffs).toHaveLength(MAPS.ice.height);
+    expect(MAPS.ice.cliffs!.every((row) => row.length === MAPS.ice.width && /^[.]+$/.test(row))).toBe(true);
   });
   it('defines each map’s battle music on the map itself', () => {
     expect(Object.fromEntries(Object.values(MAPS).map((map) => [map.id, map.music]))).toEqual({

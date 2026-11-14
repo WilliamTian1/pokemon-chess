@@ -9,7 +9,7 @@ import {
   type Ctx, RuleError, applyStage, checkWin, cureStatus, dealDamage, emit, endGame, enterTile, faint, heal, log, nameOf, resetStages, triggerProtosynthesis,
 } from './mutate';
 import {
-  abilityOf, adjacentToType, adjacentUnits, alliesOf, cardOf, effectiveMov, enemiesOf, getUnit, hasType, hazardAt, isFlier,
+  abilityOf, adjacentToType, adjacentUnits, alliesOf, cardOf, cliffBlocksRay, effectiveMov, enemiesOf, getUnit, hasType, hazardAt, isFlier,
   hazardDamage, isTrebuchet, liveUnits, moveIndexes, moveOf, onBoard, reachable, teleportDestinations, type ReachInfo, terrainAt, terrainBonus, terrainMult, trainerOf, turnEffect, unitAt, verticalOnly,
   withAbility,
 } from './query';
@@ -693,10 +693,9 @@ function startTurn(ctx: Ctx, side: Side): void {
     const damage = f.damage ?? 100;
     const range = f.range ?? 3;
     log(ctx, `${nameOf(user)}'s ${f.damage ? 'Doom Desire' : 'Future Sight'} strikes!`, 'info', side);
-    emit(ctx, { t: 'attack', unitId: user.id, name: f.damage ? 'Doom Desire' : 'Future Sight', tiles: liveUnits(s).filter((x) => steps(x.pos!, center) <= range).map((x) => x.pos!) });
-    for (const x of liveUnits(s)) {
-      if (x.id !== user.id && steps(x.pos!, center) <= range) dealDamage(ctx, x, damage, { source: user, label: f.damage ? 'Doom Desire' : 'Future Sight' });
-    }
+    const targets = liveUnits(s).filter((x) => x.id !== user.id && steps(x.pos!, center) <= range && !cliffBlocksRay(s, center, x.pos!));
+    emit(ctx, { t: 'attack', unitId: user.id, name: f.damage ? 'Doom Desire' : 'Future Sight', tiles: targets.map((x) => x.pos!) });
+    for (const x of targets) dealDamage(ctx, x, damage, { source: user, label: f.damage ? 'Doom Desire' : 'Future Sight' });
     if (checkWin(ctx)) return;
   }
 
@@ -791,7 +790,7 @@ export function triageTiles(s: GameState, u: Unit, budget: number): Map<string, 
 /** Whether `u` could hit an opponent with a damaging move from where it stands (Taunt). */
 export function canAttackAnOpponent(s: GameState, u: Unit): boolean {
   if (!u.pos || !canActNow(u)) return false;
-  if (isTrebuchet(s, u.pos) && enemiesOf(s, u).length > 0 && !truantRests(s, u)) return true;
+  if (isTrebuchet(s, u.pos) && enemiesOf(s, u).some((t) => !cliffBlocksRay(s, u.pos!, t.pos!)) && !truantRests(s, u)) return true;
   return moveIndexes(u).some((i) => {
     const m = moveOf(u, i);
     if (m.kind !== 'attack' || moveBlocked(s, u, m)) return false;
@@ -1004,6 +1003,7 @@ function useTrebuchet(ctx: Ctx, a: Extract<Action, { type: 'trebuchet' }>): void
   if (truantRests(s, u)) throw new RuleError(`${cardOf(u).name} can only attack in odd-numbered rounds (Truant).`);
   const t = getUnit(s, a.targetId);
   if (!onBoard(t) || t.id === u.id) throw new RuleError('Choose a Pokémon to fire at.');
+  if (cliffBlocksRay(s, u.pos!, t.pos)) throw new RuleError('A cliff blocks the attack.');
   if (verticalOnly(s, u.side) && t.pos.x !== u.pos!.x) throw new RuleError('Your Pokémon can only attack vertically this turn.');
   enforceFollowMe(s, u, [t.id]);
   s.active = act;

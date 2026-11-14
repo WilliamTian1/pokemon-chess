@@ -5,7 +5,7 @@ import { canActNow, cloneState, followMeTiles, moveBlocked, movementAllowance, t
 import { STATUS_NAME, canHaveStatus, pressureMult } from './mutate';
 import { UNCOPYABLE, type Targeting, canTargetFrom, followMeUsers, isSupportOnly, liquidVoiceCopy, pushDistance, targeting, truantRests } from './moves';
 import {
-  abilityOf, cardOf, getUnit, isTrebuchet, liveUnits, moveIndexes, moveOf, onBoard, parseGrid, reachable, teleportDestinations, type ReachInfo, terrainBonus, verticalOnly,
+  abilityOf, cardOf, cliffBlocksRay, getUnit, isTrebuchet, liveUnits, moveIndexes, moveOf, onBoard, parseGrid, reachable, teleportDestinations, type ReachInfo, terrainBonus, verticalOnly,
 } from './query';
 import type { Dir, GameState, MoveDef, MoveIndex, PType, StatId, Unit } from './types';
 import { DIRS } from './types';
@@ -207,7 +207,7 @@ export function trebuchetOption(s: GameState, u: Unit): TrebuchetOption {
   const types = cardOf(u).types;
   if (!info.canAct || !u.pos || !isTrebuchet(s, u.pos) || truantRests(s, u) || followMeBlock(s, u)) return { usable: false, types, targets: [] };
   const users = followMeUsers(s, u);
-  let targets = liveUnits(s).filter((x) => x.id !== u.id).map((x) => x.id);
+  let targets = liveUnits(s).filter((x) => x.id !== u.id && !cliffBlocksRay(s, u.pos!, x.pos!)).map((x) => x.id);
   if (users.length && fmFilter(s, u)) targets = targets.filter((id) => users.some((f) => f.id === id));
   return { usable: targets.length > 0, types, targets };
 }

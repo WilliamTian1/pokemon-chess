@@ -1,7 +1,7 @@
 import { getCard } from './data/cards';
 import { getMap } from './data/maps';
 import type {
-  AbilityId, CardDef, Dir, GameState, Hazard, MapDef, MoveDef, MoveIndex, PType, Pos, Side, Terrain, Unit,
+  AbilityId, CardDef, CliffCode, Dir, GameState, Hazard, MapDef, MoveDef, MoveIndex, PType, Pos, Side, Terrain, Unit,
 } from './types';
 import { ORTHO, addPos, cheb, posKey, rotate, samePos, steps } from './util';
 
@@ -79,6 +79,91 @@ export const inBounds = (s: GameState, p: Pos): boolean => {
   return p.x >= 0 && p.y >= 0 && p.x < m.width && p.y < m.height;
 };
 export const terrainAt = (s: GameState, p: Pos): Terrain => mapOf(s).tiles[p.y][p.x];
+const CLIFF_DIRECTIONS: Record<CliffCode, Dir[]> = {
+  '.': [], '^': ['N'], '>': ['E'], v: ['S'], '<': ['W'],
+  '1': ['N', 'E'], '2': ['S', 'E'], '3': ['S', 'W'], '4': ['N', 'W'],
+};
+export function cliffDirections(code: string | undefined): Dir[] {
+  if (code === undefined) return [];
+  const directions = CLIFF_DIRECTIONS[code as CliffCode];
+  if (!directions) throw new Error(`Unknown cliff code: ${code}`);
+  return directions;
+}
+
+export function hasCliffEdge(s: GameState, p: Pos, dir: Dir): boolean {
+  const edges = mapOf(s).cliffs?.[p.y]?.[p.x];
+  return cliffDirections(edges).includes(dir);
+}
+
+function opposite(dir: Dir): Dir {
+  switch (dir) {
+    case 'N': return 'S';
+    case 'E': return 'W';
+    case 'S': return 'N';
+    case 'W': return 'E';
+  }
+}
+
+function adjacentDir(from: Pos, to: Pos): Dir | null {
+  if (to.x === from.x && to.y === from.y - 1) return 'N';
+  if (to.x === from.x + 1 && to.y === from.y) return 'E';
+  if (to.x === from.x && to.y === from.y + 1) return 'S';
+  if (to.x === from.x - 1 && to.y === from.y) return 'W';
+  return null;
+}
+
+/** The downhill direction of a cliff between adjacent tiles, if one is marked. */
+export function cliffBetween(s: GameState, from: Pos, to: Pos): Dir | null {
+  const dir = adjacentDir(from, to);
+  if (!dir) return null;
+  if (hasCliffEdge(s, from, dir)) return dir;
+  const uphillSide = opposite(dir);
+  return hasCliffEdge(s, to, uphillSide) ? uphillSide : null;
+}
+
+/** Normal Pokémon may cross cliffs only downhill; Flying and Levitate Pokémon cross either way. */
+export function canCrossCliff(s: GameState, u: Unit, from: Pos, to: Pos): boolean {
+  const downhill = cliffBetween(s, from, to);
+  return downhill === null || isFlier(u) || adjacentDir(from, to) === downhill;
+}
+
+/** Whether a straight attack ray crosses a cliff. At exact tile corners either open route is clear. */
+export function cliffBlocksRay(s: GameState, from: Pos, to: Pos): boolean {
+  let x = from.x;
+  let y = from.y;
+  const dx = Math.abs(to.x - from.x);
+  const dy = Math.abs(to.y - from.y);
+  const sx = Math.sign(to.x - from.x);
+  const sy = Math.sign(to.y - from.y);
+  let ix = 0;
+  let iy = 0;
+  while (ix < dx || iy < dy) {
+    const corner = (1 + 2 * ix) * dy - (1 + 2 * iy) * dx;
+    if (corner === 0) {
+      const sideX = { x: x + sx, y };
+      const sideY = { x, y: y + sy };
+      const diagonal = { x: x + sx, y: y + sy };
+      const blockedX = cliffBetween(s, { x, y }, sideX) !== null || cliffBetween(s, sideX, diagonal) !== null;
+      const blockedY = cliffBetween(s, { x, y }, sideY) !== null || cliffBetween(s, sideY, diagonal) !== null;
+      if (blockedX && blockedY) return true;
+      x = diagonal.x;
+      y = diagonal.y;
+      ix += 1;
+      iy += 1;
+    } else if (corner < 0) {
+      const next = { x: x + sx, y };
+      if (cliffBetween(s, { x, y }, next)) return true;
+      x = next.x;
+      ix += 1;
+    } else {
+      const next = { x, y: y + sy };
+      if (cliffBetween(s, { x, y }, next)) return true;
+      y = next.y;
+      iy += 1;
+    }
+  }
+  return false;
+}
 /** "Normal" terrain: no bonuses and no movement limitations (dirt, grass and bridges are cosmetic). */
 export const isNormalTerrain = (t: Terrain): boolean => t === 'normal' || t === 'dirt' || t === 'grass' || t === 'bridge' || t === 'electric';
 /** Berry bushes and flowers only help Pokémon standing in them: Flying and Levitate Pokémon hover above. */
@@ -249,7 +334,8 @@ export function zoneTiles(s: GameState, origin: Pos, grid: ParsedGrid, dir: Dir)
     let b = !inBounds(s, p) || terrainAt(s, p) === 'wall';
     if (!b) {
       const src = sourceOf(c);
-      b = src ? blocked(src) : false;
+      const sourcePos = src ? gridTile(origin, src, dir) : origin;
+      b = (src ? blocked(src) : false) || cliffBlocksRay(s, sourcePos, p);
     }
     memo.set(k, b);
     return b;
@@ -306,7 +392,7 @@ export function reachable(s: GameState, u: Unit, budget: number, from?: Pos): Ma
         const np = { x: px + d.x, y: py + d.y };
         if (np.x < 0 || np.y < 0 || np.x >= m.width || np.y >= m.height) continue;
         const t = m.tiles[np.y][np.x];
-        if (!canPass(u, t)) continue;
+        if (!canPass(u, t) || !canCrossCliff(s, u, { x: px, y: py }, np)) continue;
         const occ = unitAt(s, np);
         if (t === 'ice' && !ignoresIce && occ) continue;
         if (occ && occ.id !== u.id && occ.side !== u.side && !ghost) continue;
@@ -323,7 +409,7 @@ export function reachable(s: GameState, u: Unit, budget: number, from?: Pos): Ma
             const next = { x: end.x + d.x, y: end.y + d.y };
             if (next.x < 0 || next.y < 0 || next.x >= m.width || next.y >= m.height) break;
             const nextTerrain = m.tiles[next.y][next.x];
-            if (!canStand(u, nextTerrain) || unitAt(s, next) || substituteAt(s, next)) break;
+            if (!canStand(u, nextTerrain) || !canCrossCliff(s, u, end, next) || unitAt(s, next) || substituteAt(s, next)) break;
             path.push(next);
             end = next;
             if (hazardAt(s, next)) nh += 1;

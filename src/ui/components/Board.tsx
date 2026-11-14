@@ -1,6 +1,6 @@
 import { type CSSProperties, Fragment, memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
-  type Dir, type GameState, type Pos, type Side, type TargetPreview, type Terrain, type Unit, cardOf, getMap, multLabel, onBoard, posKey,
+  type Dir, type GameState, type Pos, type Side, type TargetPreview, type Terrain, type Unit, cardOf, cliffDirections, getMap, multLabel, onBoard, posKey,
 } from '../../engine';
 import type { EventBatch } from '../controller';
 import { Art, HpBar, StatusBadge } from './bits';
@@ -231,12 +231,14 @@ function BoardImpl({ state, view, overlay, previews, selectedId, hoverId, events
       const across = t === 'bridge' && crossedVertically === rotated ? 'across' : '';
       const hz = hazardAt.get(k);
       const arrow = arrowAt.get(k);
+      const cliffDirs = cliffDirections(map.cliffs?.[y]?.[x]);
+      const tileLabel = `${TERRAIN_LABEL[t]}${cliffDirs.length ? ` Cliff edge${cliffDirs.length > 1 ? 's' : ''} ${cliffDirs.join(' and ')} points downhill.` : ''}`;
       tiles.push(
         <button
           key={k}
           type="button"
-          title={overlay.teleport?.has(k) ? 'Teleport here — open tile adjacent to an ally' : treb.has(k) ? 'Trebuchet — stand here to fire at any Pokémon (40 power)' : TERRAIN_LABEL[t]}
-          aria-label={overlay.teleport?.has(k) ? `Teleport destination at ${x + 1},${y + 1}: open tile adjacent to an ally` : `Tile ${x},${y}: ${TERRAIN_LABEL[t]}`}
+          title={overlay.teleport?.has(k) ? 'Teleport here — open tile adjacent to an ally' : treb.has(k) ? 'Trebuchet — stand here to fire at any Pokémon (40 power)' : tileLabel}
+          aria-label={overlay.teleport?.has(k) ? `Teleport destination at ${x + 1},${y + 1}: open tile adjacent to an ally` : `Tile ${x},${y}: ${tileLabel}`}
           onClick={() => onTile(p)}
           onMouseEnter={() => onHover(p)}
           className={`${t === 'wonder' ? 'tile-wonder' : `tile-${base}`} ${alt} ${across} relative flex items-center justify-center outline-none ring-inset ring-black/10 focus-visible:ring-2 focus-visible:ring-amber-300`}
@@ -281,6 +283,9 @@ function BoardImpl({ state, view, overlay, previews, selectedId, hoverId, events
   }
 
   const hedges = map.decor?.hedges ?? [];
+  const cliffs = map.cliffs?.flatMap((row, y) => [...row].flatMap((edges, x) =>
+    cliffDirections(edges).map((dir) => ({ pos: { x, y }, dir })),
+  )) ?? [];
 
   return (
     <div
@@ -291,6 +296,32 @@ function BoardImpl({ state, view, overlay, previews, selectedId, hoverId, events
       <div className="absolute inset-0 grid" style={{ gridTemplateColumns: `repeat(${cols}, 1fr)`, gridTemplateRows: `repeat(${rows}, 1fr)` }}>
         {tiles}
       </div>
+      {cliffs.map(({ pos, dir }, i) => {
+        const d = disp(pos);
+        const edge = screenDir(dir, view);
+        const left = (d.x / cols) * 100;
+        const top = (d.y / rows) * 100;
+        const width = `${100 / cols}%`;
+        const height = `${100 / rows}%`;
+        const horizontal = edge === 'N' || edge === 'S';
+        const style = edge === 'N'
+          ? { left: `${left}%`, top: `${top}%`, width, height: '7px', transform: 'translateY(-50%)' }
+          : edge === 'S'
+            ? { left: `${left}%`, top: `${((d.y + 1) / rows) * 100}%`, width, height: '7px', transform: 'translateY(-50%)' }
+            : edge === 'W'
+              ? { left: `${left}%`, top: `${top}%`, width: '7px', height, transform: 'translateX(-50%)' }
+              : { left: `${((d.x + 1) / cols) * 100}%`, top: `${top}%`, width: '7px', height, transform: 'translateX(-50%)' };
+        return (
+          <span
+            key={`${posKey(pos)}-${dir}-${i}`}
+            aria-hidden="true"
+            className={`pointer-events-none absolute z-10 flex items-center justify-center bg-slate-950/90 ${horizontal ? 'border-y-2 border-white' : 'border-x-2 border-white'}`}
+            style={style}
+          >
+            <span className="text-[9px] font-black leading-none text-amber-200 drop-shadow">{ARROW[edge]}</span>
+          </span>
+        );
+      })}
       {hedges.map((h, i) => {
         const d = disp(h);
         const edge = screenDir(h.edge, view);

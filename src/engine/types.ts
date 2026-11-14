@@ -33,6 +33,9 @@ export type Terrain =
   | 'ice'
   | 'pit';
 
+/** A cliff grid cell: no cliff, one downhill edge, or two connected downhill edges. */
+export type CliffCode = '.' | '^' | '>' | 'v' | '<' | '1' | '2' | '3' | '4';
+
 export type StatusId = 'psn' | 'tox' | 'brn' | 'par' | 'slp' | 'frz';
 export type StatId = 'atk' | 'def' | 'mov';
 export type Stages = Record<StatId, number>;
@@ -203,6 +206,8 @@ export interface MapDef {
   width: number;
   height: number;
   tiles: Terrain[][];
+  /** Optional character grid matching tiles; see the cliff-code legend in maps.ts. */
+  cliffs?: string[];
   trebuchets: Pos[];
   spawns: Record<Side, Pos[]>;
   /** Purely decorative hedge segments drawn along the board edge. */
