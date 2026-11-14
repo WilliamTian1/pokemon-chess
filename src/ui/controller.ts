@@ -5,7 +5,7 @@ import { BOT_TURN_START_MS, botPause } from '../ai/pace';
 import { DRAFT_TRANSITION_MS } from './components/Effects';
 import {
   type Action, type DraftStyle, type GameEvent, type GameState, type Side, RuleError, applyAction, deciders, hiddenView, isSimultaneous, newGame,
-  quickGame, randomSeed, seededRng,
+  quickGame, randomSeed, seededRng, secretNext,
 } from '../engine';
 import type { NetClient, NetSnapshot } from '../net/client';
 import type { AccountView, ClockView, MatchResult } from '../net/protocol';
@@ -35,6 +35,8 @@ export interface Controller {
   rated?: boolean;
   accounts?: Record<Side, AccountView | null>;
   result?: MatchResult | null;
+  /** CPU vs Freeplay: let the CPU finish drafting its team. */
+  autofillTeam?: () => void;
 }
 
 /** What a match is played with (setup screens, the online lobby and matchmaking). */
@@ -70,7 +72,10 @@ function scenarioGame(sc: Scenario, mapId: string, rng: ReturnType<typeof seeded
     const u = s.units.find((x) => x.id === id);
     if (u && pos) u.pos = pos;
   });
-  if (sc.trainers) s.trainers = { pool: [sc.trainers.A, sc.trainers.D], picks: { ...sc.trainers }, used: { A: false, D: false }, effect: null };
+  if (sc.trainers) s.trainers = {
+    pool: [sc.trainers.A, sc.trainers.D], picks: { ...sc.trainers }, hiddenPowerType: { A: null, D: null },
+    used: { A: false, D: false }, effect: null,
+  };
   return s;
 }
 
@@ -88,6 +93,7 @@ export function useLocalGame(cfg: LocalConfig): Controller {
   const [error, setError] = useState<string | null>(null);
   const [thinking, setThinking] = useState(false);
   const [botTick, setBotTick] = useState(0);
+  const [cpuAutofill, setCpuAutofill] = useState(false);
   const stateRef = useRef(state);
   const botBusy = useRef(false);
   const botFailures = useRef(0);
@@ -114,6 +120,7 @@ export function useLocalGame(cfg: LocalConfig): Controller {
   useEffect(() => {
     if (!botSide || botBusy.current) return;
     const s = stateRef.current;
+    if (cfg.mode === 'bot' && cfg.style === 'freeplay' && !cpuAutofill && s.phase === 'draft') return;
     // In a Secret draft the bot picks and places while you do (deciders has both sides).
     if (!deciders(s).includes(botSide)) return;
     botBusy.current = true;
@@ -156,7 +163,7 @@ export function useLocalGame(cfg: LocalConfig): Controller {
         setBotTick((t) => t + 1);
       }
     })();
-  }, [state, botTick, botSide, level, apply]);
+  }, [state, botTick, botSide, level, apply, cfg.mode, cfg.style, cpuAutofill]);
 
   const rematch = useCallback(() => {
     generation.current += 1;
@@ -172,17 +179,21 @@ export function useLocalGame(cfg: LocalConfig): Controller {
     const bot = `Bot (${LEVEL_NAME[cfg.level]})`;
     return cfg.human === 'A' ? { A: 'You', D: bot } : { A: bot, D: 'You' };
   }, [cfg]);
+  const manualFreeplayDraft = cfg.mode === 'bot' && cfg.style === 'freeplay' && !cpuAutofill && state.phase === 'draft';
+  const canAutofillTeam = cfg.mode === 'bot' && cfg.style === 'freeplay' && !cpuAutofill && state.phase === 'draft'
+    && !!botSide && secretNext(state, botSide) !== null;
 
   return {
     mode: cfg.mode,
     state,
     events,
-    mySides: cfg.mode === 'local' ? ['A', 'D'] : [cfg.human],
+    mySides: cfg.mode === 'local' || manualFreeplayDraft ? ['A', 'D'] : [cfg.human],
     names,
     dispatch: (a) => {
-      if (botSide && !deciders(stateRef.current).includes(cfg.mode === 'bot' ? cfg.human : 'A') && a.type !== 'concede') return;
+      if (botSide && !manualFreeplayDraft && !deciders(stateRef.current).includes(cfg.mode === 'bot' ? cfg.human : 'A') && a.type !== 'concede') return;
       apply(a, false);
     },
+    ...(canAutofillTeam ? { autofillTeam: () => setCpuAutofill(true) } : {}),
     error,
     clearError: () => setError(null),
     thinking,

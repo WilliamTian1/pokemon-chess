@@ -22,9 +22,11 @@ const CARD_COLUMNS = 'grid grid-cols-[repeat(auto-fill,minmax(min(100%,220px),1f
 
 /** The printed cards (card gallery). */
 export function CardGrid({ cards, onOpen }: { cards: CardDef[]; onOpen: (c: CardDef) => void }) {
+  const rank = (c: CardDef) => !c.legendary ? 0 : c.subrestricted ? 1 : 2;
+  const ordered = [...cards].sort((a, b) => rank(a) - rank(b));
   return (
     <div className={CARD_COLUMNS}>
-      {cards.map((c) => (
+      {ordered.map((c) => (
         <button key={c.id} type="button" onClick={() => onOpen(c)} className="rounded-lg text-left transition hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300">
           <CardImage id={c.id} name={c.name} />
         </button>
@@ -40,13 +42,12 @@ const DRAFT_LINE = 26;
  * Draft cards: the printed card, matchup badges and a Draft chip when the card can be taken now.
  * With `fit`, cards are sized so every one of them is on screen at once.
  */
-function DraftCards({ cards, fit, takenBy, pickable, canPick, legendTurn, onOpen, onDraft, onHover, focusId, badge }: {
+function DraftCards({ cards, fit, takenBy, pickable, canPick, onOpen, onDraft, onHover, focusId, badge }: {
   cards: CardDef[];
   fit: FitGrid | null;
   takenBy: Map<string, Side>;
   pickable: Set<string>;
   canPick: boolean;
-  legendTurn: boolean;
   onOpen: (c: CardDef) => void;
   onDraft: (c: CardDef) => void;
   onHover: (id: string | null) => void;
@@ -61,7 +62,7 @@ function DraftCards({ cards, fit, takenBy, pickable, canPick, legendTurn, onOpen
     >
       {cards.map((c) => {
         const taken = takenBy.get(c.id);
-        const offTurn = !taken && c.legendary !== legendTurn;
+        const offTurn = !taken && !pickable.has(c.id);
         return (
           <div
             key={c.id}
@@ -80,7 +81,7 @@ function DraftCards({ cards, fit, takenBy, pickable, canPick, legendTurn, onOpen
               )}
             </div>
             {/* Tags sit on the card's top edge so they don't hide its name or HP. */}
-            {c.legendary && <span className="absolute -top-2 left-2 chip bg-amber-400 text-slate-900 shadow">Legendary</span>}
+            {c.legendary && <span className={`absolute -top-2 left-2 chip shadow ${c.subrestricted ? 'bg-sky-300 text-slate-950' : 'bg-amber-400 text-slate-900'}`}>{c.subrestricted ? 'Subrestricted' : 'Legendary'}</span>}
             {taken && (
               <span className={`absolute -top-2 right-2 chip ${taken === 'A' ? 'bg-rose-500' : 'bg-sky-500'} text-white shadow`}>
                 {taken === 'A' ? 'Attacker' : 'Defender'}
@@ -143,7 +144,8 @@ export function useCardFilter(all: CardDef[]) {
 export function DraftView({ ctl }: { ctl: Controller }) {
   const s = ctl.state;
   const style = draftStyle(s);
-  const secret = style === 'secret';
+  const freeplay = style === 'freeplay';
+  const secret = style === 'secret' || freeplay;
   const auction = auctionOpen(s);
   // Secret draft: both sides pick at once, each from its own pool, so the screen is about one side
   // (yours; in hot-seat GameScreen hands this view one side at a time). Its state is already a hidden
@@ -161,9 +163,9 @@ export function DraftView({ ctl }: { ctl: Controller }) {
   const [searching, setSearching] = useState(false);
   const takenBy = useMemo(() => {
     const m = new Map<string, Side>();
-    for (const side of ['A', 'D'] as const) for (const id of s.draft.picks[side]) m.set(id, side);
+    for (const side of (freeplay ? [turn] : ['A', 'D'] as const)) for (const id of s.draft.picks[side]) m.set(id, side);
     return m;
-  }, [s.draft.picks]);
+  }, [s.draft.picks, freeplay, turn]);
   // '?': a card hidden from this viewer (a spectator in a Secret draft sees neither side's pool).
   const normals = useMemo(() => (secret ? s.draft.secret!.pools[turn] : auction ? [] : s.draft.pool).filter((id) => id !== '?').map(getCard), [s.draft.pool, secret, auction, turn]); // eslint-disable-line react-hooks/exhaustive-deps
   const legends = useMemo(() => (secret ? s.draft.secret!.legendPools[turn] : auction ? [] : s.draft.legendPool).filter((id) => id !== '?').map(getCard), [s.draft.legendPool, secret, auction, turn]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -260,7 +262,7 @@ export function DraftView({ ctl }: { ctl: Controller }) {
               </div>
               <div className="mt-0.5 flex min-w-0 items-center gap-1.5 overflow-hidden phone:mt-0">
                 <span className="draft-phase shrink-0">
-                  {waiting ? 'Revealed when the battle begins' : trainerTurn ? (secret ? 'Secret trainer pick' : 'Trainer pick') : auction ? 'Auction' : secret ? (legendTurn ? '★ Secret legendary pick' : 'Secret pick') : legendTurn ? '★ Legendary pick' : 'Pool pick'}
+                  {waiting ? 'Revealed when the battle begins' : trainerTurn ? (secret ? (freeplay ? 'Freeplay trainer pick' : 'Secret trainer pick') : 'Trainer pick') : auction ? 'Auction' : secret ? (freeplay ? (legendTurn ? '★ Freeplay legendary pick' : 'Freeplay pick') : (legendTurn ? '★ Secret legendary pick' : 'Secret pick')) : legendTurn ? '★ Legendary pick' : 'Pool pick'}
                 </span>
                 {focusCard && (
                   <span className="draft-phase min-w-0 !bg-[#f2d27a] !text-[#4a2b16]" title={`Comparing with ${focusCard.name}`}>
@@ -338,6 +340,11 @@ export function DraftView({ ctl }: { ctl: Controller }) {
             <button type="button" className="btn-ghost shrink-0 phone:!px-2 phone:!py-1 phone:text-xs" onClick={() => setChart(true)}>
               Type chart
             </button>
+            {ctl.autofillTeam && (
+              <button type="button" className="btn-primary shrink-0 !px-2 phone:!py-1 phone:text-xs" onClick={ctl.autofillTeam}>
+                Autofill team
+              </button>
+            )}
           </div>
         </div>
         {!auction && <div className={`w-full border-t-2 border-dashed border-slate-700 pt-2 ${searching ? '' : 'phone:hidden'}`}>{filter.controls}</div>}
@@ -349,7 +356,7 @@ export function DraftView({ ctl }: { ctl: Controller }) {
           <div className="panel mb-2 flex items-center gap-3 p-3">
             <SealedIcon className="h-10 w-10 shrink-0" />
             <p className="text-sm font-bold text-slate-300">
-              Your team is sealed. {ctl.names[otherSide(turn)]} is still picking from a pool you can’t see; both teams and trainers are revealed when the battle begins.
+              Your team is sealed. {ctl.names[otherSide(turn)]} is still picking {freeplay ? 'from the full roster' : 'from a pool you can’t see'}; both teams and trainers are revealed when the battle begins.
             </p>
           </div>
         )}
@@ -364,7 +371,6 @@ export function DraftView({ ctl }: { ctl: Controller }) {
           takenBy={takenBy}
           pickable={pickable}
           canPick={mine}
-          legendTurn={legendTurn}
           onOpen={setDetail}
           onDraft={draft}
           onHover={onHover}
@@ -393,7 +399,7 @@ export function DraftView({ ctl }: { ctl: Controller }) {
             <>
               <img src={trainerImg(readId)} alt={`${getTrainer(readId).name} card`} className="w-full rounded-lg shadow-2xl shadow-black/60" />
               <p className="text-center text-[11px] text-slate-400">
-                {secret ? 'Trainer: picked after your 4 Pokémon, in secret.' : 'Trainer: picked after the 8 Pokémon, the Attacker first.'} Its Special Move can be used once per game.
+              {secret ? `Trainer: picked after your 4 Pokémon, ${freeplay ? 'from the full roster' : 'in secret'}.` : 'Trainer: picked after the 8 Pokémon, the Attacker first.'} Its Special Move can be used once per game.
               </p>
             </>
           ) : readId ? (
@@ -474,7 +480,9 @@ function AuctionBoard({ ctl, onRead, cards }: { ctl: Controller; onRead: (id: st
         <button type="button" onClick={() => setDetail(card)} className="rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300" title="Open type matchups and counters">
           <CardImage id={lot} name={card.name} className="w-full max-w-[280px] shadow-xl phone:max-w-[190px]" />
         </button>
-        {card.legendary && <span className="chip bg-amber-400 text-slate-950">★ Legendary · one per team</span>}
+        {card.legendary && <span className={`chip ${card.subrestricted ? 'bg-sky-300 text-slate-950' : 'bg-amber-400 text-slate-950'}`}>
+          ★ {card.subrestricted ? 'Subrestricted · normal pool' : 'Fully restricted · one per team'}
+        </span>}
       </div>
       {detail && (
         <Modal onClose={() => setDetail(null)}>
@@ -501,7 +509,7 @@ function AuctionBoard({ ctl, onRead, cards }: { ctl: Controller; onRead: (id: st
           </div>
           {(['A', 'D'] as const).filter(blocked).map((side) => (
             <div key={side} className="text-xs font-bold text-slate-400">
-              The {side === 'A' ? 'Attacker' : 'Defender'} can’t bid ({s.draft.picks[side].length >= TEAM_SIZE ? 'team full' : 'already has a legendary'}).
+              The {side === 'A' ? 'Attacker' : 'Defender'} can’t bid ({s.draft.picks[side].length >= TEAM_SIZE ? 'team full' : 'already has a fully restricted legendary'}).
             </div>
           ))}
         </div>

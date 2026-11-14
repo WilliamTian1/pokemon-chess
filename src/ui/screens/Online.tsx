@@ -347,6 +347,7 @@ function Room({ client, onExit, onGame }: { client: NetClient; onExit: () => voi
           <div className="space-y-2 text-center">
             <MapPreview map={getMap(room.mapId)} className="mx-auto max-w-xs" />
             <p className="text-sm text-slate-400">Map: <b className="text-slate-200">{getMap(room.mapId).name}</b>{room.legendaries === false ? ', no legendaries' : ''}{room.trainers ? ', with trainers' : ''} (the host chooses). Waiting for the host to start the match…</p>
+            <p className="text-xs text-slate-400">{getMap(room.mapId).description}</p>
           </div>
         )}
         {snap.error && <p className="text-center text-sm text-rose-300">{snap.error}</p>}
@@ -366,4 +367,3 @@ export function Online({ onExit, onProfile }: { onExit: () => void; onProfile: (
     </>
   );
 }
-

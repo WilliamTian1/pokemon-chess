@@ -253,6 +253,16 @@ input[type='range'] {
   background-size: 100% 100%, 100% 100%, 100% 100%, 100% 100%, 100% 100%;
   animation: waterShimmer 4s ease-in-out infinite alternate;
 }
+.tile-electric {
+  background:
+    radial-gradient(ellipse at 50% 50%, rgba(255, 230, 80, 0.14), transparent 62%),
+    linear-gradient(145deg, #555, #353535);
+}
+.tile-electric.alt {
+  background:
+    radial-gradient(ellipse at 50% 50%, rgba(255, 230, 80, 0.11), transparent 62%),
+    linear-gradient(145deg, #4b4b4b, #303030);
+}
 .tile-ice {
   background:
     linear-gradient(34deg, transparent 0 42%, rgba(255, 255, 255, 0.62) 43% 44%, transparent 45% 100%),
@@ -296,6 +306,40 @@ input[type='range'] {
     radial-gradient(circle at 26% 68%, rgba(35, 25, 20, 0.2) 0 4%, transparent 5%),
     radial-gradient(ellipse at 50% 50%, rgba(210, 170, 125, 0.1), transparent 70%),
     linear-gradient(160deg, #6e5948, #594939);
+}
+.map-indoor .tile-normal,
+.map-indoor .tile-dirt,
+.map-indoor .tile-grass {
+  background:
+    linear-gradient(90deg, transparent 0 96%, rgba(42, 46, 49, 0.55) 96%),
+    linear-gradient(0deg, transparent 0 96%, rgba(42, 46, 49, 0.55) 96%),
+    radial-gradient(ellipse at 30% 28%, rgba(255, 255, 255, 0.12), transparent 65%),
+    linear-gradient(160deg, #a4a8aa, #7d8285);
+}
+.map-indoor .tile-normal.alt,
+.map-indoor .tile-dirt.alt {
+  background:
+    linear-gradient(90deg, transparent 0 96%, rgba(42, 46, 49, 0.55) 96%),
+    linear-gradient(0deg, transparent 0 96%, rgba(42, 46, 49, 0.55) 96%),
+    radial-gradient(ellipse at 70% 68%, rgba(255, 255, 255, 0.1), transparent 65%),
+    linear-gradient(160deg, #999ea1, #73797c);
+}
+.map-indoor .tile-grass.alt {
+  background:
+    linear-gradient(90deg, transparent 0 96%, rgba(42, 46, 49, 0.55) 96%),
+    linear-gradient(0deg, transparent 0 96%, rgba(42, 46, 49, 0.55) 96%),
+    radial-gradient(ellipse at 70% 68%, rgba(255, 255, 255, 0.1), transparent 65%),
+    linear-gradient(160deg, #999ea1, #73797c);
+}
+.tile-wonder {
+  background:
+    radial-gradient(circle at 50% 50%, rgba(147, 197, 253, 0.28), transparent 58%),
+    linear-gradient(145deg, #526b7b, #354755);
+}
+.tile-wonder.alt {
+  background:
+    radial-gradient(circle at 50% 50%, rgba(147, 197, 253, 0.24), transparent 58%),
+    linear-gradient(145deg, #465e6e, #2d404e);
 }
 .tile-magma {
   background:

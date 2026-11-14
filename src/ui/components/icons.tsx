@@ -42,6 +42,27 @@ export function BushIcon() {
   );
 }
 
+export function WonderIcon() {
+  return (
+    <svg viewBox="0 0 40 40" className="h-[78%] w-[78%] drop-shadow" aria-hidden>
+      <g fill="none" stroke="#e0f2fe" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M31 16a12 12 0 0 0-21-6L7 13" />
+        <path d="M7 7v6h6" />
+        <path d="M9 24a12 12 0 0 0 21 6l3-3" />
+        <path d="M33 33v-6h-6" />
+      </g>
+    </svg>
+  );
+}
+
+export function ElectricIcon() {
+  return (
+    <svg viewBox="0 0 40 40" className="h-[68%] w-[68%] drop-shadow" aria-hidden>
+      <path d="M23 3 10 22h9l-2 15 13-21h-9z" fill="#fde047" stroke="#713f12" strokeWidth="1.8" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 export function TrebuchetIcon() {
   return (
     <svg viewBox="0 0 40 40" className="h-[82%] w-[82%] drop-shadow" aria-hidden>

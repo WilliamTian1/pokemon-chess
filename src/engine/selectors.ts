@@ -5,9 +5,9 @@ import { canActNow, cloneState, followMeTiles, moveBlocked, movementAllowance, t
 import { STATUS_NAME, canHaveStatus, pressureMult } from './mutate';
 import { UNCOPYABLE, type Targeting, canTargetFrom, followMeUsers, isSupportOnly, liquidVoiceCopy, pushDistance, targeting, truantRests } from './moves';
 import {
-  abilityOf, cardOf, getUnit, isTrebuchet, liveUnits, moveOf, onBoard, parseGrid, reachable, type ReachInfo, terrainBonus,
+  abilityOf, cardOf, getUnit, isTrebuchet, liveUnits, moveIndexes, moveOf, onBoard, parseGrid, reachable, teleportDestinations, type ReachInfo, terrainBonus, verticalOnly,
 } from './query';
-import type { Dir, GameState, MoveDef, PType, StatId, Unit } from './types';
+import type { Dir, GameState, MoveDef, MoveIndex, PType, StatId, Unit } from './types';
 import { DIRS } from './types';
 import { clamp } from './util';
 
@@ -35,12 +35,21 @@ export function unitTurnInfo(s: GameState, u: Unit): UnitTurnInfo {
 /** Reachable tiles for the unit's movement step, already filtered by Follow Me. */
 export function moveTargets(s: GameState, u: Unit): Map<string, ReachInfo> {
   if (s.active) {
-    if (s.active.unitId === u.id && s.active.stage === 'acted') return reachable(s, u, s.active.postMove);
+    if (s.active.unitId === u.id && s.active.stage === 'acted') {
+      const targets = reachable(s, u, verticalOnly(s, u.side) ? movementAllowance(s, u) : s.active.postMove);
+      if (verticalOnly(s, u.side) && u.pos) {
+        for (const [k, r] of targets) if (r.path.some((p) => p.x !== u.pos!.x)) targets.delete(k);
+      }
+      return targets;
+    }
     return new Map();
   }
   if (u.activated || u.side !== s.side) return new Map();
   const budget = movementAllowance(s, u);
   const all = reachable(s, u, budget);
+  if (verticalOnly(s, u.side) && u.pos) {
+    for (const [k, r] of all) if (r.path.some((p) => p.x !== u.pos!.x)) all.delete(k);
+  }
   const fm = followMeTiles(s, u, budget);
   if (!fm) {
     // Triage: a few extra tiles, if it heals from there.
@@ -58,7 +67,7 @@ export interface DirOption {
 }
 
 export interface MoveOption {
-  moveIndex: 0 | 1;
+  moveIndex: MoveIndex;
   move: MoveDef;
   usable: boolean;
   reason?: string;
@@ -115,6 +124,10 @@ function aimFor(s: GameState, u: Unit, move: MoveDef): Pick<MoveOption, 'aim' | 
     return hits && fm(tg.targets.map((t) => t.id));
   };
   const t = move.target;
+  if (move.fx.special === 'suckerPunch') {
+    return { aim: 'none', dirs: [], units: [], usable: true };
+  }
+
   if (t.kind === 'grid' || t.kind === 'place') {
     const dirs = DIRS.map((dir) => ({ dir, tg: targeting(s, u, move, { dir }) }));
     const okDirs = dirs.filter((d) => d.tg.ok && fmOk(d.tg));
@@ -130,17 +143,23 @@ function aimFor(s: GameState, u: Unit, move: MoveDef): Pick<MoveOption, 'aim' | 
     }).map((x) => x.id);
     return { aim: 'unit', dirs: [], units, usable: units.length > 0, reason: units.length ? undefined : t.kind === 'ally' ? 'No ally can switch' : 'No target in range' };
   }
+  if (move.fx.special === 'teleport') {
+    const usable = teleportDestinations(s, u).length > 0;
+    return { aim: 'none', dirs: [], units: [], usable, reason: usable ? undefined : 'No free tile beside an ally' };
+  }
   if (fm) return { aim: 'none', dirs: [], units: [], usable: false, reason: 'Follow Me: must target the decoy' };
   return { aim: 'none', dirs: [], units: [], usable: true };
 }
 
 /** Moves Transform could use for `u` right now. */
-export function copyOptions(s: GameState, u: Unit): CopyOption[] {
+export function copyOptions(s: GameState, u: Unit, opponentsOnly = false, attacksOnly = false): CopyOption[] {
   const out: CopyOption[] = [];
   for (const src of liveUnits(s)) {
     if (src.id === u.id) continue;
+    if (opponentsOnly && src.side === u.side) continue;
     for (const moveIndex of [0, 1] as const) {
       const move = moveOf(src, moveIndex);
+      if (attacksOnly && move.kind !== 'attack') continue;
       if (UNCOPYABLE(move) || moveBlocked(s, u, move)) continue;
       const a = aimFor(s, u, move);
       if (a.usable && a.aim !== 'copy') out.push({ unitId: src.id, moveIndex, move, aim: a.aim, dirs: a.dirs, units: a.units });
@@ -149,9 +168,18 @@ export function copyOptions(s: GameState, u: Unit): CopyOption[] {
   return out;
 }
 
+/** Attacks Kyurem can copy with Fusion from an on-field Zekrom or Reshiram. */
+export function fusionOptions(s: GameState, u: Unit): CopyOption[] {
+  if (abilityOf(u) !== 'fusion') return [];
+  return copyOptions(s, u).filter((o) => {
+    const source = s.units.find((x) => x.id === o.unitId);
+    return source && ['zekrom', 'reshiram'].includes(cardOf(source).id) && o.move.kind === 'attack';
+  });
+}
+
 export function moveOptions(s: GameState, u: Unit): MoveOption[] {
   const info = unitTurnInfo(s, u);
-  return ([0, 1] as const).map((moveIndex) => {
+  return moveIndexes(u).map((moveIndex) => {
     const move = moveOf(u, moveIndex);
     const base: MoveOption = { moveIndex, move, usable: false, aim: 'none', dirs: [], units: [] };
     if (!info.canAct) return { ...base, reason: info.done ? 'Already activated' : info.reasons.join(', ') || 'Cannot act' };
@@ -159,8 +187,9 @@ export function moveOptions(s: GameState, u: Unit): MoveOption[] {
     if (block) return { ...base, reason: block };
     const blocked = moveBlocked(s, u, move);
     if (blocked) return { ...base, reason: blocked };
-    if (move.fx.special === 'transform') {
-      const copies = copyOptions(s, u);
+    if (move.fx.special === 'transform' || move.fx.special === 'mimic') {
+      const mimic = move.fx.special === 'mimic';
+      const copies = copyOptions(s, u, mimic);
       return { ...base, aim: 'copy', copies, usable: copies.length > 0, reason: copies.length ? undefined : 'Nothing to copy from here' };
     }
     return { ...base, ...aimFor(s, u, move) };
@@ -227,7 +256,7 @@ export interface PreviewOpts {
 }
 
 /** Per-target outcome ranges for a move or the trebuchet ('treb'). Pure: does not mutate `s`. */
-export function previewAction(s0: GameState, unitId: string, which: 0 | 1 | 'treb', opts: PreviewOpts): TargetPreview[] {
+export function previewAction(s0: GameState, unitId: string, which: MoveIndex | 'treb', opts: PreviewOpts): TargetPreview[] {
   const s = cloneState(s0, true);
   const u = getUnit(s, unitId);
   if (!onBoard(u)) return [];
@@ -361,7 +390,7 @@ function attackPreview(s: GameState, u: Unit, move: MoveDef, moveType: PType, t:
  * What `attackerId`'s attack would do to `targetId` if it landed from where the attacker stands,
  * ignoring range. Null for status moves.
  */
-export function damageVs(s0: GameState, attackerId: string, moveIndex: 0 | 1, targetId: string): TargetPreview | null {
+export function damageVs(s0: GameState, attackerId: string, moveIndex: MoveIndex, targetId: string): TargetPreview | null {
   const s = cloneState(s0, true);
   const u = getUnit(s, attackerId);
   const t = getUnit(s, targetId);

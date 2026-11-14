@@ -1,15 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { getCard, getMap } from '../../engine';
 import type { DraftStyle } from '../../engine/types';
-import { DRAFT_STYLES, type Profile as ProfileData } from '../../net/protocol';
+import { DRAFT_STYLES, type Profile as ProfileData, type RankedDraftStyle } from '../../net/protocol';
 import { type LeaderRow, fetchLeaderboard, fetchProfile, useAccount } from '../account';
 import { Art } from '../components/bits';
 import { PokeBallIcon } from '../components/icons';
 
-export const STYLE_NAME = { classic: 'Classic', secret: 'Secret', auction: 'Auction' } as const;
+export const STYLE_NAME: Record<DraftStyle, string> = { classic: 'Classic', secret: 'Secret', auction: 'Auction', freeplay: 'Freeplay' };
 
 /** Tabs to pick a draft style (every style has its own rating and ladder). */
-function StyleTabs({ value, onChange }: { value: DraftStyle; onChange: (s: DraftStyle) => void }) {
+function StyleTabs({ value, onChange }: { value: RankedDraftStyle; onChange: (s: RankedDraftStyle) => void }) {
   return (
     <div className="flex gap-1.5" role="tablist">
       {DRAFT_STYLES.map((s) => (
@@ -27,7 +27,7 @@ const fmtDate = (t: number) => new Date(t).toLocaleDateString(undefined, { month
 export function ProfileScreen({ username, onBack, onProfile }: { username: string; onBack: () => void; onProfile: (name: string) => void }) {
   const [data, setData] = useState<ProfileData | null | undefined>(undefined);
   const { account } = useAccount();
-  const [style, setStyle] = useState<DraftStyle>('classic');
+  const [style, setStyle] = useState<RankedDraftStyle>('classic');
   useEffect(() => {
     setData(undefined);
     void fetchProfile(username).then(setData);
@@ -188,9 +188,9 @@ function RatingChart({ points }: { points: { t: number; r: number }[] }) {
 }
 
 /** The ranked ladder. */
-export function Leaderboard({ onProfile, limit = 100, compact = false, style: fixed }: { onProfile: (name: string) => void; limit?: number; compact?: boolean; style?: DraftStyle }) {
+export function Leaderboard({ onProfile, limit = 100, compact = false, style: fixed }: { onProfile: (name: string) => void; limit?: number; compact?: boolean; style?: RankedDraftStyle }) {
   const [rows, setRows] = useState<LeaderRow[] | null | undefined>(undefined);
-  const [picked, setPicked] = useState<DraftStyle>('classic');
+  const [picked, setPicked] = useState<RankedDraftStyle>('classic');
   const style = fixed ?? picked;
   const { account } = useAccount();
   useEffect(() => {

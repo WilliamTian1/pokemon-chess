@@ -15,7 +15,7 @@ import { trainerImg } from '../components/Trainers';
 import { useCardFilter } from './DraftView';
 
 const SIDE_LABEL: Record<Side, string> = { A: 'Attacker', D: 'Defender' };
-const STYLE_LABEL: Record<DraftStyle, string> = { classic: 'Classic', secret: 'Secret', auction: 'Auction' };
+const STYLE_LABEL: Record<DraftStyle, string> = { classic: 'Classic', secret: 'Secret', auction: 'Auction', freeplay: 'Freeplay' };
 const pct = (p: number): string => `${(100 * p).toFixed(1)}%`;
 /** A side's win chance from the Attacker's logit. */
 const forSide = (side: Side, logit: number): number => (side === 'A' ? winChance(logit) : 1 - winChance(logit));
@@ -109,9 +109,9 @@ type Analysis =
  */
 export function DraftLab({ onBack }: { onBack: () => void }) {
   const [mapId, setMapId] = useState(savedMapId);
-  const [style, setStyle] = useState<DraftStyle>(() => devStyle() ?? savedStyle());
+  const [style, setStyle] = useState<DraftStyle>(() => devStyle() ?? (savedStyle() === 'freeplay' ? 'classic' : savedStyle()));
   const [legends, setLegends] = useState(savedLegendaries);
-  const [pool, setPool] = useState<string[]>(() => randomPool(seededRng(randomSeed()), legends ? DRAFT_POOL_SIZE : NO_LEGEND_POOL_SIZE));
+  const [pool, setPool] = useState<string[]>(() => randomPool(seededRng(randomSeed()), legends ? DRAFT_POOL_SIZE : NO_LEGEND_POOL_SIZE, legends));
   const [legendPool, setLegendPool] = useState<string[]>(() => randomLegendPool(seededRng(randomSeed())));
   const [trainers, setTrainers] = useState(savedTrainers);
   const [trainerPool, setTrainerPool] = useState<string[]>(() => randomTrainerPool(seededRng(randomSeed())));
@@ -192,9 +192,10 @@ export function DraftLab({ onBack }: { onBack: () => void }) {
   const toggleLegends = () => {
     const on = !legends;
     const size = on ? DRAFT_POOL_SIZE : NO_LEGEND_POOL_SIZE;
-    const extra = randomPool(seededRng(randomSeed()), NO_LEGEND_POOL_SIZE + DRAFT_POOL_SIZE).filter((id) => !pool.includes(id));
+    const eligible = pool.filter((id) => on || !getCard(id).subrestricted);
+    const extra = randomPool(seededRng(randomSeed()), NO_LEGEND_POOL_SIZE + DRAFT_POOL_SIZE, on).filter((id) => !eligible.includes(id));
     setLegends(on);
-    reset(pool.length > size ? pool.slice(0, size) : [...pool, ...extra].slice(0, size), legendPool);
+    reset(eligible.length > size ? eligible.slice(0, size) : [...eligible, ...extra].slice(0, size), legendPool);
   };
   const aiPick = () => {
     if (style === 'classic') {
@@ -486,7 +487,9 @@ function LabAuction({ s, analysis, onAct, onHover }: { s: GameState; analysis: A
       <div className="panel flex flex-col items-center gap-2 p-3" onMouseEnter={() => onHover(lot)} onMouseLeave={() => onHover(null)}>
         <div className="text-xs font-extrabold uppercase tracking-widest text-slate-400">Lot {a.history.length + 1} · {a.deck.length} more to come</div>
         <CardImage id={lot} name={getCard(lot).name} className="w-full max-w-[240px]" />
-        {getCard(lot).legendary && <span className="chip bg-amber-400 text-slate-950">★ Legendary · one per team</span>}
+        {getCard(lot).legendary && <span className={`chip ${getCard(lot).subrestricted ? 'bg-sky-300 text-slate-950' : 'bg-amber-400 text-slate-950'}`}>
+          ★ {getCard(lot).subrestricted ? 'Subrestricted · normal pool' : 'Fully restricted · one per team'}
+        </span>}
       </div>
       <div className="panel space-y-3 p-3">
         <div className="grid grid-cols-2 gap-2">
@@ -650,10 +653,12 @@ function PoolEditor({ pool, legendPool, legends, trainerPool, onChange }: {
   trainerPool: string[] | null;
   onChange: (pool: string[], legends: string[], trainers?: string[]) => void;
 }) {
+  const restricted = (c: CardDef): boolean => c.legendary && !c.subrestricted;
   const toggle = (c: CardDef) => {
-    const list = c.legendary ? legendPool : pool;
+    if (c.subrestricted && !legends) return;
+    const list = restricted(c) ? legendPool : pool;
     const next = list.includes(c.id) ? list.filter((x) => x !== c.id) : [...list, c.id];
-    if (c.legendary) onChange(pool, next);
+    if (restricted(c)) onChange(pool, next);
     else onChange(next, legendPool);
   };
   const minPool = legends ? 6 : 8;
@@ -661,7 +666,7 @@ function PoolEditor({ pool, legendPool, legends, trainerPool, onChange }: {
   const filter = useCardFilter(DRAFTABLE);
   const [only, setOnly] = useState<'all' | 'in' | 'out'>('all');
   const shown = filter.cards.filter((c) => {
-    const inPool = (c.legendary ? legendPool : pool).includes(c.id);
+    const inPool = (restricted(c) ? legendPool : pool).includes(c.id);
     return only === 'all' || (only === 'in') === inPool;
   });
   return (
@@ -714,14 +719,16 @@ function PoolEditor({ pool, legendPool, legends, trainerPool, onChange }: {
       </div>
       {(legends ? (['legend', 'normal'] as const) : (['normal'] as const)).map((group) => (
         <div key={group}>
-          <h3 className="mb-1.5 text-sm font-bold text-slate-200">{group === 'legend' ? 'LEGENDARIES' : 'POKÉMON'}</h3>
+          <h3 className="mb-1.5 text-sm font-bold text-slate-200">{group === 'legend' ? 'FULLY RESTRICTED LEGENDARIES' : legends ? 'POKÉMON + SUBRESTRICTED LEGENDARIES' : 'POKÉMON'}</h3>
           <div className="grid grid-cols-[repeat(auto-fill,minmax(110px,1fr))] gap-2">
-            {shown.filter((c) => c.legendary === (group === 'legend')).map((c) => {
-              const inPool = (c.legendary ? legendPool : pool).includes(c.id);
+            {shown.filter((c) => restricted(c) === (group === 'legend')).map((c) => {
+              const inPool = (restricted(c) ? legendPool : pool).includes(c.id);
+              const disabled = c.subrestricted && !legends;
               return (
-                <button key={c.id} type="button" onClick={() => toggle(c)} aria-pressed={inPool} className={`relative rounded-lg transition ${inPool ? 'ring-2 ring-amber-300 ring-offset-2 ring-offset-slate-950' : 'opacity-40 hover:opacity-80'}`}>
+                <button key={c.id} type="button" disabled={disabled} onClick={() => toggle(c)} aria-pressed={inPool} className={`relative rounded-lg transition ${disabled ? 'opacity-25' : inPool ? 'ring-2 ring-amber-300 ring-offset-2 ring-offset-slate-950' : 'opacity-40 hover:opacity-80'}`}>
                   <CardImage id={c.id} name={c.name} />
                   {inPool && <span className="absolute -top-2 right-2 chip bg-amber-400 text-slate-950 shadow">In pool</span>}
+                  {c.subrestricted && <span className="absolute -bottom-2 left-1 chip bg-sky-300 text-slate-950 shadow">Subrestricted</span>}
                 </button>
               );
             })}

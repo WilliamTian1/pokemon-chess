@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import type http from 'node:http';
 import type { DraftStyle, Side } from '../src/engine/types';
-import { DRAFT_STYLES, type AccountView, type ModeProfile, type Profile, type ProfileGame } from '../src/net/protocol';
+import { DRAFT_STYLES, type AccountView, type ModeProfile, type Profile, type ProfileGame, type RankedDraftStyle } from '../src/net/protocol';
 import { cleanName } from './names';
 import type { ModeStats, SavedGame, Store, User } from './store';
 
@@ -25,7 +25,7 @@ export function modeStats(u: User, style: DraftStyle): ModeStats {
   return (u.modes[style] ??= { rating: u.rating, peak: u.peak, games: u.games, wins: u.wins, losses: u.losses, history: [...u.history] });
 }
 
-const perMode = <T>(f: (style: DraftStyle) => T): Record<DraftStyle, T> => ({ classic: f('classic'), secret: f('secret'), auction: f('auction') });
+const perMode = <T>(f: (style: RankedDraftStyle) => T): Record<RankedDraftStyle, T> => ({ classic: f('classic'), secret: f('secret'), auction: f('auction') });
 
 export const accountView = (u: User): AccountView => ({
   id: u.id, username: u.username, ratings: perMode((s) => modeStats(u, s).rating), games: perMode((s) => modeStats(u, s).games), ...(u.bot ? { bot: u.bot } : {}),

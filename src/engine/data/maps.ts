@@ -2,7 +2,8 @@ import type { MapDef, Pos, Terrain } from '../types';
 import { isProcMapId, procMap } from './procmap';
 
 // Legend: . normal  w water  d dirt (cosmetic)  g grass (cosmetic land bridge)
-//         f flower (+30 HP)  b berry bush (-30 damage taken)  T trebuchet (on dirt)  t trebuchet (on grass)
+//         f flower (+30 HP)  b berry bush (-30 damage taken)  r wonder tile (resets stat stages)
+//         T trebuchet (on dirt)  t trebuchet (on grass)
 // Row 0 is always the Defenders' edge. Both maps are transcribed from the user's hand-drawn maps.
 const MEADOW_ROWS = [
   '......w...d...',
@@ -50,15 +51,44 @@ const ICE_ROWS = [
 const VOLCANO_ROWS = [
   '..=.............',
   '..m.............',
-  '..m.....mmm.mm..',
+  'r.m.....mmm.mm..',
   '###..##mmmm.mm##',
   '..m........t....',
   '..=....mmmm.mm..',
   '###..##mmmm.mm##',
-  '..=....mmmm.mm..',
+  'r.=....mmmm.mmr.',
   '..m.............',
   '..m.............',
 
+];
+
+const AVIA_ROWS = [
+  '....b...............',
+  '.....r..b..r........',
+  'pp=pppp==ppppp..b...',
+  'pp=pppp==ppppp=ppppp',
+  '.f....f.........pppp',
+  '.........t....f.....',
+  '...b......f.........',
+  'ppp=pppppppppppp=ppp',
+  'pp.....b...ppppp=ppp',
+  '..b..........ppp=ppp',
+  '.................ppp',
+  '............b.......',
+  '...b...r.....r......',
+  '....................',
+];
+const FARM_ROWS = [
+  '#####.......',
+  '#f.r#..b....',
+  '#...#.....b.',
+  '##.##.......',
+  '......t.....',
+  '..b....b....',
+  '...b........',
+  '........b...',
+  '.r.......f..',
+  '.....f......',
 ];
 
 const CHAR_TERRAIN: Record<string, Terrain> = {
@@ -69,6 +99,7 @@ const CHAR_TERRAIN: Record<string, Terrain> = {
   '=': 'bridge',
   f: 'flower',
   b: 'bush',
+  r: 'wonder',
   T: 'dirt',
   t: 'normal',
   '#': 'wall',
@@ -94,11 +125,14 @@ const meadow = parseRows(MEADOW_ROWS);
 const river = parseRows(RIVER_ROWS);
 const ice = parseRows(ICE_ROWS);
 const volcano = parseRows(VOLCANO_ROWS);
-
+const avia = parseRows(AVIA_ROWS);
+const farm = parseRows(FARM_ROWS);
 export const MAPS: Record<string, MapDef> = {
   meadow: {
     id: 'meadow',
     name: 'Trebuchet Meadow',
+    description: 'Open fields around a central trebuchet, a dirt road and scattered ponds.',
+    music: 'battle.mp3',
     width: MEADOW_ROWS[0].length,
     height: MEADOW_ROWS.length,
     tiles: meadow.tiles,
@@ -122,6 +156,8 @@ export const MAPS: Record<string, MapDef> = {
   river: {
     id: 'river',
     name: 'Winding River',
+    description: 'A river snakes across the field: bridges and fords decide the fight.',
+    music: 'battleRiver.mp3',
     width: RIVER_ROWS[0].length,
     height: RIVER_ROWS.length,
     tiles: river.tiles,
@@ -134,7 +170,9 @@ export const MAPS: Record<string, MapDef> = {
   ice: {
     id: 'ice',
     name: 'Nixtorm',
+    description: 'A snowy field of slick ice. Pokémon slide until they reach clear ground or an obstacle.',
     theme: 'snow',
+    music: 'battleIce.mp3',
     width: ICE_ROWS[0].length,
     height: ICE_ROWS.length,
     tiles: ice.tiles,
@@ -147,7 +185,9 @@ export const MAPS: Record<string, MapDef> = {
   volcano: {
     id: 'volcano',
     name: 'Ignis',
+    description: 'A volcanic battlefield cut by magma channels and narrow crossings.',
     theme: 'volcano',
+    music: 'battleFire.mp3',
     width: VOLCANO_ROWS[0].length,
     height: VOLCANO_ROWS.length,
     tiles: volcano.tiles,
@@ -155,6 +195,35 @@ export const MAPS: Record<string, MapDef> = {
     spawns: {
       D: [{ x: 3, y: 0 }, { x: 5, y: 0 }, { x: 8, y: 0 }, { x: 11, y: 0 }],
       A: [{ x: 4, y: 9 }, { x: 6, y: 9 }, { x: 9, y: 9 }, { x: 11, y: 9 }],
+    },
+  },
+  avia: {
+    id: 'avia',
+    name: 'Avia',
+    description: 'Every 4 rounds, a haze appears that clears all stat changes.',
+    music: 'battleFlying.mp3',
+    stageMist: { everyRounds: 4 },
+    width: AVIA_ROWS[0].length,
+    height: AVIA_ROWS.length,
+    tiles: avia.tiles,
+    trebuchets: avia.trebuchets,
+    spawns: {
+      D: [{ x: 2, y: 0 }, { x: 7, y: 0 }, { x: 12, y: 0 }, { x: 17, y: 0 }],
+      A: [{ x: 2, y: 13 }, { x: 7, y: 13 }, { x: 12, y: 13 }, { x: 17, y: 13 }],
+    },
+  },
+  farm: {
+    id: 'farm',
+    name: 'Outpost',
+    description: 'An outpost in the countryside.',
+    music: 'battleFarm.mp3',
+    width: FARM_ROWS[0].length,
+    height: FARM_ROWS.length,
+    tiles: farm.tiles,
+    trebuchets: farm.trebuchets,
+    spawns: {
+      D: [{ x: 2, y: 1 }, { x: 5, y: 0 }, { x: 7, y: 0 }, { x: 9, y: 0 }],
+      A: [{ x: 2, y: 9 }, { x: 4, y: 9 }, { x: 6, y: 9 }, { x: 9, y: 9 }],
     },
   },
 };

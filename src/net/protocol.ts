@@ -17,8 +17,9 @@ export const TIME_CONTROLS: TimeControl[] = [
 ];
 export const timeControl = (id: string | null | undefined): TimeControl | null => TIME_CONTROLS.find((t) => t.id === id) ?? null;
 
-/** Ranked queue preference: a draft style, or any. */
-export type StylePref = DraftStyle | 'any';
+/** Ranked queue preference: freeplay is reserved for private matches. */
+export type StylePref = Exclude<DraftStyle, 'freeplay'> | 'any';
+export type RankedDraftStyle = Exclude<DraftStyle, 'freeplay'>;
 /** Ranked queue preference for an optional rule (legendaries, trainers): with it, without it, or either. */
 export type RulePref = 'on' | 'off' | 'any';
 export const RULE_PREFS: readonly RulePref[] = ['on', 'off', 'any'];
@@ -28,9 +29,9 @@ export interface AccountView {
   id: string;
   username: string;
   /** Elo rating per draft style: each mode is rated separately. */
-  ratings: Record<DraftStyle, number>;
+  ratings: Record<RankedDraftStyle, number>;
   /** Ranked games played per draft style. */
-  games: Record<DraftStyle, number>;
+  games: Record<RankedDraftStyle, number>;
   /** Bot accounts (they fill the ranked queue): their difficulty. */
   bot?: 'easy' | 'medium' | 'hard';
 }
@@ -153,9 +154,9 @@ export interface Profile {
   username: string;
   createdAt: number;
   bot?: 'easy' | 'medium' | 'hard';
-  modes: Record<DraftStyle, ModeProfile>;
+  modes: Record<RankedDraftStyle, ModeProfile>;
   /** Recent ranked games in every style (each carries its own style). */
   recent: ProfileGame[];
 }
 
-export const DRAFT_STYLES: readonly DraftStyle[] = ['classic', 'secret', 'auction'];
+export const DRAFT_STYLES: readonly RankedDraftStyle[] = ['classic', 'secret', 'auction'];

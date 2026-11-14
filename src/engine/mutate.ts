@@ -1,5 +1,5 @@
 import { getCard } from './data/cards';
-import { abilityOf, cardOf, hasType, hazardAt, isFlier, withAbility } from './query';
+import { abilityOf, cardOf, hasType, hazardAt, hazardDamage, isFlier, withAbility } from './query';
 import type { GameEvent, GameState, LogEntry, Pos, Rng, Side, StatId, StatusId, Unit } from './types';
 import { SIDE_NAME } from './types';
 import { clamp, roundUp5, steps } from './util';
@@ -57,6 +57,7 @@ export function dealDamage(ctx: Ctx, u: Unit, amount: number, opts: DamageOpts =
   const label = opts.label ? ` (${opts.label})` : '';
   if (u.sturdyBroken) {
     u.hp = 0;
+    u.damageTaken += before;
     emit(ctx, { t: 'damage', unitId: u.id, amount: before });
     log(ctx, `${nameOf(u)} took ${amount} damage${label} and could no longer hold on!`, 'bad', u.side);
     faint(ctx, u, opts.source ?? null);
@@ -64,14 +65,21 @@ export function dealDamage(ctx: Ctx, u: Unit, amount: number, opts: DamageOpts =
   }
   if (opts.attack && !opts.ignoreAbilities && abilityOf(u) === 'sturdy' && u.hp === u.maxHp && amount >= u.hp) {
     u.hp = 1;
+    u.damageTaken += before - 1;
     u.sturdyBroken = true;
     emit(ctx, { t: 'damage', unitId: u.id, amount: before - 1 });
     log(ctx, `${nameOf(u)} took ${amount} damage${label} but endured the hit with Sturdy!`, 'bad', u.side);
     return before - 1;
   }
   u.hp = Math.max(0, u.hp - amount);
+  const dealt = before - u.hp;
+  u.damageTaken += dealt;
   emit(ctx, { t: 'damage', unitId: u.id, amount });
   log(ctx, `${nameOf(u)} took ${amount} damage${label}.`, 'bad', u.side);
+  if (u.cardId === 'zygarde' && u.damageTaken >= 100) {
+    transform(ctx, u, 'zygarde-100', false);
+    log(ctx, `${nameOf(u)} transformed into its 100% form with Power Construct!`, 'good', u.side);
+  }
   if (u.hp <= 0) {
     if (abilityOf(u) === 'shieldsDownMeteor') {
       transform(ctx, u, 'minior-core', true);
@@ -80,7 +88,6 @@ export function dealDamage(ctx: Ctx, u: Unit, amount: number, opts: DamageOpts =
     }
     faint(ctx, u, opts.source ?? null);
   }
-  const dealt = before - u.hp;
   // Swallow: dropping under 60 HP with Defense boosts trades each boost for 70 HP.
   if (!u.fainted && u.hp < 60 && u.stages.def > 0 && abilityOf(u) === 'swallow' && !(opts.attack && opts.ignoreAbilities)) {
     const n = u.stages.def;
@@ -149,6 +156,10 @@ export function applyStage(ctx: Ctx, u: Unit, stat: StatId, delta: number, opts:
     log(ctx, `${nameOf(u)}'s Clear Body prevents its stats from being lowered.`, 'info', u.side);
     return 0;
   }
+  if (d < 0 && ab === 'fullMetalBody') {
+    log(ctx, `${nameOf(u)}'s Full Metal Body prevents its stats from being lowered.`, 'info', u.side);
+    return 0;
+  }
   if (d < 0 && stat === 'atk' && ab === 'keenEye') {
     log(ctx, `${nameOf(u)}'s Keen Eye prevents its Attack from being lowered.`, 'info', u.side);
     return 0;
@@ -174,6 +185,12 @@ export function applyStage(ctx: Ctx, u: Unit, stat: StatId, delta: number, opts:
     }
   }
   return change;
+}
+
+export function triggerProtosynthesis(ctx: Ctx): void {
+  for (const u of withAbility(ctx.s, 'protosynthesis')) {
+    applyStage(ctx, u, 'def', 1, { source: null, label: 'Protosynthesis' });
+  }
 }
 
 /** Self-inflicted stat drops are doubled while an opposing Pressure Pokémon is on the field. */
@@ -210,6 +227,7 @@ export interface StatusOpts {
 export function canHaveStatus(u: Unit, status: StatusId, grassImmune = false): boolean {
   if (u.fainted || u.status) return false;
   if (abilityOf(u) === 'shieldsDownMeteor') return false;
+  if (status === 'slp' && abilityOf(u) === 'insomnia') return false;
   if ((status === 'psn' || status === 'tox') && (hasType(u, 'Poison') || hasType(u, 'Steel'))) return false;
   if (status === 'brn' && hasType(u, 'Fire')) return false;
   if (grassImmune && hasType(u, 'Grass')) return false;
@@ -242,13 +260,13 @@ export function cureStatus(ctx: Ctx, u: Unit, label: string): void {
 
 // ---------------------------------------------------------------- positioning
 
-/** Moves a unit onto a tile, triggering hazards ("walks through, lands on, or is hit into"). */
+/** Moves a unit onto a tile, triggering its effects ("walks through, lands on, or is hit into"). */
 export function enterTile(ctx: Ctx, u: Unit, p: Pos): void {
   u.pos = { x: p.x, y: p.y };
   if (isFlier(u)) return;
   const hz = hazardAt(ctx.s, p);
   if (!hz) return;
-  if (hz.kind === 'spikes') dealDamage(ctx, u, 30, { label: 'Spikes' });
+  if (hz.kind === 'spikes') dealDamage(ctx, u, hazardDamage(ctx.s, u, 30), { label: 'Spikes' });
   else applyStage(ctx, u, 'mov', -1, { source: null, label: 'Sticky Web' });
 }
 

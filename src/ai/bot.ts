@@ -1,8 +1,8 @@
 import {
-  type Action, type CardDef, type CopyOption, type Dir, type GameState, type MoveOption, type Pos, type Rng, type Side, type Unit,
+  type Action, type CardDef, type CopyOption, type Dir, type GameState, type MoveIndex, type MoveOption, type Pos, type Rng, type Side, type Unit,
   basePower, canUseSpecial, cardOf, cheb, computeDamage, decider, effectiveMov, expectedRng, getCard, getMap, getUnit, grazeApplies,
   auctionOpen, deciders, draftStyle, isTrainerPick, secretNext, specialTargets, trainerOf,
-  canPass, draftOptions, isImmune, isSupportOnly, isTrebuchet, liveUnits, makeAttackCtx, mapOf, moveOf, moveOptions, moveTargets, onBoard,
+  canPass, draftOptions, fusionOptions, isImmune, isSupportOnly, isTrebuchet, liveUnits, makeAttackCtx, mapOf, moveOf, moveOptions, moveTargets, onBoard,
   otherSide, parseGrid, posKey, reachable, seededRng, simulate, steps, terrainAt, terrainBonus, trebuchetCtx, trebuchetOption, waitBlock, zoneTiles,
   TRAINER_LIST, TYPES,
 } from '../engine';
@@ -26,11 +26,11 @@ export function decide(s: GameState, side: Side, level: Difficulty, rng: Rng): A
   if (s.pending.length) return [choosePending(s, side, level)];
   if (s.phase === 'draft') {
     if (auctionOpen(s)) return [auctionAction(s, side, level, rng)];
-    if (draftStyle(s) === 'secret') return [{ type: 'draftPick', cardId: secretDraftPick(s, side, level, rng), side }];
+    if (draftStyle(s) === 'secret' || draftStyle(s) === 'freeplay') return [{ type: 'draftPick', cardId: secretDraftPick(s, side, level, rng), side }];
     return [{ type: 'draftPick', cardId: draftPick(s, side, level, rng) }];
   }
   // Secret draft: placement is blind, so there's no opponent to plan against yet.
-  if (s.phase === 'placement' && draftStyle(s) === 'secret') return [simplePlacement(s, side, level === 'easy' ? 'easy' : 'medium', rng)];
+  if (s.phase === 'placement' && (draftStyle(s) === 'secret' || draftStyle(s) === 'freeplay')) return [simplePlacement(s, side, level === 'easy' ? 'easy' : 'medium', rng)];
   if (s.phase === 'placement') return [placeNext(s, side, level, rng)];
   return battleStep(s, side, level, rng);
 }
@@ -57,7 +57,9 @@ function draftPick(s: GameState, side: Side, level: Difficulty, rng: Rng): strin
 /** Secret draft: the next pick from `side`'s own options (Pokémon, legendary or trainer), seeing nothing of the other side. */
 function secretDraftPick(s: GameState, side: Side, level: Difficulty, rng: Rng): string {
   if (secretNext(s, side) === 'trainer') return secretTrainerPick(s, side, level, rng);
-  return level === 'hard' && SEARCH.draftModel && hasDraftModel(s.mapId) ? bestSecretPick(s, side) : simpleSecretPick(s, side, level, rng);
+  return draftStyle(s) === 'secret' && level === 'hard' && SEARCH.draftModel && hasDraftModel(s.mapId)
+    ? bestSecretPick(s, side)
+    : simpleSecretPick(s, side, level, rng);
 }
 
 function draftValue(c: CardDef, side: Side, mine: CardDef[], theirs: CardDef[], level: Difficulty): number {
@@ -677,11 +679,11 @@ function actionCandidates(s: GameState, u: Unit): Action[] {
   const out: Action[] = [];
   // A Pokémon bound by Follow Me must take whatever attack it is allowed, useful or not.
   const forced = waitBlock(s, u) !== null;
-  const options: (MoveOption | (CopyOption & { moveIndex: 0 | 1; copy: { unitId: string; moveIndex: 0 | 1 } }))[] = [];
+  const options: (MoveOption | (CopyOption & { moveIndex: MoveIndex; copy: { unitId: string; moveIndex: 0 | 1 } }))[] = [];
   for (const o of moveOptions(s, u)) {
     if (!o.usable) continue;
     // Transform: every borrowable move becomes its own candidate.
-    if (o.aim === 'copy') for (const c of o.copies ?? []) options.push({ ...c, moveIndex: o.moveIndex, copy: { unitId: c.unitId, moveIndex: c.moveIndex } });
+    if (o.aim === 'copy' && o.moveIndex !== 2) for (const c of o.copies ?? []) options.push({ ...c, moveIndex: o.moveIndex, copy: { unitId: c.unitId, moveIndex: c.moveIndex } });
     else options.push(o);
   }
   for (const o of options) {
@@ -711,6 +713,19 @@ function actionCandidates(s: GameState, u: Unit): Action[] {
       }
     } else {
       out.push({ type: 'useMove', unitId: u.id, moveIndex: o.moveIndex, ...copy });
+    }
+  }
+  for (const cp of fusionOptions(s, u)) {
+    if (cp.aim === 'dir') {
+      for (const d of cp.dirs) {
+        if (forced || d.tg.targets.some((t) => t.side !== u.side)) {
+          out.push({ type: 'useFusion', unitId: u.id, copy: { unitId: cp.unitId, moveIndex: cp.moveIndex }, dir: d.dir });
+        }
+      }
+    } else if (cp.aim === 'unit') {
+      for (const targetId of cp.units) {
+        if (getUnit(s, targetId).side !== u.side) out.push({ type: 'useFusion', unitId: u.id, copy: { unitId: cp.unitId, moveIndex: cp.moveIndex }, targetId });
+      }
     }
   }
   const tr = trebuchetOption(s, u);
@@ -805,7 +820,8 @@ function battleStep(s: GameState, side: Side, level: Difficulty, rng: Rng): Acti
     if (special) return [special];
   } else if (level === 'easy' && canUseSpecial(s, side) && rng.chance(0.15)) {
     const targets = specialTargets(s, side);
-    return [{ type: 'trainerSpecial', unitId: trainerOf(s, side) === 'nobunaga' ? targets[rng.int(targets.length)] : undefined }];
+    const trainer = trainerOf(s, side);
+    return [{ type: 'trainerSpecial', unitId: trainer === 'nobunaga' || trainer === 'motochika' ? targets[rng.int(targets.length)] : undefined }];
   }
 
   if (level === 'hard') return hardBattle(s, side);
@@ -833,7 +849,8 @@ function chooseSpecial(s: GameState, side: Side, level: Difficulty): Action | nu
   const deadline = performance.now() + SEARCH.budgetMs / 2;
   const turnValue = (st: GameState): number => beamTurn(st, side, new Evaluator(st, side, 'hard'), width, perUnit, deadline)[0]?.score ?? -Infinity;
   const base = turnValue(s);
-  const options: Action[] = trainerOf(s, side) === 'nobunaga'
+  const trainer = trainerOf(s, side);
+  const options: Action[] = trainer === 'nobunaga' || trainer === 'motochika'
     ? specialTargets(s, side).map((unitId): Action => ({ type: 'trainerSpecial', unitId }))
     : [{ type: 'trainerSpecial' }];
   let bestAct: Action | null = null;

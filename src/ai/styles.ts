@@ -34,7 +34,7 @@ function shuffle<T>(xs: T[], rng: Rng): T[] {
   return out;
 }
 
-const legendary = (id: string): boolean => CARDS[id].legendary;
+const legendary = (id: string): boolean => CARDS[id].legendary && !CARDS[id].subrestricted;
 
 // ---------------------------------------------------------------- secret draft
 
@@ -135,8 +135,8 @@ function sampleOpponents(s: GameState, side: Side, m: DraftModel, rng: Rng, n: n
   const opp = otherSide(side);
   const mine = new Set([...s.draft.secret!.pools[side], ...s.draft.secret!.legendPools[side]]);
   const unseen = DRAFTABLE.filter((c) => !mine.has(c.id));
-  const normals = unseen.filter((c) => !c.legendary).map((c) => c.id);
-  const legends = unseen.filter((c) => c.legendary).map((c) => c.id);
+  const normals = unseen.filter((c) => !c.legendary || c.subrestricted).map((c) => c.id);
+  const legends = unseen.filter((c) => c.legendary && !c.subrestricted).map((c) => c.id);
   // The opponent's pools are hidden, but they are the same size as ours.
   const k = s.draft.secret!.legendPools[side].length;
   const size = s.draft.secret!.pools[side].length;
@@ -239,8 +239,8 @@ function lotOutlook(s: GameState, side: Side, m: DraftModel): { reserve: number;
   const legendsLeft = Math.max(0, (s.draft.legendPool.length ? LEGEND_POOL_SIZE : 0) - [...seen].filter(legendary).length);
   const decks: string[][] = [];
   for (let i = 0; i < 32; i++) {
-    const l = shuffle(unseen.filter((c) => c.legendary), rng).slice(0, Math.min(legendsLeft, a.deck.length)).map((c) => c.id);
-    const n = shuffle(unseen.filter((c) => !c.legendary), rng).slice(0, a.deck.length - l.length).map((c) => c.id);
+    const l = shuffle(unseen.filter((c) => c.legendary && !c.subrestricted), rng).slice(0, Math.min(legendsLeft, a.deck.length)).map((c) => c.id);
+    const n = shuffle(unseen.filter((c) => !c.legendary || c.subrestricted), rng).slice(0, a.deck.length - l.length).map((c) => c.id);
     decks.push(shuffle([...l, ...n], rng));
   }
   const values = valueTables(m, unseen.map((c) => c.id).concat(lot));
@@ -359,4 +359,3 @@ function rollout(sim: Sim, deck: string[], vals: Values, rng: Rng, firstOpener: 
   // Lots ran out: the rest at random from what's left.
   for (const side of ['A', 'D'] as const) fill(side, shuffle(deck, rng).filter((id) => !sim.teams.A.includes(id) && !sim.teams.D.includes(id)));
 }
-

@@ -1,6 +1,6 @@
 import { type ReactNode, useState } from 'react';
 import { DIFFICULTIES, type Difficulty } from '../../ai/levels';
-import { CARD_LIST, type CardDef, type Side, TRAINER_LIST } from '../../engine';
+import { CARD_LIST, type CardDef, type Side, MAP_LIST, TRAINER_LIST } from '../../engine';
 import { Art, Modal } from '../components/bits';
 import { CardDetail, MiniGrid } from '../components/CardView';
 import { BannerIcon, DiceIcon, GreatBallIcon, PokeBallIcon, ShieldIcon, SpearIcon, SwordsIcon, UltraBallIcon } from '../components/icons';
@@ -227,8 +227,8 @@ export function HowToPlay({ onBack }: { onBack: () => void }) {
       <section className="panel space-y-2 p-4">
         <h3 className="font-display text-lg text-lacquer">Match flow</h3>
         <ol className="list-decimal space-y-1 pl-5">
-          <li><b>Draft:</b> each match deals 15 random Pokémon and 4 random legendaries. The Attacker and Defender alternate picking 3 Pokémon each, then each picks one legendary. With <b>No legendaries</b> chosen at setup, the pool is 20 Pokémon and both players pick all 4 from it.</li>
-          <li><b>Trainers</b> (if <b>With trainers</b> was chosen at setup): after the draft, 4 random trainers are shown. The Attacker takes one, then the Defender picks from the other three. A trainer's passive always applies to its own side, and its <b>Special Move</b> can be used once per game at any point of your own turn (between Pokémon) without using up an action.</li>
+          <li><b>Draft:</b> Classic deals 15 random Pokémon and, when enabled, 4 fully restricted legendaries. Each side picks 3 Pokémon, then one fully restricted legendary. Subrestricted legendaries join the normal Pokémon pool and are drafted like any other Pokémon. With <b>No legendaries</b>, both pick all 4 from a pool of 20 regular Pokémon. Secret gives each side a private pool. Freeplay lets both sides privately pick any Pokémon allowed by the setup; the same Pokémon may appear on both teams, but not twice on one team. A team may have multiple different fully restricted legendaries, and the same one may be picked by the opponent.</li>
+          <li><b>Trainers</b> (if <b>With trainers</b> was chosen at setup): Classic offers 4 random trainers, picked by the Attacker then Defender; Secret gives each side private options. Freeplay lets each side choose any trainer, including the same trainer as the opponent. A trainer's passive always applies to its own side, and its <b>Special Move</b> can be used once per game at any point of your own turn (between Pokémon) without using up an action.</li>
           <li><b>Placement:</b> the Attacker places first, then players alternate placing Pokémon on their spawn tiles. Like a chessboard, the board is turned so your own side is at the bottom.</li>
           <li><b>Battle:</b> up to 10 rounds. Each round the Attacker takes a full team turn, then the Defender. Both sides can move and attack from round 1.</li>
         </ol>
@@ -256,7 +256,9 @@ export function HowToPlay({ onBack }: { onBack: () => void }) {
       </section>
       <section className="panel space-y-2 p-4">
         <h3 className="font-display text-lg text-lacquer">The maps</h3>
-        <p>Choose Trebuchet Meadow or Winding River before each match. On Winding River the brown bridges are ordinary ground.</p>
+        <div className="space-y-1">
+          {MAP_LIST.map((map) => <p key={map.id}><b>{map.name}:</b> {map.description}</p>)}
+        </div>
         <div className="grid gap-1.5 sm:grid-cols-2">
           <Legend color="tile-water">Water: only Water, Flying and Levitate Pokémon can enter.</Legend>
           <Legend color="tile-ice">Ice: Pokémon slide in the direction they entered until they reach a non-ice tile or an obstacle.</Legend>

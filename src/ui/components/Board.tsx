@@ -4,7 +4,7 @@ import {
 } from '../../engine';
 import type { EventBatch } from '../controller';
 import { Art, HpBar, StatusBadge } from './bits';
-import { BushIcon, DollIcon, FlowerIcon, SpikesIcon, TrebuchetIcon, WebIcon } from './icons';
+import { BushIcon, DollIcon, ElectricIcon, FlowerIcon, SpikesIcon, TrebuchetIcon, WebIcon, WonderIcon } from './icons';
 
 export interface Overlay {
   reach?: Set<string>;
@@ -17,6 +17,8 @@ export interface Overlay {
   arrows?: { dir: Dir; pos: Pos; active: boolean }[];
   /** One opposing Pokémon's reach: tile key → which of its moves reach it (bit 1: first move, bit 2: second). */
   danger?: Map<string, number>;
+  /** Valid open tiles for the pending Teleport choice. */
+  teleport?: Set<string>;
   /** Everything a hovered move could hit from here, over all directions. */
   hoverZone?: Set<string>;
   /** Unit id → type multiplier of the focused Pokémon's best attack on it. */
@@ -42,7 +44,8 @@ interface Props {
 const TERRAIN_LABEL: Record<Terrain, string> = {
   normal: 'Grass', dirt: 'Dirt path', grass: 'Grass bridge', bridge: 'Bridge — ordinary ground', water: 'Water — only Water, Flying and Levitate Pokémon',
   flower: 'Flowers — +30 HP at the end of a Pokémon’s activation (not Flying or Levitate)', bush: 'Berry bush — takes 30 less damage (not Flying or Levitate)',
-  wall: 'Wall', magma: 'Magma — only Fire, Flying and Levitate Pokémon can enter', ice: 'Ice — Pokémon slide when they enter (except Ice types, Flying and Levitate)', pit: 'Pit',
+  wonder: 'Wonder tile — resets stat changes when entered or pushed onto',
+  wall: 'Wall', electric: 'Electric terrain', magma: 'Magma — only Fire, Flying and Levitate Pokémon can enter', ice: 'Ice — Pokémon slide when they enter (except Ice types, Flying and Levitate)', pit: 'Pit',
 };
 
 /**
@@ -58,12 +61,14 @@ export interface BoardView {
  * A Pokémon's reach, one style per move so both read on any terrain: the first move fills tiles red,
  * the second outlines them in bright yellow, and a tile both reach gets both.
  */
-export const MOVE_RANGE: [CSSProperties, CSSProperties] = [
+export const MOVE_RANGE: [CSSProperties, CSSProperties, CSSProperties] = [
   { backgroundColor: 'rgba(239, 68, 68, 0.55)', boxShadow: 'inset 0 0 0 1px rgba(254, 202, 202, 0.8)' },
   { backgroundColor: 'rgba(253, 224, 71, 0.16)', boxShadow: 'inset 0 0 0 3px rgba(253, 224, 71, 0.95)' },
+  { backgroundColor: 'rgba(59, 130, 246, 0.38)', boxShadow: 'inset 0 0 0 3px rgba(147, 197, 253, 0.95)' },
 ];
 
 function rangeStyle(mask: number): CSSProperties {
+  if (mask & 4) return MOVE_RANGE[2];
   if (mask === 3) return { backgroundColor: MOVE_RANGE[0].backgroundColor, boxShadow: MOVE_RANGE[1].boxShadow };
   return MOVE_RANGE[mask === 2 ? 1 : 0];
 }
@@ -213,7 +218,7 @@ function BoardImpl({ state, view, overlay, previews, selectedId, hoverId, events
       const k = posKey(p);
       const d = disp(p);
       const t = map.tiles[y][x];
-      const base = t === 'flower' || t === 'bush' ? 'normal' : t;
+      const base = t === 'flower' || t === 'bush' || t === 'wonder' ? 'normal' : t;
       const alt = (x + y) % 2 === 1 ? 'alt' : '';
       // Bridge planks run across the crossing: a bridge (possibly several tiles wide) with water to its
       // left and right is crossed vertically (on screen, after any quarter turn of the board).
@@ -230,15 +235,17 @@ function BoardImpl({ state, view, overlay, previews, selectedId, hoverId, events
         <button
           key={k}
           type="button"
-          title={treb.has(k) ? 'Trebuchet — stand here to fire at any Pokémon (40 power)' : TERRAIN_LABEL[t]}
-          aria-label={`Tile ${x},${y}: ${TERRAIN_LABEL[t]}`}
+          title={overlay.teleport?.has(k) ? 'Teleport here — open tile adjacent to an ally' : treb.has(k) ? 'Trebuchet — stand here to fire at any Pokémon (40 power)' : TERRAIN_LABEL[t]}
+          aria-label={overlay.teleport?.has(k) ? `Teleport destination at ${x + 1},${y + 1}: open tile adjacent to an ally` : `Tile ${x},${y}: ${TERRAIN_LABEL[t]}`}
           onClick={() => onTile(p)}
           onMouseEnter={() => onHover(p)}
-          className={`tile-${base} ${alt} ${across} relative flex items-center justify-center outline-none ring-inset ring-black/10 focus-visible:ring-2 focus-visible:ring-amber-300`}
+          className={`${t === 'wonder' ? 'tile-wonder' : `tile-${base}`} ${alt} ${across} relative flex items-center justify-center outline-none ring-inset ring-black/10 focus-visible:ring-2 focus-visible:ring-amber-300`}
           style={{ gridColumn: d.x + 1, gridRow: d.y + 1, boxShadow: 'inset 0 0 0 0.5px rgba(0,0,0,.18)' }}
         >
           {t === 'flower' && <FlowerIcon />}
           {t === 'bush' && <BushIcon />}
+          {t === 'wonder' && <WonderIcon />}
+          {t === 'electric' && <ElectricIcon />}
           {treb.has(k) && <TrebuchetIcon />}
           {hz === 'spikes' && <span className="absolute inset-0 flex items-center justify-center"><SpikesIcon /></span>}
           {hz === 'web' && <span className="absolute inset-0 flex items-center justify-center"><WebIcon /></span>}
@@ -256,6 +263,7 @@ function BoardImpl({ state, view, overlay, previews, selectedId, hoverId, events
           {overlay.hoverZone?.has(k) && <span className="pointer-events-none absolute inset-[4%] rounded-sm border-2 border-dashed border-orange-200/90 bg-orange-400/30" />}
           {overlay.reach?.has(k) && <span className="pointer-events-none absolute inset-0 bg-sky-400/35 shadow-[inset_0_0_0_1.5px_rgba(186,230,253,.8)]" />}
           {overlay.post?.has(k) && <span className="pointer-events-none absolute inset-0 bg-emerald-400/35 shadow-[inset_0_0_0_1.5px_rgba(167,243,208,.85)]" />}
+          {overlay.teleport?.has(k) && <span className="pointer-events-none absolute inset-[5%] animate-pulse rounded border-2 border-emerald-200 bg-emerald-400/40 shadow-[inset_0_0_0_1px_rgba(236,253,245,.8)]" />}
           {zoneKeys.has(k) && <span className="pointer-events-none absolute inset-0 bg-orange-500/50 shadow-[inset_0_0_0_2px_rgba(253,186,116,.95)]" />}
           {overlay.dash && posKey(overlay.dash) === k && <span className="pointer-events-none absolute inset-[8%] rounded border-2 border-sky-200 bg-sky-500/40" />}
           {knockKeys.has(k) && <span className="pointer-events-none absolute inset-[10%] rounded border-2 border-dashed border-red-400" />}

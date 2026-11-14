@@ -390,9 +390,10 @@ export function speakTrainer(trainer: string): void {
 
 /**
  * Battle music is per map: `battle` (Trebuchet Meadow), `battleRiver` (Winding River), `battleIce`
- * (Nixtorm), and `battleFire` (Ignis); `climax` takes over for the final round or when a side is down to its last Pokémon.
+ * (Nixtorm), and `battleFire` (Ignis); `climax` takes over when one side has one Pokémon and the other has two or fewer.
  */
 export type Track = 'menu' | 'draft' | 'lab' | 'battle' | 'battleRiver' | 'battleIce' | 'battleFire' | 'climax' | 'victory' | 'defeat';
+export type MusicSelection = Track | { file: string };
 
 type SongId = 'menu' | 'draft' | 'battle' | 'battleRiver' | 'victory' | 'defeat';
 /** The chiptune song for each track (the chiptune soundtrack has no Lab or climax songs of its own). */
@@ -469,20 +470,31 @@ const SONGS: Record<SongId, Song> = {
 const CHORD: Record<'maj' | 'min' | '7', number[]> = { maj: [0, 4, 7, 12], min: [0, 3, 7, 12], '7': [0, 4, 7, 10] };
 const semis = (f: number, n: number): number => f * 2 ** (n / 12);
 
-let wanted: Track | null = null;
-let playing: { track: Track; stop: () => void } | null = null;
+let wanted: MusicSelection | null = null;
+let playing: { key: string; stop: () => void } | null = null;
 
 /** Switch the background music (cross-fading); the same track keeps playing. */
-export function playMusic(track: Track | null, force = false): void {
+export function playMusic(track: MusicSelection | null, force = false): void {
   wanted = track;
-  if (!force && playing?.track === track) return;
+  if (track === null) {
+    playing?.stop();
+    playing = null;
+    return;
+  }
+  const key = typeof track === 'string' ? track : `file:${track.file}`;
+  if (!force && playing?.key === key) return;
   playing?.stop();
   playing = null;
-  if (!track || !unlocked) return;
+  if (!unlocked) return;
   const c = audio();
   if (!c || !bus) return;
-  const chiptune = () => startSong(c, bus!.music, SONGS[CHIPTUNE[track]]);
-  playing = { track, stop: settings.soundtrack === 'conquest' ? startRecorded(c, bus.music, CONQUEST[track], chiptune) : chiptune() };
+  const chiptune = () => startSong(c, bus!.music, SONGS[typeof track === 'string' ? CHIPTUNE[track] : 'battle']);
+  const stop = settings.soundtrack !== 'conquest'
+    ? chiptune()
+    : typeof track === 'string'
+      ? startRecorded(c, bus.music, CONQUEST[track], chiptune)
+      : startRecorded(c, bus.music, { loop: track }, chiptune);
+  playing = { key, stop };
 }
 
 // ---------------------------------------------------------------- Pokémon Conquest soundtrack
@@ -515,29 +527,33 @@ const CONQUEST: Record<Track, { intro?: JingleId; loop: TrackId }> = {
 
 /** Recorded music is mastered louder than the chiptune; this brings it to the same place in the mix. */
 const RECORDED_LEVEL = 0.5;
-const encoded = new Map<TrackId, Promise<ArrayBuffer | null>>();
+const encoded = new Map<string, Promise<ArrayBuffer | null>>();
 const jingleBuffers = new Map<TrackId, Promise<AudioBuffer | null>>();
 
-function fetchTrack(id: TrackId): Promise<ArrayBuffer | null> {
-  let p = encoded.get(id);
+function fetchFile(file: string): Promise<ArrayBuffer | null> {
+  let p = encoded.get(file);
   if (!p) {
-    p = fetch(`${import.meta.env.BASE_URL}music/${TRACK_INFO[id].file}`)
+    p = fetch(`${import.meta.env.BASE_URL}music/${file}`)
       .then((r) => (r.ok && (r.headers.get('content-type') ?? '').startsWith('audio') ? r.arrayBuffer() : null))
       .catch(() => null);
-    encoded.set(id, p);
+    encoded.set(file, p);
   }
   return p;
 }
 
 /** Decodes a track (decoded buffers are big, so only jingles are kept decoded). */
-async function decodeTrack(c: AudioContext, id: TrackId): Promise<AudioBuffer | null> {
-  const data = await fetchTrack(id);
+async function decodeFile(c: AudioContext, file: string): Promise<AudioBuffer | null> {
+  const data = await fetchFile(file);
   if (!data) return null;
   try {
     return await c.decodeAudioData(data.slice(0));
   } catch {
     return null;
   }
+}
+
+function decodeTrack(c: AudioContext, id: TrackId): Promise<AudioBuffer | null> {
+  return decodeFile(c, TRACK_INFO[id].file);
 }
 
 function jingleBuffer(c: AudioContext, id: TrackId): Promise<AudioBuffer | null> {
@@ -553,7 +569,12 @@ function jingleBuffer(c: AudioContext, id: TrackId): Promise<AudioBuffer | null>
  * Plays a Conquest track (after an optional jingle), looping between its loop points. If it can't be
  * loaded, falls back to `fallback` (the chiptune). Returns a function that fades it out.
  */
-function startRecorded(c: AudioContext, out: AudioNode, spec: { intro?: JingleId; loop: TrackId }, fallback: () => () => void): () => void {
+function startRecorded(
+  c: AudioContext,
+  out: AudioNode,
+  spec: { intro?: JingleId; loop: TrackId | { file: string } },
+  fallback: () => () => void,
+): () => void {
   const fade = c.createGain();
   fade.gain.value = RECORDED_LEVEL;
   fade.connect(out);
@@ -588,9 +609,10 @@ function startRecorded(c: AudioContext, out: AudioNode, spec: { intro?: JingleId
       fade.gain.setValueAtTime(0.0001, c.currentTime);
       fade.gain.exponentialRampToValueAtTime(RECORDED_LEVEL, c.currentTime + 0.6);
     }
-    const b = await decodeTrack(c, spec.loop);
+    const info = typeof spec.loop === 'string' ? TRACK_INFO[spec.loop] : { file: spec.loop.file, gain: 1 };
+    const b = typeof spec.loop === 'string' ? await decodeTrack(c, spec.loop) : await decodeFile(c, spec.loop.file);
     if (stopped) return;
-    if (b) play(b, TRACK_INFO[spec.loop], at, true);
+    if (b) play(b, info, at, true);
     else stopFallback = fallback();
   })();
   return () => {

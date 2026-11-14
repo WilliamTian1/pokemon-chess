@@ -46,8 +46,8 @@ function devScenario(): Screen | null {
   if (!import.meta.env.DEV) return null;
   // `?screen=<name>` opens a menu screen directly, or `draft` a fresh hot-seat draft (for screenshots).
   const screen = new URLSearchParams(location.search).get('screen');
-  if (screen === 'draft' || screen === 'draft-secret' || screen === 'draft-auction') {
-    const style = screen === 'draft' ? 'classic' : screen === 'draft-secret' ? 'secret' : 'auction';
+  if (screen === 'draft' || screen === 'draft-secret' || screen === 'draft-auction' || screen === 'draft-freeplay') {
+    const style = screen === 'draft' ? 'classic' : screen === 'draft-secret' ? 'secret' : screen === 'draft-auction' ? 'auction' : 'freeplay';
     return { name: 'game', key: Date.now(), cfg: { mode: 'local', mapId: 'meadow', legendaries: true, trainers: true, style } };
   }
   if (screen && ['botSetup', 'localSetup', 'cards', 'lab', 'rules', 'online'].includes(screen)) return { name: screen } as Screen;

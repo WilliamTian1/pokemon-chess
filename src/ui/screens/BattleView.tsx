@@ -4,7 +4,7 @@ import {
   type Action, type CopyOption, DIRS, DIR_VEC, type Dir, type GameState, type MoveDef, type MoveOption, type Pos, type Side, type TargetPreview,
   type Unit, addPos, bestHit, canUseSpecial, cardOf, dangerZone, decider, deciders, dirToward, followMeBlockers, followMeUsers, getCard, getMap,
   getTrainer, inBounds, isSimultaneous, liveUnits, markedTiles, moveOf, moveOptions, moveTargets, onBoard, otherSide, parseAim, posKey, previewAction,
-  selfEffectNotes, specialTargets, targeting, trainerOf, trebuchetOption, unitAt, unitTurnInfo, waitBlock,
+  selfEffectNotes, specialTargets, targeting, trainerOf, trebuchetOption, unitAt, unitTurnInfo, waitBlock, fusionOptions,
 } from '../../engine';
 import { Art, HpBar, Modal, StatusBadge, TypeBadge } from '../components/bits';
 import { ARROW, Board, type BoardView, MOVE_RANGE, type Overlay, screenDir } from '../components/Board';
@@ -15,10 +15,11 @@ import { FieldFx, SpecialCutIn, TurnSweep, useEventSounds } from '../components/
 import { TeamCards, TrainerCard, type TrainerSlot } from '../components/TeamCards';
 import { sfx } from '../audio';
 import type { Controller } from '../controller';
+import type { MoveIndex } from '../../engine/types';
 import { useBoxSize, usePortraitBoard, useTouch, useWideLayout } from '../hooks';
 
 /** What's being aimed: a move (Transform: with the move it copies), the trebuchet, or Nobunaga's special. */
-type Aim = { kind: 'move'; index: 0 | 1; copy?: CopyOption } | { kind: 'treb' } | { kind: 'special' };
+type Aim = { kind: 'move'; index: MoveIndex; copy?: CopyOption; fusion?: boolean } | { kind: 'treb' } | { kind: 'special' };
 
 /** The option being aimed: the move itself, or for Transform the move it copies (same slot). */
 function aimedOption(opts: MoveOption[], aim: Aim | null): MoveOption | undefined {
@@ -45,6 +46,7 @@ export function BattleView({ ctl }: { ctl: Controller }) {
   const turnSide = decider(s);
   const myDecision = turnSide !== null && ctl.mySides.includes(turnSide);
   const myBattleTurn = s.phase === 'battle' && myDecision && s.pending.length === 0;
+  const teleportPending = s.pending[0]?.kind === 'teleport' && ctl.mySides.includes(s.pending[0].side) ? s.pending[0] : null;
 
   const [sel, setSel] = useState<string | null>(null);
   const [aim, setAim] = useState<Aim | null>(null);
@@ -58,7 +60,7 @@ export function BattleView({ ctl }: { ctl: Controller }) {
   const [placeSel, setPlaceSel] = useState<string | null>(null);
   // An opposing Pokémon whose reach is shown, each move in its own colour (click it; click again or Esc to clear).
   const [dangerUnit, setDangerUnit] = useState<string | null>(null);
-  const [hoverMove, setHoverMove] = useState<0 | 1 | null>(null);
+  const [hoverMove, setHoverMove] = useState<MoveIndex | null>(null);
   const [hoverTile, setHoverTile] = useState<Pos | null>(null);
   const [matrixHover, setMatrixHover] = useState<string[] | null>(null);
   const [matchups, setMatchups] = useState(() => devOpen('matchups'));
@@ -201,11 +203,16 @@ export function BattleView({ ctl }: { ctl: Controller }) {
     ctl.dispatch(a);
   };
 
-  const copyOf = (a: Aim) => (a.kind === 'move' && a.copy ? { copy: { unitId: a.copy.unitId, moveIndex: a.copy.moveIndex } } : {});
-  const fireDir = (d: Dir) => aim?.kind === 'move' && selUnit && send({ type: 'useMove', unitId: selUnit.id, moveIndex: aim.index, dir: d, ...copyOf(aim) });
+  const copyOf = (a: Aim) => (a.kind === 'move' && a.copy && !a.fusion ? { copy: { unitId: a.copy.unitId, moveIndex: a.copy.moveIndex } } : {});
+  const fireDir = (d: Dir) => {
+    if (aim?.kind !== 'move' || !selUnit) return;
+    if (aim.fusion && aim.copy) send({ type: 'useFusion', unitId: selUnit.id, copy: { unitId: aim.copy.unitId, moveIndex: aim.copy.moveIndex }, dir: d });
+    else send({ type: 'useMove', unitId: selUnit.id, moveIndex: aim.index, dir: d, ...copyOf(aim) });
+  };
   const fireAt = (targetId: string) => {
     if (!selUnit || !aim) return;
-    if (aim.kind === 'move') send({ type: 'useMove', unitId: selUnit.id, moveIndex: aim.index, targetId, ...copyOf(aim) });
+    if (aim.kind === 'move' && aim.fusion && aim.copy) send({ type: 'useFusion', unitId: selUnit.id, copy: { unitId: aim.copy.unitId, moveIndex: aim.copy.moveIndex }, targetId });
+    else if (aim.kind === 'move') send({ type: 'useMove', unitId: selUnit.id, moveIndex: aim.index, targetId, ...copyOf(aim) });
     else if (aim.kind === 'treb') send({ type: 'trebuchet', unitId: selUnit.id, targetId });
   };
 
@@ -243,6 +250,11 @@ export function BattleView({ ctl }: { ctl: Controller }) {
   };
 
   const onTile = (p: Pos) => {
+    if (teleportPending) {
+      const option = posKey(p);
+      if (teleportPending.options.includes(option)) send({ type: 'choose', option });
+      return;
+    }
     const u = unitAt(s, p);
     if (aim?.kind === 'special') {
       if (u && specialTargets(s, s.side).includes(u.id)) send({ type: 'trainerSpecial', unitId: u.id });
@@ -318,6 +330,7 @@ export function BattleView({ ctl }: { ctl: Controller }) {
     note: wide && readout ? { text: readout, avoid: hoverTile } : undefined,
     hoverZone: preview.hoverZone,
     highlight: matrixHover ? new Set(matrixHover) : undefined,
+    teleport: teleportPending ? new Set(teleportPending.options) : undefined,
   };
 
   const inspectId = hoverUnit ?? inspect ?? sel ?? (placing ? placeUnit?.id ?? null : null);
@@ -356,7 +369,11 @@ export function BattleView({ ctl }: { ctl: Controller }) {
     <>
       {aim?.kind === 'special' && (
         <div className="panel mb-2 flex flex-wrap items-center justify-between gap-2 p-3">
-          <span className="text-sm text-amber-200">{getTrainer(trainerOf(s, s.side)!).name}’s Special Move: pick one of your Pokémon that hasn’t moved yet (board or card).</span>
+          <span className="text-sm text-amber-200">
+            {getTrainer(trainerOf(s, s.side)!).name}’s Special Move: {trainerOf(s, s.side) === 'motochika'
+              ? 'pick one of your Pokémon (board or card).'
+              : 'pick one of your Pokémon that hasn’t moved yet (board or card).'}
+          </span>
           <button type="button" className="btn-ghost" onClick={cancelAim}>Cancel</button>
         </div>
       )}
@@ -475,10 +492,15 @@ export function BattleView({ ctl }: { ctl: Controller }) {
 
       {/* On one-screen layouts this column is a fixed-height stack: the board takes whatever room the
           banner, action bar and log leave, so End turn and the log never need scrolling to. */}
-      <main ref={mainRef} className="order-1 min-w-0 space-y-3 md:col-span-2 wide:order-2 wide:col-span-1 wide:flex wide:min-h-0 wide:flex-col wide:gap-2 wide:space-y-0 wide:overflow-y-auto">
+      <main ref={mainRef} className="order-1 flex min-w-0 flex-col space-y-3 md:col-span-2 wide:order-2 wide:col-span-1 wide:min-h-0 wide:gap-2 wide:space-y-0 wide:overflow-y-auto">
         {/* One-screen layouts: the banner and tools go up into the game header, leaving the height to the board. */}
         {wide && hudSlot ? createPortal(hud, hudSlot) : <div className="lacquer px-3 py-2 phone:px-2 phone:py-1.5">{hud}</div>}
-        <div ref={setBoardBox} className="wide:flex wide:min-h-[110px] wide:flex-1 wide:items-center wide:justify-center">
+        {teleportPending && (
+          <div className="panel mb-2 p-3 text-sm text-emerald-200">
+            Choose a highlighted open tile on the map to teleport {cardOf(s.units.find((u) => u.id === teleportPending.unitId)!).name} beside an ally.
+          </div>
+        )}
+        <div ref={setBoardBox} className="phone:order-2 wide:flex wide:min-h-[110px] wide:flex-1 wide:items-center wide:justify-center">
         <div className="mx-auto w-full" style={wide && boardSize.w > 0 ? { width: Math.min(boardSize.w, boardSize.h * boardAspect) } : undefined}>
           <Board
             state={s}
@@ -518,8 +540,8 @@ export function BattleView({ ctl }: { ctl: Controller }) {
         ) : (
           <>
             {/* On phones the controls stay pinned to the bottom of the screen while the board scrolls. */}
-            <div className="sticky bottom-0 z-20 -mx-1 rounded-xl bg-[#1b120b] p-1">{commands}</div>
-            <LogPanel log={s.log} className="h-56" />
+            <div className="phone:order-1 sticky bottom-0 z-20 -mx-1 rounded-xl bg-[#1b120b] p-1">{commands}</div>
+            <LogPanel log={s.log} className="phone:order-3 h-56" />
           </>
         )}
       </main>
@@ -588,7 +610,7 @@ function BoardTools({ state, dangerSide, solo, onClearSolo, dz, readout, onChart
   const treb = dz?.trebuchet.map((id) => cardOf(state.units.find((x) => x.id === id)!).name) ?? [];
   const soloIdle = solo && !dz?.tiles.size;
   // Moves that reach at least one tile, for the colour key.
-  const shown = solo ? ([0, 1] as const).filter((i) => [...(dz?.tiles.values() ?? [])].some((srcs) => srcs.some((x) => x.moveIndex === i))) : [];
+  const shown = solo ? ([0, 1, ...(solo.trainerMove ? [2] : [])] as MoveIndex[]).filter((i) => [...(dz?.tiles.values() ?? [])].some((srcs) => srcs.some((x) => x.moveIndex === i))) : [];
   let text: string;
   if (readout) text = readout;
   else if (solo) text = soloIdle ? `${cardOf(solo).name} can't attack ${when}.` : `Where ${cardOf(solo).name} can attack ${when}, after moving: one colour per move.`;
@@ -602,8 +624,8 @@ function BoardTools({ state, dangerSide, solo, onClearSolo, dz, readout, onChart
           {treb.length > 0 && <span className="text-xs text-rose-300" title="It can walk to the trebuchet, which hits any Pokémon on the map (40 power).">+ trebuchet</span>}
           {shown.map((i) => (
             <span key={i} className="flex items-center gap-1 text-xs font-semibold">
-              <span className="inline-block h-3.5 w-3.5 rounded-sm" style={{ ...MOVE_RANGE[i], boxShadow: i ? 'inset 0 0 0 2px rgba(253, 224, 71, 0.95)' : MOVE_RANGE[i].boxShadow }} />
-              {cardOf(solo).moves[i].name}
+              <span className="inline-block h-3.5 w-3.5 rounded-sm" style={MOVE_RANGE[i]} />
+              {moveOf(solo, i).name}
             </span>
           ))}
           <span aria-hidden>✕</span>
@@ -731,8 +753,8 @@ function ActionBar(props: {
   onAim: (a: Aim | null) => void;
   onFireDir: (d: Dir) => void;
   onFireAt: (id: string) => void;
-  onSelfMove: (i: 0 | 1) => void;
-  onHoverMove: (i: 0 | 1 | null) => void;
+  onSelfMove: (i: MoveIndex) => void;
+  onHoverMove: (i: MoveIndex | null) => void;
   send: (a: Action) => void;
 }) {
   const { ctl, unit, myTurn, opts, aimOpt, treb, aim, aimDir, aimTarget, aimBlocked, touch, isPost, postBudget, remaining, confirmEnd, setConfirmEnd, onAim, onFireDir, onFireAt, onSelfMove, onHoverMove, send } = props;
@@ -780,14 +802,17 @@ function ActionBar(props: {
   const c = cardOf(unit);
   const info = unitTurnInfo(s, unit);
   const active = s.active?.unitId === unit.id ? s.active : null;
+  const fusionCopies = info.canAct ? fusionOptions(s, unit) : [];
+  const copyLabel = aim?.kind === 'move' && aim.fusion
+    ? 'Fusion'
+    : aim?.kind === 'move' && opts[aim.index]?.move.fx.special === 'mimic' ? 'Mimic' : 'Transform';
 
-  if (aim?.kind === 'move' && opts[aim.index]?.aim === 'copy' && !aim.copy) {
-    // Transform: pick the move to borrow first.
-    const copies = opts[aim.index].copies ?? [];
+  if (aim?.kind === 'move' && !aim.copy && (aim.fusion || opts[aim.index]?.aim === 'copy')) {
+    const copies = aim.fusion ? fusionCopies : opts[aim.index].copies ?? [];
     return (
       <div className="panel space-y-2 p-3">
         <div className="flex items-center justify-between gap-2">
-          <span className="font-bold">Transform: choose a move to copy</span>
+          <span className="font-bold">{aim.fusion ? 'Fusion: choose an attack to copy' : `${copyLabel}: choose ${copyLabel === 'Mimic' ? 'an opponent’s attack' : 'a move'} to copy`}</span>
           <button type="button" className="btn-ghost" onClick={() => onAim(null)}>Cancel</button>
         </div>
         <div className="grid max-h-48 gap-1.5 overflow-y-auto sm:grid-cols-2">
@@ -797,7 +822,11 @@ function ActionBar(props: {
               <button
                 key={`${cp.unitId}-${cp.moveIndex}`}
                 type="button"
-                onClick={() => (cp.aim === 'none' ? send({ type: 'useMove', unitId: unit.id, moveIndex: aim.index, copy: { unitId: cp.unitId, moveIndex: cp.moveIndex } }) : onAim({ ...aim, copy: cp }))}
+                onClick={() => {
+                  if (cp.aim !== 'none') return onAim({ ...aim, copy: cp });
+                  if (aim.fusion) send({ type: 'useFusion', unitId: unit.id, copy: { unitId: cp.unitId, moveIndex: cp.moveIndex } });
+                  else send({ type: 'useMove', unitId: unit.id, moveIndex: aim.index, copy: { unitId: cp.unitId, moveIndex: cp.moveIndex } });
+                }}
                 className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800/80 p-1.5 text-left hover:border-amber-300"
               >
                 <Art id={src.cardId} className="h-7 w-7 shrink-0 rounded-full" />
@@ -831,7 +860,7 @@ function ActionBar(props: {
       <div className="panel space-y-2 p-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
-            <span className="font-bold">{isTreb ? 'Trebuchet' : move!.name}{aim.kind === 'move' && aim.copy ? ' (Transform)' : ''}</span>
+            <span className="font-bold">{isTreb ? 'Trebuchet' : move!.name}{aim.kind === 'move' && aim.copy ? ` (${copyLabel})` : ''}</span>
             {move?.type && <TypeBadge type={move.type} small />}
             <span className="text-sm font-bold text-amber-300">{isTreb ? 40 : move!.powerLabel ?? move!.power ?? ''}</span>
             {move && <MiniGrid move={move} size={9} />}
@@ -895,7 +924,7 @@ function ActionBar(props: {
           <button type="button" className="btn-ghost" onClick={() => send({ type: 'skipPostMove', unitId: unit.id })}>Stay here</button>
         </div>
       ) : (
-        <div className="grid gap-2 sm:grid-cols-2">
+        <div className="grid grid-cols-2 gap-1.5 sm:gap-2">
           {opts.filter((o) => !o.move.fx.none).map((o) => (
             <button
               key={o.moveIndex}
@@ -909,7 +938,7 @@ function ActionBar(props: {
                 if (o.aim === 'none') onSelfMove(o.moveIndex);
                 else onAim({ kind: 'move', index: o.moveIndex });
               }}
-              className="flex items-start gap-2 rounded-lg border border-slate-700 bg-slate-800/80 p-2 text-left transition hover:border-amber-300 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
+              className="flex items-start gap-2 rounded-lg border border-slate-700 bg-slate-800/80 p-2 text-left transition hover:border-amber-300 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40 phone:gap-1 phone:p-1.5"
             >
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-1.5">
@@ -917,7 +946,7 @@ function ActionBar(props: {
                   {o.move.type && <TypeBadge type={o.move.type} small />}
                   <span className="text-xs font-bold text-amber-300">{o.move.powerLabel ?? o.move.power ?? ''}</span>
                 </div>
-                <div className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-slate-400 wide:line-clamp-1">
+                <div className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-slate-400 phone:line-clamp-1 wide:line-clamp-1">
                   {o.usable ? (o.aim === 'none' ? `Use now · ${o.move.text}` : o.move.text || 'Aim, then fire.') : o.reason}
                 </div>
                 {o.usable && selfEffectNotes(s, unit, o.move).length > 0 && (
@@ -927,6 +956,12 @@ function ActionBar(props: {
               <MiniGrid move={o.move} size={8} />
             </button>
           ))}
+          {fusionCopies.length > 0 && (
+            <button type="button" className="rounded-lg border border-emerald-700 bg-emerald-950/40 p-2 text-left hover:border-emerald-300" onClick={() => onAim({ kind: 'move', index: 0, fusion: true })}>
+              <span className="block text-sm font-semibold">Fusion · Ability</span>
+              <span className="text-[11px] text-slate-400">Copy an attack from an on-field Zekrom or Reshiram.</span>
+            </button>
+          )}
         </div>
       )}
     </div>
@@ -960,6 +995,66 @@ function PendingModal({ ctl, view }: { ctl: Controller; view: BoardView }) {
       ))}
     </div>
   );
+
+  if (p.kind === 'arceusType') {
+    return (
+      <Modal>
+        <h3 className="font-display text-xl text-lacquer">Choose Arceus’s type</h3>
+        <p className="mb-3 text-sm text-slate-300">Arceus will become this type before placement.</p>
+        <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
+          {p.options.map((type) => (
+            <button key={type} type="button" className="btn-ghost justify-center" onClick={() => choose(type)}>
+              <TypeBadge type={type} small />
+            </button>
+          ))}
+        </div>
+      </Modal>
+    );
+  }
+
+  if (p.kind === 'trainerType') {
+    return (
+      <Modal>
+        <h3 className="font-display text-lg text-lacquer">Choose Hidden Power’s type</h3>
+        <p className="mb-2 text-xs text-slate-300">This type is shared by all your Pokémon for the battle.</p>
+        <div className="grid grid-cols-6 gap-1">
+          {p.options.map((type) => (
+            <button key={type} type="button" className="btn-ghost min-h-9 justify-center !px-0 !py-1" onClick={() => choose(type)}>
+              <TypeBadge type={type} small />
+            </button>
+          ))}
+        </div>
+      </Modal>
+    );
+  }
+
+  if (p.kind === 'teleport') {
+    return null;
+  }
+
+  if (p.kind === 'wish' || p.kind === 'voltSwitch') {
+    const wish = p.kind === 'wish';
+    return (
+      <Modal>
+        <h3 className="font-display text-xl text-lacquer">{wish ? 'Wish came true!' : 'Volt Switch'}</h3>
+        <p className="mb-3 text-sm text-slate-300">
+          {wish ? 'Choose an ally to restore to full HP.' : `${cardOf(u).name} can switch places with an ally.`}
+        </p>
+        <div className="grid gap-2">
+          {p.options.map((id) => {
+            const ally = s.units.find((x) => x.id === id)!;
+            return (
+              <button key={id} type="button" className="btn-ghost justify-start" onClick={() => choose(id)}>
+                <Art id={ally.cardId} className="h-8 w-8 rounded-full" />
+                {cardOf(ally).name}
+                <span className="text-xs text-slate-400">{ally.hp}/{ally.maxHp} HP</span>
+              </button>
+            );
+          })}
+        </div>
+      </Modal>
+    );
+  }
 
   if (p.kind === 'emergencyExit' || p.kind === 'imposter') {
     const exit = p.kind === 'emergencyExit';

@@ -126,7 +126,11 @@ function tryGenerate(rng: Rng, id: string, plain = false): MapDef | null {
   }
 
   const map: MapDef = {
-    id, name: `Random field ${id.slice(PROC_PREFIX.length)}`, width, height, tiles, trebuchets, spawns,
+    id,
+    name: `Random field ${id.slice(PROC_PREFIX.length)}`,
+    description: 'A procedurally generated battlefield with a unique mix of terrain.',
+    width, height, tiles, trebuchets, spawns,
+    music: tiles.some((row) => row.includes('magma')) ? 'battleFire.mp3' : 'battle.mp3',
     ...(tiles.some((row) => row.includes('magma')) ? { theme: 'volcano' } : {}),
   };
   return linked(map) ? map : null;

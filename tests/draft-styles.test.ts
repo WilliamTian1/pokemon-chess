@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { analyzeAuction, analyzeSecretPick, bestSecretPick } from '../src/ai/styles';
 import {
-  AUCTION_COINS, type GameState, CARDS, applyAction, auctionOpen, decider, deciders, draftOptions, getMap, hiddenView, newGame, seededRng,
+  AUCTION_COINS, type GameState, CARDS, DRAFTABLE, TRAINER_LIST, applyAction, auctionOpen, decider, deciders, draftOptions, getMap, hiddenView, newGame, seededRng,
 } from '../src/engine';
 
 const step = (s: GameState, a: Parameters<typeof applyAction>[1]) => applyAction(s, a, seededRng(3)).state;
@@ -66,6 +66,62 @@ describe('Secret draft', () => {
     let s = newGame({ rng: seededRng(2), style: 'secret', legendaries: false });
     expect(s.draft.secret!.pools.D).toHaveLength(20);
     for (const side of ['A', 'D'] as const) for (let i = 0; i < 4; i++) s = step(s, { type: 'draftPick', cardId: draftOptions(s, side)[0], side });
+    expect(s.phase).toBe('placement');
+    expect(s.units.every((u) => !CARDS[u.cardId].legendary)).toBe(true);
+  });
+});
+
+describe('Freeplay draft', () => {
+  it('lets each side pick any roster card without normal-Pokémon duplicates, while allowing cross-side duplicates', () => {
+    let s = newGame({ rng: seededRng(31), style: 'freeplay' });
+    const option = draftOptions(s, 'A')[0];
+    s = step(s, { type: 'draftPick', cardId: option, side: 'A' });
+    expect(() => step(s, { type: 'draftPick', cardId: option, side: 'A' })).toThrow(/not in your pool/);
+    s = step(s, { type: 'draftPick', cardId: option, side: 'D' });
+    expect(s.draft.picks.A).toEqual([option]);
+    expect(s.draft.picks.D).toEqual([option]);
+    expect(new Set(s.draft.secret!.pools.A)).toEqual(new Set(DRAFTABLE.filter((c) => !c.legendary).map((c) => c.id)));
+    expect(new Set(s.draft.secret!.legendPools.A)).toEqual(new Set(DRAFTABLE.filter((c) => c.legendary && !c.subrestricted).map((c) => c.id)));
+  });
+
+  it('allows multiple legendaries without same-team duplicates, while allowing cross-team duplicates', () => {
+    let s = newGame({ rng: seededRng(34), style: 'freeplay' });
+    const legendaries = s.draft.secret!.legendPools.A.slice(0, 4);
+    for (const side of ['A', 'D'] as const) {
+      for (const legendary of legendaries) {
+        expect(draftOptions(s, side)).toContain(legendary);
+        s = step(s, { type: 'draftPick', cardId: legendary, side });
+      }
+    }
+    expect(s.phase).toBe('placement');
+    expect(s.draft.picks.A).toEqual(legendaries);
+    expect(s.draft.picks.D).toEqual(legendaries);
+    expect(s.units.every((u) => CARDS[u.cardId].legendary)).toBe(true);
+  });
+
+  it('offers the full trainer roster independently to both sides and keeps selections hidden', () => {
+    let s = newGame({ rng: seededRng(32), style: 'freeplay', trainers: true });
+    for (const side of ['A', 'D'] as const) {
+      for (let i = 0; i < 4; i++) s = step(s, { type: 'draftPick', cardId: draftOptions(s, side)[0], side });
+    }
+    const allTrainers = TRAINER_LIST.map((t) => t.id);
+    expect(s.draft.secret!.trainerPools?.A).toEqual(allTrainers);
+    expect(s.draft.secret!.trainerPools?.D).toEqual(allTrainers);
+    const trainer = allTrainers[0];
+    s = step(s, { type: 'draftPick', cardId: trainer, side: 'A' });
+    expect(draftOptions(s, 'D')).toContain(trainer);
+    s = step(s, { type: 'draftPick', cardId: trainer, side: 'D' });
+    expect(s.trainers!.picks).toEqual({ A: trainer, D: trainer });
+    expect(hiddenView(s, 'A').trainers!.picks.D).toBe('?');
+    expect(s.phase).toBe('placement');
+  });
+
+  it('removes all legendary choices when legendaries are disabled', () => {
+    let s = newGame({ rng: seededRng(33), style: 'freeplay', legendaries: false });
+    expect(s.draft.secret!.legendPools).toEqual({ A: [], D: [] });
+    for (const side of ['A', 'D'] as const) {
+      for (let i = 0; i < 4; i++) s = step(s, { type: 'draftPick', cardId: draftOptions(s, side)[0], side });
+    }
     expect(s.phase).toBe('placement');
     expect(s.units.every((u) => !CARDS[u.cardId].legendary)).toBe(true);
   });

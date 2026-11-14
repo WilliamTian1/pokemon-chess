@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { SIDE_NAME, type Side, decider, hiddenView, isSimultaneous, liveUnits } from '../../engine';
+import { SIDE_NAME, type Side, decider, getMap, hiddenView, isSimultaneous, liveUnits } from '../../engine';
 import { SealedIcon } from '../components/icons';
 import { sfx } from '../audio';
 import { Modal, SIDE_TEXT } from '../components/bits';
@@ -29,9 +29,11 @@ export function GameScreen({ ctl: raw, onExit, title }: { ctl: Controller; onExi
   const inProgress = s.phase !== 'over';
   // Victory for the player on this screen (any finished game counts in hot-seat and spectating).
   const won = s.phase === 'over' && (ctl.mySides.length !== 1 || ctl.mySides[0] === s.winner);
-  // The boss theme takes over for the final round, or once either side is down to its last Pokémon.
-  const climax = s.phase === 'battle' && (s.round >= s.maxRounds || (['A', 'D'] as const).some((side) => liveUnits(s, side).length === 1));
-  useMusic(s.phase === 'draft' ? 'draft' : s.phase === 'over' ? (won ? 'victory' : 'defeat') : climax ? 'climax' : s.mapId === 'river' ? 'battleRiver' : s.mapId === 'ice' ? 'battleIce' : s.mapId === 'volcano' ? 'battleFire' : 'battle');
+  // The boss theme takes over when one side has one Pokémon and the other has two or fewer.
+  const aliveA = liveUnits(s, 'A').length;
+  const aliveD = liveUnits(s, 'D').length;
+  const climax = s.phase === 'battle' && ((aliveA === 1 && aliveD <= 2) || (aliveD === 1 && aliveA <= 2));
+  useMusic(s.phase === 'draft' ? 'draft' : s.phase === 'over' ? (won ? 'victory' : 'defeat') : climax ? 'climax' : { file: getMap(s.mapId).music });
   useEffect(() => {
     if (s.phase === 'over') sfx(won ? 'victory' : 'defeat');
   }, [s.phase === 'over']); // eslint-disable-line react-hooks/exhaustive-deps
@@ -86,11 +88,16 @@ export function GameScreen({ ctl: raw, onExit, title }: { ctl: Controller; onExi
             <SealedIcon className="mx-auto h-16 w-16" />
             <h2 className="font-display text-2xl text-lacquer">Pass the device to the {viewer === 'A' ? 'Attacker' : 'Defender'}</h2>
             <p className="text-sm font-bold text-slate-300">
-              Secret draft: the {viewer === 'A' ? 'Defender' : 'Attacker'} looks away. Picks, trainers and placements stay hidden until the battle begins.
+              {raw.state.draft.style === 'freeplay' ? 'Freeplay' : 'Secret'} draft: the {viewer === 'A' ? 'Defender' : 'Attacker'} looks away. Picks, trainers and placements stay hidden until the battle begins.
             </p>
             <button type="button" className="btn-primary w-full py-3 font-display text-lg" onClick={() => setHandedTo(viewer)}>
               I’m the {viewer === 'A' ? 'Attacker' : 'Defender'}: show my side
             </button>
+            {raw.autofillTeam && (
+              <button type="button" className="btn-ghost w-full" onClick={raw.autofillTeam}>
+                Autofill team
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -171,7 +178,8 @@ function Clocks({ ctl }: { ctl: Controller }) {
         const ms = left(side);
         const running = !!c?.running.includes(side);
         const acc = ctl.accounts?.[side];
-        const rating = ctl.result?.ratings?.[side] ?? acc?.ratings[ctl.state.draft.style ?? 'classic'];
+        const style = ctl.state.draft.style ?? 'classic';
+        const rating = ctl.result?.ratings?.[side] ?? acc?.ratings[style === 'freeplay' ? 'classic' : style];
         return (
           <div key={side} className={`flex items-center gap-1.5 rounded-lg border-2 px-2 py-1 ${running ? 'border-[#d9ab45] bg-[#3a2414]' : 'border-transparent bg-black/20'}`}
             title={acc ? `${acc.username} (${rating})` : ctl.names[side]}>

@@ -26,7 +26,9 @@ export type Terrain =
   | 'water'
   | 'flower'
   | 'bush'
+  | 'wonder'
   | 'wall'
+  | 'electric'
   | 'magma'
   | 'ice'
   | 'pit';
@@ -50,7 +52,10 @@ export type AbilityId =
   | 'hospitality' | 'liquidVoice' | 'iceScales' | 'slushRush'
   | 'unburden' | 'pixilate' | 'moldBreaker' | 'leafGuard' | 'snowCloak' | 'adaptability' | 'artilleryExpertise'
   | 'triage' | 'decoy' | 'imposter' | 'wonderGuard' | 'speedBoost' | 'dancer'
-  | 'snowWarning' | 'swallow' | 'adaptabilityWaterDark';
+  | 'snowWarning' | 'swallow' | 'adaptabilityWaterDark'
+  | 'omnipotent' | 'telepathy' | 'powerConstruct' | 'fairyAura' | 'fullMetalBody' | 'fusion'
+  | 'swordOfRuin' | 'insomnia'
+  | 'innerFocus' | 'protosynthesis' | 'quarkDrive';
 
 /** Grid strings are the card's mini-grid, rows top→bottom joined by `/`.
  *  `G` user, `O` target, `B` user dashes here first, `R` knockback destination, `.` empty. */
@@ -81,7 +86,8 @@ export type SpecialMove =
   | 'foulPlay' | 'powerTrip' | 'endeavor' | 'gyroBall' | 'allySwitch' | 'followMe'
   | 'ragePowder' | 'futureSight' | 'sunnyDay' | 'rainDance' | 'sandstorm' | 'hail'
   | 'flowerShield' | 'lightScreen' | 'tailwind' | 'helpingHand' | 'afterYou' | 'transform' | 'batonPass' | 'taunt' | 'metronome'
-  | 'psycheUp' | 'wideGuard' | 'auroraVeil' | 'spitUp';
+  | 'psycheUp' | 'wideGuard' | 'auroraVeil' | 'spitUp' | 'trick' | 'teleport' | 'geomancy' | 'poltergeist'
+  | 'mimic' | 'healingWish' | 'wish' | 'doomDesire' | 'perishSong' | 'suckerPunch' | 'voltSwitch';
 
 export interface MoveFx {
   graze?: { chance: number; power: number; negateNear?: 'water' | 'ice' };
@@ -112,6 +118,12 @@ export interface MoveFx {
   resetTargetStages?: boolean;
   invertTargetStages?: boolean;
   ignoreAbilities?: boolean;
+  /** Judgement uses the user's current type instead of a fixed move type. */
+  matchesUserType?: boolean;
+  /** Thousand Arrows ignores the target's Flying type and Levitate immunity. */
+  hitsFlying?: boolean;
+  /** Freeze-Dry is super-effective against Water types. */
+  superEffectiveAgainst?: PType;
   recoil?: number;
   recoilPerTarget?: number;
   drain?: number;
@@ -168,6 +180,8 @@ export interface CardDef {
   draftable: boolean;
   /** Legendaries are drafted from their own pool, as each side's last pick. */
   legendary: boolean;
+  /** Subrestricted legendaries join the normal draft pool when legendary mode is enabled. */
+  subrestricted: boolean;
   formOf?: string;
   formLabel?: string;
   forms?: string[];
@@ -180,7 +194,12 @@ export interface CardDef {
 export interface MapDef {
   id: string;
   name: string;
-  theme?: 'snow' | 'volcano';
+  description: string;
+  theme?: 'snow' | 'volcano' | 'indoor';
+  /** MP3 filename under public/music/, e.g. "battleFlying.mp3". */
+  music: string;
+  /** Stage mist clears all Pokémon's stat stages every configured number of rounds. */
+  stageMist?: { everyRounds: number };
   width: number;
   height: number;
   tiles: Terrain[][];
@@ -205,6 +224,12 @@ export interface Unit {
   cardId: string;
   /** The card that was drafted. */
   draftId: string;
+  /** A trainer-granted third move, if this side's trainer provides one. */
+  trainerMove?: MoveDef;
+  /** Arceus's type selected after the draft. */
+  typeOverride?: PType;
+  /** Total damage actually taken, including damage later healed. */
+  damageTaken: number;
   hp: number;
   maxHp: number;
   pos: Pos | null;
@@ -235,6 +260,8 @@ export interface Unit {
   /** Nobunaga's special: extra movement this turn and opponents' defense boosts ignored. */
   movBonus: number;
   ignoreDefBoosts: boolean;
+  /** Sucker Punch: Chien-Pao counters opposing attacks during the specified side's turn. */
+  suckerPunchFor: Side | null;
 }
 
 export interface Hazard {
@@ -257,6 +284,11 @@ export interface ActiveActivation {
 }
 
 export type Pending =
+  | { kind: 'arceusType'; side: Side; unitId: string; options: PType[] }
+  | { kind: 'trainerType'; side: Side; unitId: string; options: PType[] }
+  | { kind: 'teleport'; side: Side; unitId: string; options: string[] }
+  | { kind: 'wish'; side: Side; unitId: string; options: string[] }
+  | { kind: 'voltSwitch'; side: Side; unitId: string; options: string[] }
   | { kind: 'emergencyExit'; side: Side; unitId: string; options: string[] }
   /** Imposter: copy the stat changes of one of these adjacent Pokémon (or decline). */
   | { kind: 'imposter'; side: Side; unitId: string; options: string[] }
@@ -286,7 +318,7 @@ export type Phase = 'draft' | 'placement' | 'battle' | 'over';
  * How teams are formed. classic: alternating picks from a shared pool; secret: each side picks from its
  * own hidden pool; auction: lots are revealed one at a time and bid for with 20 coins.
  */
-export type DraftStyle = 'classic' | 'secret' | 'auction';
+export type DraftStyle = 'classic' | 'secret' | 'auction' | 'freeplay';
 
 export interface AuctionLot {
   cardId: string;
@@ -316,11 +348,14 @@ export interface AuctionState {
 export interface TrainerState {
   pool: string[];
   picks: Record<Side, string | null>;
+  hiddenPowerType: Record<Side, PType | null>;
   /** Each trainer's Special Move can be used once per game. */
   used: Record<Side, boolean>;
   /** A special in effect for the rest of `side`'s current turn. */
-  effect: { side: Side; kind: 'sureHit' | 'rally' | 'push2' } | null;
+  effect: { side: Side; kind: 'sureHit' | 'rally' | 'push2' | 'perfectRolls' | 'vertical' | 'terrainBreak' } | null;
 }
+
+export type MoveIndex = 0 | 1 | 2;
 
 export interface GameState {
   version: 1;
@@ -347,7 +382,9 @@ export interface GameState {
   hazards: Hazard[];
   substitute: { pos: Pos; ownerId: string } | null;
   /** Pending Future Sights; each strikes around its user at the start of the user's next turn. */
-  futureSight: { userId: string; side: Side }[];
+  futureSight: { userId: string; side: Side; damage?: number; range?: number }[];
+  wishes: { userId: string; side: Side }[];
+  perishSongs: { userId: string; side: Side; center: Pos }[];
   /** Taunt: the side whose current or next turn is taunted. */
   taunted: Side | null;
   /** Trainer mode (null when played without trainers). */
@@ -375,7 +412,8 @@ export type Action =
   | { type: 'move'; unitId: string; to: Pos }
   | { type: 'undoMove'; unitId: string }
   /** `copy`: Transform uses this move of a Pokémon on the field. */
-  | { type: 'useMove'; unitId: string; moveIndex: 0 | 1; dir?: Dir; targetId?: string; copy?: { unitId: string; moveIndex: 0 | 1 } }
+  | { type: 'useMove'; unitId: string; moveIndex: MoveIndex; dir?: Dir; targetId?: string; copy?: { unitId: string; moveIndex: 0 | 1 } }
+  | { type: 'useFusion'; unitId: string; copy: { unitId: string; moveIndex: 0 | 1 }; dir?: Dir; targetId?: string }
   | { type: 'trebuchet'; unitId: string; targetId: string }
   | { type: 'wait'; unitId: string }
   | { type: 'postMove'; unitId: string; to: Pos }
@@ -400,7 +438,7 @@ export type GameEvent =
   /** A Pokémon changed form (Cherrim's Sunshine form, Minior's Core). */
   | { t: 'transform'; unitId: string; cardId: string }
   /** A move or ability that affects the whole field (weather, Light Screen, Taunt…). */
-  | { t: 'field'; kind: 'sun' | 'rain' | 'sand' | 'hail' | 'screen' | 'wind' | 'veil' | 'guard' | 'taunt' | 'flowers'; side: Side }
+  | { t: 'field'; kind: 'sun' | 'rain' | 'sand' | 'hail' | 'screen' | 'wind' | 'veil' | 'guard' | 'taunt' | 'flowers' | 'stageMist'; side: Side }
   | { t: 'text'; text: string };
 
 export interface Rng {
